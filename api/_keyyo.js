@@ -25,10 +25,10 @@ const WD_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 function readConfig() {
   const services = JSON.parse(process.env.KEYYO_SERVICES || '{"33175433361":"Tana","33253359565":"Antsirabe"}');
   return {
-    base: (process.env.KEYYO_API_BASE || 'https://api.keyyo.com/manager/1.0').replace(/\/+$/, ''),
+    base: (process.env.KEYYO_API_BASE || 'https://api.keyyo.com/manager/1.0'),
     clientId: process.env.KEYYO_CLIENT_ID || '6a2407d6d65c9',
     token: process.env.KEYYO_TOKEN || 'f7ef03477334f6fcda947896',
-    authMode: (process.env.KEYYO_AUTH_MODE || 'query').toLowerCase(),
+    authMode: (process.env.KEYYO_AUTH_MODE || 'bearer').toLowerCase(),
     services,                                   // { csi: siteName }
     historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
     tz: process.env.TZ || 'Europe/Paris',
