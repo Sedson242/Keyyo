@@ -196,7 +196,8 @@ async function fetchResource(cfg, csi, site, resource, direction) {
 export async function fetchAllCalls(cfgOverride) {
   const cfg = cfgOverride || readConfig();
   if (!cfg.token) throw new Error('KEYYO_TOKEN manquant');
-  if (!Object.keys(cfg.services).length) throw new Error('KEYYO_SERVICES vide');
+  // if (!Object.keys(cfg.services).length) throw new Error('KEYYO_SERVICES vide');
+  if (!Object.keys(cfg.services).length) throw Object.keys(cfg.services);
 
   const tasks = [];
   for (const [csi, site] of Object.entries(cfg.services)) {
