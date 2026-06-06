@@ -23,7 +23,7 @@ const WD_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
 // --- Lecture de la configuration depuis l'environnement -----------------
 function readConfig() {
-  const services = JSON.parse(process.env.KEYYO_SERVICES || '{}');
+  const services = JSON.parse(process.env.KEYYO_SERVICES || '{"33175433361":"Tana","33253359565":"Antsirabe"}');
   return {
     base: (process.env.KEYYO_API_BASE || 'https://api.keyyo.com/manager/1.0').replace(/\/+$/, ''),
     clientId: process.env.KEYYO_CLIENT_ID || '6a2407d6d65c9',
@@ -196,8 +196,7 @@ async function fetchResource(cfg, csi, site, resource, direction) {
 export async function fetchAllCalls(cfgOverride) {
   const cfg = cfgOverride || readConfig();
   if (!cfg.token) throw new Error('KEYYO_TOKEN manquant');
-  // if (!Object.keys(cfg.services).length) throw new Error('KEYYO_SERVICES vide');
-  if (!Object.keys(cfg.services).length) throw Object.keys(cfg.services);
+  if (!Object.keys(cfg.services).length) throw new Error('KEYYO_SERVICES vide');
 
   const tasks = [];
   for (const [csi, site] of Object.entries(cfg.services)) {
