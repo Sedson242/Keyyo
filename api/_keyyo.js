@@ -37,12 +37,12 @@ function readConfig() {
     clientId: process.env.KEYYO_CLIENT_ID || '6a2407d6d65c9',
     clientSecret: process.env.KEYYO_CLIENT_SECRET || 'f7ef03477334f6fcda947896',
     refreshToken: process.env.KEYYO_REFRESH_TOKEN || '65d74d92cc9e688e614d2072f893464e78b75712',
-    staticToken: process.env.KEYYO_TOKEN || 'TY5dT4MwAEX\/CukrJDKktJj4MHBTFkhg6mIUQ2pbmiq0hPKxzfjfJcZE387DvffcT8DIQMAVeClBQDzfRSxgAaRhCZwSoDCAvv+D9dg0FaGUG2P946rnhFVaNSdr0rKrul7XsuGmIqyVyqKD\/CXD+0lSXnXEmFn37K+4zK8QdhHEEK8cBH2MoeMtSjqaQbe8XwJqMb4CBxgpFBnGni+Ps81jnBTxWcBLe9Om5z3C26DWnq2SlBdkt9\/NU3hAdfbuIhoJ3awTQVo7Li\/sm\/n5zlvfH1eRUMcPOR3saCzyhy7PR\/aUZm9ye7oV1+DrGw==',        // fallback : access_token colle a la main
+    staticToken: process.env.KEYYO_TOKEN || 'TY5LT4QwGEX\/CulWFjwKBRMXRNA4D4yaiTFimk77MTaWQtoCovG\/S4yJ7s7i3nvuJxLMMXSOnhuUsggHRKQiTXjeIL9BJE8TjH+wHZWijHOw1vvH1AATtNdq8aZeDnQwfSsVWMpEJ7XHnfwlC2aSHOjArJ17I\/6K63xIsoCkUZxhnyQ4yxI\/WpV8tK7vwKwBvRpfkI+sPGnmRgPr4311uLwpuyNAeCeOZXu9jWAOVXm\/PL2fuZMN4eE2SF7BjeFmPkxxIatCT9GmW7K3WMt91eGPuRWyeDR1YBzJ1a6WV2W9bHcVmOACfX0D',        // fallback : access_token colle a la main
     // Services
     services: parseServices(process.env.KEYYO_SERVICES || '33175433361=Tana,33253359565=Antsirabe'),
     resourcePath: process.env.KEYYO_RESOURCE_PATH || 'services/{csi}/{resource}',
-    filterBegin: process.env.KEYYO_FILTER_BEGIN || '01/06/2026',
-    filterEnd: process.env.KEYYO_FILTER_END || '05/06/2026',
+    filterBegin: process.env.KEYYO_FILTER_BEGIN || 'date_begin',
+    filterEnd: process.env.KEYYO_FILTER_END || 'date_end',
     sendDateFilters: (process.env.KEYYO_SEND_DATE_FILTERS || '1') === '1',
     historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
     localizedNumbers: (process.env.KEYYO_LOCALIZED_NUMBERS || '1') === '1',
