@@ -27,7 +27,7 @@ function readConfig() {
   return {
     base: (process.env.KEYYO_API_BASE || 'https://api.keyyo.com/manager/1.0'),
     clientId: process.env.KEYYO_CLIENT_ID || '6a2407d6d65c9',
-    token: process.env.KEYYO_TOKEN || '%253D3443e7732f8a3800303f65852b99afbcfba1b2c5%2526',
+    token: process.env.KEYYO_TOKEN || 'D02902fbd0d4967b9c9264d3dd8077eb148bf347d',
     authMode: (process.env.KEYYO_AUTH_MODE || 'bearer').toLowerCase(),
     services,                                   // { csi: siteName }
     historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
