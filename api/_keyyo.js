@@ -1,251 +1,215 @@
 // =============================================================
-//  keyyo-client.js
-//  Interroge l'API Keyyo Manager (incoming/outgoing call_detail),
-//  normalise chaque appel au format attendu par le dashboard et
-//  agrege l'ensemble dans { rows, meta }.
+//  _keyyo.js  -  Connecteur Manager API Keyyo avec OAuth2 auto.
 //
-//  Format de ligne attendu par le dashboard (ordre STRICT) :
+//  AUTH (verifie) : client_credentials NON supporte par Keyyo.
+//  -> On utilise un refresh_token (obtenu une fois via le navigateur)
+//     pour recuperer automatiquement un access_token frais a chaque appel.
+//
+//  Manager API :
+//    base    : https://api.keyyo.com/manager/1.0
+//    auth    : Authorization: Bearer <access_token>
+//    chemin  : services/<CSI>/incoming_call_detail | outgoing_call_detail
+//    reponse : HAL/JSON (_embedded, pagination _links.next)
+//    filtres : filters[<cle>]=<valeur>
+//
+//  Sortie : { rows, meta } au format STRICT du dashboard :
 //   [ ISO, HOUR, CALLER, CALLED, NAT, DUR, SITE, OK, CORR, WD, YM ]
-//   ISO    : "AAAA-MM-JJ"
-//   HOUR   : entier (heure locale 0-23)
-//   CALLER : numero appelant (string)
-//   CALLED : numero appele (string)
-//   NAT    : 1 = sortant, 0 = entrant
-//   DUR    : duree en secondes (entier)
-//   SITE   : nom du site (string)
-//   OK     : 1 si duree > 0 sinon 0  (proxy "abouti")
-//   CORR   : correspondant (l'autre partie : appele si sortant, appelant si entrant)
-//   WD     : index jour de semaine 0=Lun ... 6=Dim
-//   YM     : "AAAA-MM"
 // =============================================================
-
-const WD_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-
-// --- Lecture de la configuration depuis l'environnement -----------------
+ 
+function parseServices(raw) {
+  if (!raw) return {};
+  const s = String(raw).trim();
+  if (s.startsWith('{')) { try { const o = JSON.parse(s); if (o && typeof o === 'object') return o; } catch (e) {} }
+  const out = {};
+  for (const pair of s.split(/[,;\n]+/)) {
+    const i = pair.search(/[=:]/);
+    if (i > 0) { const csi = pair.slice(0, i).trim(); const site = pair.slice(i + 1).trim(); if (csi && site) out[csi] = site; }
+  }
+  if (Object.keys(out).length) return out;
+  throw new Error('KEYYO_SERVICES illisible. Format simple: 33175433361=Tana,33253359565=Antsirabe (ou JSON). Recu: "' + s.slice(0, 40) + '"');
+}
+ 
 function readConfig() {
-  const services = JSON.parse(process.env.KEYYO_SERVICES || '{"33175433361":"Tana","33253359565":"Antsirabe"}');
   return {
-    base: (process.env.KEYYO_API_BASE || 'https://api.keyyo.com/manager/1.0'),
-    clientId: process.env.KEYYO_CLIENT_ID || '6a2407d6d65c9',
-    token: process.env.KEYYO_TOKEN || 'f7ef03477334f6fcda947896',
-    authMode: (process.env.KEYYO_AUTH_MODE || 'query').toLowerCase(),
-    services,                                   // { csi: siteName }
+    base: (process.env.KEYYO_API_BASE || 'https://api.keyyo.com/manager/1.0').replace(/\/+$/, ''),
+    tokenUrl: process.env.KEYYO_TOKEN_URL || 'https://api.keyyo.com/oauth2/token.php',
+    // OAuth2
+    clientId: process.env.KEYYO_CLIENT_ID || '',
+    clientSecret: process.env.KEYYO_CLIENT_SECRET || '',
+    refreshToken: process.env.KEYYO_REFRESH_TOKEN || '',
+    staticToken: process.env.KEYYO_TOKEN || '',        // fallback : access_token colle a la main
+    // Services
+    services: parseServices(process.env.KEYYO_SERVICES),
+    resourcePath: process.env.KEYYO_RESOURCE_PATH || 'services/{csi}/{resource}',
+    filterBegin: process.env.KEYYO_FILTER_BEGIN || 'date_begin',
+    filterEnd: process.env.KEYYO_FILTER_END || 'date_end',
+    sendDateFilters: (process.env.KEYYO_SEND_DATE_FILTERS || '1') === '1',
     historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
+    localizedNumbers: (process.env.KEYYO_LOCALIZED_NUMBERS || '1') === '1',
     tz: process.env.TZ || 'Europe/Paris',
+    maxPages: parseInt(process.env.KEYYO_MAX_PAGES || '50', 10),
   };
 }
-
-// --- Helpers date / fuseau ---------------------------------------------
-// Convertit un instant (Date) en composantes locales selon le fuseau cible.
+ 
+// ---------- OAuth2 : access_token via refresh_token (avec cache memoire) ----------
+let _tok = { value: null, exp: 0, rotated: null };
+ 
+async function getAccessToken(cfg) {
+  // 1) refresh_token (mode recommande, automatique)
+  if (cfg.refreshToken) {
+    const now = Date.now();
+    if (_tok.value && now < _tok.exp - 60000) return _tok.value;   // cache (marge 60s)
+    const body = new URLSearchParams({
+      client_id: cfg.clientId,
+      client_secret: cfg.clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: _tok.rotated || cfg.refreshToken,
+    });
+    const res = await fetch(cfg.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body,
+    });
+    const text = await res.text();
+    let j = {}; try { j = JSON.parse(text); } catch (e) {}
+    if (!res.ok || !j.access_token) {
+      throw new Error('OAuth refresh echoue (' + res.status + ') : ' + (j.error_description || j.error || text.slice(0, 160)));
+    }
+    _tok.value = j.access_token;
+    _tok.exp = now + ((j.expires_in ? j.expires_in : 3600) * 1000);
+    // Si Keyyo "tourne" le refresh_token, on garde le nouveau en memoire pour l'instance.
+    if (j.refresh_token && j.refresh_token !== cfg.refreshToken) _tok.rotated = j.refresh_token;
+    return _tok.value;
+  }
+  // 2) fallback : access_token statique (expire ~1h)
+  if (cfg.staticToken) return cfg.staticToken;
+  throw new Error('Auth manquante : definir KEYYO_REFRESH_TOKEN (+ CLIENT_ID/SECRET) ou KEYYO_TOKEN');
+}
+ 
+// ---------- Helpers ----------
 function localParts(date, tz) {
-  const fmt = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', hour12: false, weekday: 'short',
-  });
-  const parts = Object.fromEntries(fmt.formatToParts(date).map(p => [p.type, p.value]));
-  const iso = `${parts.year}-${parts.month}-${parts.day}`;
-  const hour = parseInt(parts.hour, 10) % 24;
-  // WD via un calcul stable (independant de la locale) :
-  const wdJs = new Date(`${iso}T12:00:00Z`).getUTCDay(); // 0=Dim..6=Sam
-  const wd = (wdJs + 6) % 7;                              // 0=Lun..6=Dim
-  return { iso, hour, ym: iso.slice(0, 7), wd };
+  const fmt = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false });
+  const p = Object.fromEntries(fmt.formatToParts(date).map(x => [x.type, x.value]));
+  const iso = `${p.year}-${p.month}-${p.day}`;
+  const wdJs = new Date(`${iso}T12:00:00Z`).getUTCDay();
+  return { iso, hour: parseInt(p.hour, 10) % 24, ym: iso.slice(0, 7), wd: (wdJs + 6) % 7 };
 }
-
-// --- Parsing tolerant d'un horodatage Keyyo ----------------------------
-// Accepte : epoch (s ou ms), "AAAA-MM-JJ HH:MM:SS", ISO 8601...
 function parseTimestamp(raw) {
-  if (raw == null) return null;
-  if (typeof raw === 'number' || /^\d+$/.test(String(raw))) {
-    const n = Number(raw);
-    return new Date(n > 1e12 ? n : n * 1000); // ms vs s
-  }
-  const s = String(raw).trim().replace(' ', 'T');
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'number' || /^\d+$/.test(String(raw))) { const n = Number(raw); return new Date(n > 1e12 ? n : n * 1000); }
+  const d = new Date(String(raw).trim().replace(' ', 'T')); return isNaN(d.getTime()) ? null : d;
 }
-
-// --- Acces tolerant a un champ parmi plusieurs noms possibles ----------
-function pick(obj, names, dflt = undefined) {
-  for (const n of names) {
-    if (obj && obj[n] != null && obj[n] !== '') return obj[n];
+function pick(o, names, dflt) { for (const n of names) if (o && o[n] != null && o[n] !== '') return o[n]; return dflt; }
+ 
+function extractRecords(payload) {
+  const out = [];
+  if (payload && payload._embedded && typeof payload._embedded === 'object') {
+    for (const g of Object.values(payload._embedded)) { if (Array.isArray(g)) out.push(...g); else if (g && typeof g === 'object') out.push(g); }
+    if (out.length) return out;
   }
-  return dflt;
+  if (Array.isArray(payload)) return payload;
+  for (const k of ['call_detail', 'calls', 'data', 'result', 'results', 'items', 'records']) if (Array.isArray(payload?.[k])) return payload[k];
+  return out;
 }
-
-// =============================================================
-//  Normalisation d'un enregistrement brut Keyyo -> ligne dashboard
-//  `direction` : 'out' (sortant) ou 'in' (entrant)
-//  Les listes de noms de champs couvrent les variantes courantes de
-//  l'API Manager ; ajuster ici si votre flux expose d'autres cles.
-// =============================================================
+ 
 function normalizeRecord(raw, { direction, site, tz }) {
-  const ts = parseTimestamp(
-    pick(raw, ['date', 'datetime', 'start_date', 'start', 'timestamp', 'ts', 'call_date'])
-  );
+  const ts = parseTimestamp(pick(raw, ['date', 'datetime', 'start_date', 'start', 'setup_date', 'connect_date', 'timestamp', 'ts', 'call_date']));
   if (!ts) return null;
-
-  const caller = String(
-    pick(raw, ['caller', 'calling_number', 'calling', 'from', 'src', 'source', 'origin'], '')
-  ).trim();
-  const called = String(
-    pick(raw, ['callee', 'called_number', 'called', 'to', 'dst', 'destination', 'dest'], '')
-  ).trim();
-
-  let dur = pick(raw, ['duration', 'billsec', 'billed_duration', 'real_duration', 'len'], 0);
-  dur = parseInt(dur, 10);
-  if (isNaN(dur) || dur < 0) dur = 0;
-
-  const nat = direction === 'out' ? 1 : 0;
-  const ok = dur > 0 ? 1 : 0;
-  const corr = nat === 1 ? called : caller; // l'autre partie
-  const { iso, hour, ym, wd } = localParts(ts, tz);
-
-  return [iso, hour, caller, called, nat, dur, site, ok, corr, wd, ym];
-}
-
-// --- Construction de l'URL d'un endpoint, selon le mode d'auth ---------
-function buildUrl(cfg, csi, resource, since, until) {
-  // L'API Manager scope la ressource par CSI : <base>/<csi>/<resource>
-  const url = new URL(`${cfg.base}/${encodeURIComponent(csi)}/${resource}`);
-  // Fenetre temporelle (noms de parametres tolerants cote Keyyo)
-  if (since) url.searchParams.set('date_begin', since);
-  if (until) url.searchParams.set('date_end', until);
-  if (cfg.authMode === 'query') {
-    url.searchParams.set('token', cfg.token);
-    if (cfg.clientId) url.searchParams.set('client_id', cfg.clientId);
+  const caller = String(pick(raw, ['caller', 'calling_number', 'calling', 'from', 'src', 'source'], '')).trim();
+  const called = String(pick(raw, ['callee', 'called_number', 'called', 'to', 'dst', 'destination'], '')).trim();
+  let dur = pick(raw, ['duration', 'billsec', 'billed_duration', 'real_duration', 'len'], null);
+  if (dur == null) {
+    const c = parseTimestamp(pick(raw, ['connect_date', 'answer_date'])), r = parseTimestamp(pick(raw, ['release_date', 'end_date', 'hangup_date']));
+    dur = (c && r) ? Math.max(0, Math.round((r - c) / 1000)) : 0;
   }
-  return url;
+  dur = parseInt(dur, 10); if (isNaN(dur) || dur < 0) dur = 0;
+  const nat = direction === 'out' ? 1 : 0;
+  const { iso, hour, ym, wd } = localParts(ts, tz);
+  return [iso, hour, caller, called, nat, dur, site, dur > 0 ? 1 : 0, nat === 1 ? called : caller, wd, ym];
 }
-
-function authHeaders(cfg) {
-  const h = { Accept: 'application/json' };
-  if (cfg.authMode === 'bearer') h.Authorization = `Bearer ${cfg.token}`;
-  return h;
+ 
+function buildUrl(cfg, csi, resource) {
+  const path = cfg.resourcePath.replace('{csi}', encodeURIComponent(csi)).replace('{resource}', resource);
+  const url = new URL(`${cfg.base}/${path}`);
+  if (cfg.sendDateFilters) {
+    const until = new Date(), since = new Date(Date.now() - cfg.historyDays * 864e5), d = x => x.toISOString().slice(0, 10);
+    url.searchParams.set(`filters[${cfg.filterBegin}]`, d(since));
+    url.searchParams.set(`filters[${cfg.filterEnd}]`, d(until));
+  }
+  if (cfg.localizedNumbers) url.searchParams.set('localized_numbers', '1');
+  return url.toString();
 }
-
-// --- fetch avec timeout + retries (backoff exponentiel) ----------------
+ 
 async function fetchJson(url, headers, { retries = 3, timeoutMs = 15000 } = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { headers, signal: ctrl.signal });
-      clearTimeout(t);
+      const res = await fetch(url, { headers, signal: ctrl.signal }); clearTimeout(t);
       const text = await res.text();
       if (!res.ok) {
-        // 429 / 5xx -> on retente ; 4xx "definitif" -> on remonte
-        if (res.status === 429 || res.status >= 500) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const err = new Error(`HTTP ${res.status} : ${text.slice(0, 300)}`);
-        err.fatal = true;
-        throw err;
+        const reason = res.headers.get('x-status-reason') || text.slice(0, 200);
+        if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status} ${reason}`);
+        throw Object.assign(new Error(`HTTP ${res.status} ${reason}`), { fatal: true });
       }
-      try { return JSON.parse(text); }
-      catch { throw Object.assign(new Error('Reponse non-JSON de Keyyo'), { body: text.slice(0, 300) }); }
-    } catch (e) {
-      clearTimeout(t);
-      lastErr = e;
-      if (e.fatal) throw e;
-      if (attempt < retries) {
-        await new Promise(r => setTimeout(r, 500 * 2 ** attempt));
-      }
-    }
+      if (!text) return {};
+      try { return JSON.parse(text); } catch { throw Object.assign(new Error('Reponse non-JSON de Keyyo'), { fatal: true }); }
+    } catch (e) { clearTimeout(t); lastErr = e; if (e.fatal) throw e; if (attempt < retries) await new Promise(r => setTimeout(r, 500 * 2 ** attempt)); }
   }
   throw lastErr;
 }
-
-// --- Extraction de la liste d'appels depuis une reponse Keyyo ----------
-// L'API peut renvoyer un tableau, ou un objet englobant ({data:[...]}, etc.)
-function extractRecords(payload) {
-  if (Array.isArray(payload)) return payload;
-  for (const k of ['call_detail', 'calls', 'data', 'result', 'results', 'items', 'records']) {
-    if (Array.isArray(payload?.[k])) return payload[k];
-  }
-  // objet indexe { "0": {...}, "1": {...} }
-  if (payload && typeof payload === 'object') {
-    const vals = Object.values(payload).filter(v => v && typeof v === 'object');
-    if (vals.length && vals.every(v => !Array.isArray(v))) return vals;
-  }
-  return [];
-}
-
-// --- Recuperation d'un endpoint pour un service ------------------------
-async function fetchResource(cfg, csi, site, resource, direction) {
-  const until = new Date();
-  const since = new Date(until.getTime() - cfg.historyDays * 864e5);
-  const fmt = d => d.toISOString().slice(0, 10);
-
-  const url = buildUrl(cfg, csi, resource, fmt(since), fmt(until));
-  const payload = await fetchJson(url, authHeaders(cfg));
-  const records = extractRecords(payload);
-
+ 
+async function fetchResource(cfg, token, csi, site, resource, direction) {
+  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  let url = buildUrl(cfg, csi, resource);
   const rows = [];
-  for (const rec of records) {
-    const row = normalizeRecord(rec, { direction, site, tz: cfg.tz });
-    if (row) rows.push(row);
+  for (let page = 0; page < cfg.maxPages && url; page++) {
+    const payload = await fetchJson(url, headers);
+    for (const rec of extractRecords(payload)) { const row = normalizeRecord(rec, { direction, site, tz: cfg.tz }); if (row) rows.push(row); }
+    const next = payload?._links?.next?.href;
+    url = next ? (next.startsWith('http') ? next : new URL(next, cfg.base + '/').toString()) : null;
   }
   return rows;
 }
-
-// =============================================================
-//  Point d'entree : recupere TOUS les services, les deux sens,
-//  et renvoie { rows, meta } pret pour le dashboard.
-// =============================================================
+ 
 export async function fetchAllCalls(cfgOverride) {
   const cfg = cfgOverride || readConfig();
-  if (!cfg.token) throw new Error('KEYYO_TOKEN manquant');
   if (!Object.keys(cfg.services).length) throw new Error('KEYYO_SERVICES vide');
-
+ 
+  const token = await getAccessToken(cfg);     // 1 seul refresh par invocation (puis cache)
+ 
   const tasks = [];
   for (const [csi, site] of Object.entries(cfg.services)) {
-    tasks.push(fetchResource(cfg, csi, site, 'outgoing_call_detail', 'out'));
-    tasks.push(fetchResource(cfg, csi, site, 'incoming_call_detail', 'in'));
+    tasks.push(fetchResource(cfg, token, csi, site, 'outgoing_call_detail', 'out'));
+    tasks.push(fetchResource(cfg, token, csi, site, 'incoming_call_detail', 'in'));
   }
-
   const settled = await Promise.allSettled(tasks);
-  const rows = [];
-  const errors = [];
-  settled.forEach((s, i) => {
-    if (s.status === 'fulfilled') rows.push(...s.value);
-    else errors.push(`tache#${i}: ${s.reason?.message || s.reason}`);
-  });
-
-  // Si TOUT a echoue, on remonte une vraie erreur (le serveur gardera le cache).
-  if (rows.length === 0 && errors.length) {
-    throw new Error('Aucune donnee recuperee. ' + errors.join(' | '));
-  }
-
-  // Tri anti-chronologique (comme l'export d'origine)
+  const rows = [], errors = [];
+  settled.forEach((s, i) => s.status === 'fulfilled' ? rows.push(...s.value) : errors.push(`tache#${i}: ${s.reason?.message || s.reason}`));
+  if (rows.length === 0 && errors.length) throw new Error('Aucune donnee recuperee. ' + errors.join(' | '));
+ 
   rows.sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : b[1] - a[1]));
-
-  const meta = buildMeta(rows, cfg);
-  return { rows, meta, errors };
+  return { rows, meta: buildMeta(rows), errors };
 }
-
-// --- Construction du bloc meta -----------------------------------------
-function buildMeta(rows, cfg) {
+ 
+function buildMeta(rows) {
   const isos = rows.map(r => r[0]);
-  const yms = [...new Set(rows.map(r => r[10]))].sort();
-  const sites = [...new Set(rows.map(r => r[6]))].sort();
-  const min = isos.length ? isos.reduce((a, b) => (a < b ? a : b)) : null;
-  const max = isos.length ? isos.reduce((a, b) => (a > b ? a : b)) : null;
-  const days = new Set(isos).size;
-  return { n: rows.length, min, max, days, ym: yms, sites };
+  return {
+    n: rows.length,
+    min: isos.length ? isos.reduce((a, b) => a < b ? a : b) : null,
+    max: isos.length ? isos.reduce((a, b) => a > b ? a : b) : null,
+    days: new Set(isos).size,
+    ym: [...new Set(rows.map(r => r[10]))].sort(),
+    sites: [...new Set(rows.map(r => r[6]))].sort(),
+  };
 }
-
-// --- Selftest CLI : `npm run test:keyyo` -------------------------------
+ 
 if (process.argv.includes('--selftest')) {
-  // Variables lues via process.env (lancer avec : node --env-file=.env.local ...)
-  console.log('Test de connexion Keyyo en cours...');
+  console.log('Test Keyyo (OAuth refresh + Manager API)...');
   try {
     const { rows, meta, errors } = await fetchAllCalls();
-    console.log(`OK : ${rows.length} appels, sites=${meta.sites.join(', ')}, periode ${meta.min} -> ${meta.max}`);
+    console.log(`OK : ${rows.length} appels | sites=${meta.sites.join(', ')} | ${meta.min} -> ${meta.max}`);
     if (errors.length) console.warn('Avertissements:', errors);
-    console.log('Exemple de ligne:', rows[0]);
-  } catch (e) {
-    console.error('ECHEC:', e.message);
-    process.exit(1);
-  }
+    if (rows[0]) console.log('Exemple:', JSON.stringify(rows[0]));
+  } catch (e) { console.error('ECHEC:', e.message); process.exit(1); }
 }
