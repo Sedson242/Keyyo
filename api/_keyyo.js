@@ -34,10 +34,10 @@ function readConfig() {
     base: (process.env.KEYYO_API_BASE || 'https://api.keyyo.com/manager/1.0').replace(/\/+$/, ''),
     tokenUrl: process.env.KEYYO_TOKEN_URL || 'https://api.keyyo.com/oauth2/token.php',
     // OAuth2
-    clientId: process.env.KEYYO_CLIENT_ID || '',
-    clientSecret: process.env.KEYYO_CLIENT_SECRET || '',
-    refreshToken: process.env.KEYYO_REFRESH_TOKEN || '',
-    staticToken: process.env.KEYYO_TOKEN || '',        // fallback : access_token colle a la main
+    clientId: process.env.KEYYO_CLIENT_ID || '6a2407d6d65c9',
+    clientSecret: process.env.KEYYO_CLIENT_SECRET || 'f7ef03477334f6fcda947896',
+    refreshToken: process.env.KEYYO_REFRESH_TOKEN || '65d74d92cc9e688e614d2072f893464e78b75712',
+    staticToken: process.env.KEYYO_TOKEN || 'TY5dT4MwAEX\/CukrJDKktJj4MHBTFkhg6mIUQ2pbmiq0hPKxzfjfJcZE387DvffcT8DIQMAVeClBQDzfRSxgAaRhCZwSoDCAvv+D9dg0FaGUG2P946rnhFVaNSdr0rKrul7XsuGmIqyVyqKD\/CXD+0lSXnXEmFn37K+4zK8QdhHEEK8cBH2MoeMtSjqaQbe8XwJqMb4CBxgpFBnGni+Ps81jnBTxWcBLe9Om5z3C26DWnq2SlBdkt9\/NU3hAdfbuIhoJ3awTQVo7Li\/sm\/n5zlvfH1eRUMcPOR3saCzyhy7PR\/aUZm9ye7oV1+DrGw==',        // fallback : access_token colle a la main
     // Services
     services: parseServices(process.env.KEYYO_SERVICES),
     resourcePath: process.env.KEYYO_RESOURCE_PATH || 'services/{csi}/{resource}',
