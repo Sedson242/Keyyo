@@ -41,8 +41,8 @@ function readConfig() {
     // Services
     services: parseServices(process.env.KEYYO_SERVICES || '33175433361=Tana,33253359565=Antsirabe'),
     resourcePath: process.env.KEYYO_RESOURCE_PATH || 'services/{csi}/{resource}',
-    filterBegin: process.env.KEYYO_FILTER_BEGIN || 'date_begin',
-    filterEnd: process.env.KEYYO_FILTER_END || 'date_end',
+    filterBegin: process.env.KEYYO_FILTER_BEGIN || '01/06/2026',
+    filterEnd: process.env.KEYYO_FILTER_END || '05/06/2026',
     sendDateFilters: (process.env.KEYYO_SEND_DATE_FILTERS || '1') === '1',
     historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
     localizedNumbers: (process.env.KEYYO_LOCALIZED_NUMBERS || '1') === '1',
