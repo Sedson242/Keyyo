@@ -43,7 +43,7 @@ function readConfig() {
     resourcePath: process.env.KEYYO_RESOURCE_PATH || 'services/{csi}/{resource}',
     filterBegin: process.env.KEYYO_FILTER_BEGIN || 'date_begin',
     filterEnd: process.env.KEYYO_FILTER_END || 'date_end',
-    sendDateFilters: (process.env.KEYYO_SEND_DATE_FILTERS || '1') === '1',
+    sendDateFilters: (process.env.KEYYO_SEND_DATE_FILTERS || '2') === '2',
     historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
     localizedNumbers: (process.env.KEYYO_LOCALIZED_NUMBERS || '1') === '1',
     tz: process.env.TZ || 'Europe/Paris',
