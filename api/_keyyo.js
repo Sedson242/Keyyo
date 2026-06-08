@@ -1,5 +1,5 @@
 // =============================================================
-//  _keyyo.js  -  Connecteur Manager API Keyyo (OAuth2 refresh).
+//  _keyyo.js  -  Connecteur Manager API Keyyo (OAuth2 refresh).GGGGGG
 //
 //  Sortie : { rows, meta, errors, diag } au format STRICT du dashboard :
 //   [ ISO, HOUR, CALLER, CALLED, NAT, DUR, SITE, OK, CORR, WD, YM ]
