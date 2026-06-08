@@ -1,5 +1,5 @@
 // =============================================================
-//  _keyyo.js  -  Connecteur Manager API Keyyo (OAuth2 refresh).GGGGGG
+//  _keyyo.js  -  Connecteur Manager API Keyyo (OAuth2 refresh).
 //
 //  Sortie : { rows, meta, errors, diag } au format STRICT du dashboard :
 //   [ ISO, HOUR, CALLER, CALLED, NAT, DUR, SITE, OK, CORR, WD, YM ]
@@ -44,7 +44,7 @@ function readConfig() {
     dateFilterFormat: process.env.KEYYO_DATE_FILTER_FORMAT || 'unix',
     historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
     localizedNumbers: (process.env.KEYYO_LOCALIZED_NUMBERS || '1') === '1',
-    tz: process.env.TZ || 'Europe/Paris',
+    tz: safeTz(process.env.TZ),
     maxPages: parseInt(process.env.KEYYO_MAX_PAGES || '50', 10),
     // valide les CSI contre /services au demarrage (ralentit un peu, tres instructif)
     validateCsi: (process.env.KEYYO_VALIDATE_CSI || '0') === '1',
@@ -84,6 +84,18 @@ async function getAccessToken(cfg) {
 }
 
 // ---------- Helpers ----------
+// Certains environnements exposent TZ au format POSIX ":UTC" (deux-points en
+// tete) que Intl.DateTimeFormat refuse. On nettoie et on valide, avec repli.
+function safeTz(tz) {
+  let z = String(tz == null ? '' : tz).replace(/^:/, '').trim();
+  if (!z) z = 'Europe/Paris';
+  try { new Intl.DateTimeFormat('fr-FR', { timeZone: z }); return z; }
+  catch (e) {
+    try { new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }); return 'Europe/Paris'; }
+    catch (e2) { return 'UTC'; }
+  }
+}
+
 function localParts(date, tz) {
   const fmt = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false });
   const p = Object.fromEntries(fmt.formatToParts(date).map(x => [x.type, x.value]));
