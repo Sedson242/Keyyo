@@ -91,6 +91,9 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace}
 .live.ok .dot{background:var(--good);animation:pulse 2.2s infinite}
 .live.err .dot{background:var(--bad)}
 .live.load .dot{background:var(--alert)}
+.live.warn .dot{background:var(--alert);animation:pulse 2.2s infinite}.live.warn{border-color:var(--alert)}
+.empty-note{background:#FFF8EC;border:1px solid #F2C779;border-left:4px solid var(--alert);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:13px;color:#8a5a00;line-height:1.5}
+.empty-note b{color:#7a4f00}.empty-note code{background:#fff;border:1px solid #eadbb0;border-radius:4px;padding:1px 5px;font-size:12px}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(24,128,56,.45)}70%{box-shadow:0 0 0 6px rgba(24,128,56,0)}100%{box-shadow:0 0 0 0 rgba(24,128,56,0)}}
 .live b{color:var(--ink);font-weight:600}
 .iconbtn{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;color:var(--muted)}
@@ -501,6 +504,7 @@ function setLive(kind, updatedAt, warning){
   const b=document.getElementById('liveBadge'), t=document.getElementById('liveText'); if(!b) return;
   b.className='live '+kind;
   if(kind==='ok'){ t.innerHTML='Live · maj <b>'+fmtTime(updatedAt)+'</b>'; b.title=warning?('Avertissement: '+warning):'Connecté à Keyyo'; }
+  else if(kind==='warn'){ t.innerHTML='Live · 0 appel · maj <b>'+fmtTime(updatedAt)+'</b>'; b.title=warning||'Connecté mais aucune donnée'; }
   else if(kind==='err'){ t.innerHTML='Hors-ligne · maj '+(updatedAt?fmtTime(updatedAt):'—'); b.title=warning||'Erreur'; }
   else { t.textContent='Connexion…'; b.title=''; }
 }
@@ -522,12 +526,29 @@ function rebuildFilters(){
 function updateScope(){ const el=document.getElementById('scope'); if(!el||!M.n) return;
   el.innerHTML=`<b>Périmètre</b><br>${fmt(M.n)} appels · ${M.sites.length} sites<br>${M.min.split('-').reverse().join('/')} → ${M.max.split('-').reverse().join('/')}<br>${M.days} jours d'activité<br><span style="color:#5a6678">Statut « abouti » approximé via la durée &gt; 0.</span>`; }
 
+function showEmptyNote(p){
+  const host=document.getElementById('p-exec'); if(!host) return;
+  const d=p.diag||{};
+  const why=p.warning||'Aucun appel renvoyé par l’API.';
+  host.innerHTML=`<div class="empty-note">
+    <b>Connecté à Keyyo, mais 0 appel exploitable.</b><br>
+    ${why}<br><br>
+    Vu côté API : <b>${(d.rawSeen??0)}</b> enregistrement(s) brut(s) · <b>${(d.kept??0)}</b> gardé(s) · <b>${(d.dropped??0)}</b> écarté(s).<br>
+    Étape suivante : ouvrir <code>/api/debug</code> pour voir la réponse brute de Keyyo (CSI, filtres, noms de champs).
+  </div>`;
+}
 function applyData(p){
   R=p.rows||[]; M=p.meta||{}; __lastUpdatedAt=p.updatedAt||new Date().toISOString();
-  if(__firstLoad){ __firstLoad=false; updateScope(); initFilters(); go('exec'); }
-  else { updateScope(); rebuildFilters(); render(); }
-  setLive('ok', __lastUpdatedAt, p.warning);
-  if(p.warning) toast('Données partielles : '+p.warning);
+  const empty = R.length===0;
+  if(__firstLoad){ __firstLoad=false;
+    if(empty){ go('exec'); showEmptyNote(p); }
+    else { updateScope(); initFilters(); go('exec'); }
+  } else {
+    if(empty){ showEmptyNote(p); }
+    else { updateScope(); rebuildFilters(); render(); }
+  }
+  if(empty){ setLive('warn', __lastUpdatedAt, p.warning||'0 appel'); toast('0 appel renvoyé — voir le diagnostic affiché.'); }
+  else { setLive('ok', __lastUpdatedAt, p.warning); if(p.warning) toast('Données partielles : '+p.warning); }
 }
 
 async function loadData(){
