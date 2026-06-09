@@ -168,6 +168,41 @@ const charts={};
 // ---------- helpers ----------
 const fmt=n=>n.toLocaleString('fr-FR');
 const pct=(a,b)=>b?Math.round(a/b*1000)/10+' %':'– %';
+// ---------- Contacts (rapprochement numéro -> nom) ----------
+let CONTACTS={};
+function normNum(s){
+  if(s==null)return''; let x=String(s).replace(/[^\d+]/g,''); if(!x)return'';
+  if(x.startsWith('00'))x='+'+x.slice(2);
+  if(x[0]!=='+'){
+    if(x.length===10&&x[0]==='0')x='+33'+x.slice(1);   // national FR -> E.164
+    else x='+'+x;                                        // déjà international sans +
+  }
+  return x;
+}
+function nameOf(num){const k=normNum(num);return CONTACTS[k]||null;}
+function escH(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function buildContactMap(data){
+  const map={};
+  if(Array.isArray(data)){
+    for(const c of data){const nm=c.name||c.display||c.displayName||'';
+      const nums=c.numbers||(c.number?[c.number]:[]); for(const n of nums){const k=normNum(n); if(k&&nm)map[k]=nm;}}
+  } else if(data&&typeof data==='object'){
+    for(const [k,v] of Object.entries(data)){const kk=normNum(k); if(kk&&typeof v==='string'&&v)map[kk]=v;}
+  }
+  return map;
+}
+async function loadContacts(){
+  // 1) Synchro live Microsoft Graph
+  try{
+    const r=await fetch('/api/contacts',{cache:'no-store'});
+    if(r.ok){const d=await r.json(); if(d&&!d.error){const m=buildContactMap(d); if(Object.keys(m).length){CONTACTS=m; return;}}}
+  }catch(e){}
+  // 2) Repli : fichier statique contacts.json
+  try{
+    const r=await fetch('/contacts.json',{cache:'no-store'}); if(!r.ok)return;
+    CONTACTS=buildContactMap(await r.json());
+  }catch(e){}
+}
 function mmss(s){if(s==null)return'';const m=Math.floor(s/60),x=s%60;return m+':'+String(x).padStart(2,'0');}
 function median(arr){if(!arr.length)return 0;const a=[...arr].sort((x,y)=>x-y),m=a.length>>1;return a.length%2?a[m]:Math.round((a[m-1]+a[m])/2);}
 function mlabel(ym){return MONTHS_FR[ym.slice(5)]+' '+ym.slice(2,4);}
@@ -345,11 +380,16 @@ function renderCorr(){
   const arr=Object.entries(cm).sort((a,b)=>b[1].n-a[1].n);
   const top10share=arr.slice(0,10).reduce((s,x)=>s+x[1].n,0);
   const mask=k=>k.length>6?k.slice(0,4)+' ** ** '+k.slice(-2):k;
+  // étiquette : nom du contact si connu, sinon numéro masqué
+  const disp=k=>{const n=nameOf(k);return n?n:mask(k);};
+  const cellCorr=k=>{const n=nameOf(k);return n
+    ?`${escH(n)}<br><span style="font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace">${mask(k)}</span>`
+    :`<span style="font-family:'IBM Plex Mono',monospace">${mask(k)}</span>`;};
   document.getElementById('p-corr').innerHTML=`
    <div class="kpis">
      ${kpi('Correspondants',fmt(arr.length),'numéros distincts')}
      ${kpi('% volume top 10',pct(top10share,f.length),'concentration','accentA')}
-     ${kpi('Top correspondant',arr.length?mask(arr[0][0]):'–',arr.length?arr[0][1].n+' appels':'')}
+     ${kpi('Top correspondant',arr.length?disp(arr[0][0]):'–',arr.length?arr[0][1].n+' appels':'')}
    </div>
    <div class="grid g2" style="margin-bottom:16px">
      <div class="card"><h3>Top 10 numéros appelés</h3><div class="cw"><canvas id="cCalled"></canvas></div></div>
@@ -358,10 +398,10 @@ function renderCorr(){
    <div class="card" style="margin-bottom:16px"><h3>Concentration (Pareto)</h3><p class="hint">% cumulé du volume par correspondant classé</p><div class="cw"><canvas id="cPareto"></canvas></div></div>
    <div class="card"><h3>Détail correspondants</h3><div class="scrollT" style="max-height:340px"><table>
      <thead><tr><th>Correspondant</th><th class="num">Appels</th><th class="num">Durée cumulée</th><th class="num">Durée médiane</th></tr></thead>
-     <tbody>${arr.slice(0,40).map(([k,v])=>`<tr><td style="font-family:'IBM Plex Mono',monospace">${mask(k)}</td><td class="num">${v.n}</td><td class="num">${(v.d/60).toFixed(0)} min</td><td class="num">${median(f.filter(r=>r[C.CORR]===k&&r[C.DUR]>0).map(r=>r[C.DUR]))} s</td></tr>`).join('')}</tbody></table></div></div>`;
+     <tbody>${arr.slice(0,40).map(([k,v])=>`<tr><td>${cellCorr(k)}</td><td class="num">${v.n}</td><td class="num">${(v.d/60).toFixed(0)} min</td><td class="num">${median(f.filter(r=>r[C.CORR]===k&&r[C.DUR]>0).map(r=>r[C.DUR]))} s</td></tr>`).join('')}</tbody></table></div></div>`;
   const barOpt=h=>({indexAxis:'y',maintainAspectRatio:false,scales:{x:{beginAtZero:true,grid:{color:COL.grid}},y:{grid:{display:false}}},plugins:{legend:{display:false}}});
-  newChart('cCalled',{type:'bar',data:{labels:called.map(x=>mask(x[0])),datasets:[{data:called.map(x=>x[1]),backgroundColor:COL.sort,borderRadius:3}]},options:barOpt()});
-  newChart('cCallers',{type:'bar',data:{labels:callers.map(x=>mask(x[0])),datasets:[{data:callers.map(x=>x[1]),backgroundColor:COL.entr,borderRadius:3}]},options:barOpt()});
+  newChart('cCalled',{type:'bar',data:{labels:called.map(x=>disp(x[0])),datasets:[{data:called.map(x=>x[1]),backgroundColor:COL.sort,borderRadius:3}]},options:barOpt()});
+  newChart('cCallers',{type:'bar',data:{labels:callers.map(x=>disp(x[0])),datasets:[{data:callers.map(x=>x[1]),backgroundColor:COL.entr,borderRadius:3}]},options:barOpt()});
   const top=arr.slice(0,25);let cum=0;const cumPct=top.map(x=>{cum+=x[1].n;return Math.round(cum/f.length*1000)/10;});
   newChart('cPareto',{data:{labels:top.map((x,i)=>i+1),datasets:[
     {type:'bar',label:'Appels',data:top.map(x=>x[1].n),backgroundColor:COL.sort+'cc',yAxisID:'y',borderRadius:2},
@@ -421,12 +461,15 @@ function renderDet(){
 }
 function fillDet(){
   let f=filtered();
-  if(detSearch.trim()){const q=detSearch.trim();f=f.filter(r=>r[C.CALLER].includes(q)||r[C.CALLED].includes(q));}
+  if(detSearch.trim()){const q=detSearch.trim().toLowerCase();f=f.filter(r=>r[C.CALLER].toLowerCase().includes(q)||r[C.CALLED].toLowerCase().includes(q)||(nameOf(r[C.CALLER])||'').toLowerCase().includes(q)||(nameOf(r[C.CALLED])||'').toLowerCase().includes(q));}
   f=[...f].sort((a,b)=>{const k=detSort.k;let va=a[k],vb=b[k];if(k===1){va=a[C.ISO]+a[C.HOUR];vb=b[C.ISO]+b[C.HOUR];}if(va<vb)return-detSort.dir;if(va>vb)return detSort.dir;return 0;});
   document.getElementById('detCount').textContent=`${fmt(f.length)} appels affichés`+(detSearch?` (recherche : "${detSearch}")`:'');
+  const cellNum=num=>{const n=nameOf(num);return n
+    ?`<span title="${escH(num)}">${escH(n)}</span>`
+    :`<span style="font-family:'IBM Plex Mono',monospace">${escH(num)}</span>`;};
   const rows=f.slice(0,600).map(r=>`<tr>
     <td>${r[C.ISO].split('-').reverse().join('/')}</td><td style="font-family:'IBM Plex Mono',monospace">${String(r[C.HOUR]).padStart(2,'0')}h</td>
-    <td style="font-family:'IBM Plex Mono',monospace">${r[C.CALLER]}</td><td style="font-family:'IBM Plex Mono',monospace">${r[C.CALLED]}</td>
+    <td>${cellNum(r[C.CALLER])}</td><td>${cellNum(r[C.CALLED])}</td>
     <td><span class="tag ${r[C.NAT]?'s':'e'}">${r[C.NAT]?'Sortant':'Entrant'}</span></td><td>${r[C.SITE]}</td>
     <td class="num">${mmss(r[C.DUR])}</td><td><span class="tag ${r[C.OK]?'ok':'no'}">${r[C.OK]?'Oui':'Non'}</span></td></tr>`).join('');
   document.getElementById('detBody').innerHTML=rows+(f.length>600?`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px">… ${fmt(f.length-600)} lignes supplémentaires (affiner les filtres pour les voir)</td></tr>`:'');
@@ -578,6 +621,6 @@ function startPolling(){ if(__pollTimer) return; __pollTimer=setInterval(loadDat
 function stopPolling(){ clearInterval(__pollTimer); __pollTimer=null; }
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stopPolling(); } else { startPolling(); loadData(); } });
 
-loadData(); startPolling();
+(async()=>{ await loadContacts(); loadData(); startPolling(); })();
 
 </script>

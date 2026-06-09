@@ -76,3 +76,12 @@ depuis le navigateur. La correction rend ces deux cas **observables**.
    - Si `C/D` renvoient des données mais que `/api/health` montre `dropped > 0` →
      mismatch de champ confirmé.
 3. Une fois `/api/health` à `status: ok` avec `calls > 0`, **supprimer `api/debug.js`**.
+
+## Correctif 2 (fuseau horaire) — erreur « Invalid time zone specified: :UTC »
+Une fois la collecte rétablie, `Intl.DateTimeFormat` plantait sur la valeur d'environnement
+`TZ=:UTC` (format POSIX avec deux-points en tête, refusé comme zone IANA). Ajout de
+`safeTz()` : on retire le `:` initial, on valide la zone, et on retombe sur `Europe/Paris`
+(puis `UTC`) si invalide. `:UTC` devient donc `UTC` ; vide devient `Europe/Paris`.
+
+> Pour afficher les heures en heure de Paris, définir `TZ=Europe/Paris` (sans deux-points)
+> dans les variables d'environnement Vercel. Sinon les heures seront en UTC.
