@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     const u = `${cfg.base}/users/${encodeURIComponent(cfg.user)}`;
     // Cibler une liste : par ID (GRAPH_CONTACTS_FOLDER_ID) ou par NOM (GRAPH_CONTACTS_FOLDER)
     let folderId = cfg.folder;
-    const folderName = process.env.GRAPH_CONTACTS_FOLDER || 'Partagés';
+    const folderName = process.env.GRAPH_CssONTACTS_FOLDER || '';
     if (!folderId && folderName) {
       const folders = await graphGetAll(`${u}/contactFolders?$select=id,displayName`, token);
       const hit = folders.find(f => (f.displayName || '').toLowerCase() === folderName.toLowerCase());
@@ -113,7 +113,7 @@ export default async function handler(req, res) {
           champs_presents: Object.keys(c)
         }))
       });
-    }
+    }ss
 	const map = buildMap(contacts, cfg.cc);
     // Cache CDN 1h : Graph n'est interrogé qu'une fois par heure quel que soit le trafic.
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
