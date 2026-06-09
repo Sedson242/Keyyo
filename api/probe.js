@@ -8,8 +8,8 @@ function parseServices(raw){ if(!raw) return {}; const s=String(raw).trim();
   const out={}; for(const p of s.split(/[,;\n]+/)){ const i=p.search(/[=:]/); if(i>0){const c=p.slice(0,i).trim(),v=p.slice(i+1).trim(); if(c&&v) out[c]=v;} } return out; }
 
 async function getToken(){
-  const body=new URLSearchParams({ client_id:process.env.KEYYO_CLIENT_ID||'', client_secret:process.env.KEYYO_CLIENT_SECRET||'',
-    grant_type:'refresh_token', refresh_token:process.env.KEYYO_REFRESH_TOKEN||'' });
+  const body=new URLSearchParams({ client_id:process.env.KEYYO_CLIENT_ID||'6a2407d6d65c9', client_secret:process.env.KEYYO_CLIENT_SECRET||'f7ef03477334f6fcda947896',
+    grant_type:'refresh_token', refresh_token:process.env.KEYYO_REFRESH_TOKEN||'65d74d92cc9e688e614d2072f893464e78b75712' });
   const res=await fetch(process.env.KEYYO_TOKEN_URL||'https://api.keyyo.com/oauth2/token.php',
     {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body});
   const t=await res.text(); let j={}; try{j=JSON.parse(t);}catch(e){} return j.access_token||null;

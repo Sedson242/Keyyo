@@ -20,7 +20,7 @@ function readCfg() {
     clientId: process.env.GRAPH_CLIENT_ID || '26c6eed4-645c-4a90-a14c-9166a9d990e8',
     clientSecret: process.env.GRAPH_CLIENT_SECRET || '6ZL8Q~8BdNtHopmV8fqbTf9YplNPbr-qgUMJiaAc',
     user: process.env.GRAPH_CONTACTS_USER || 'plecorre@bios-expertise.com',
-    folder: process.env.GRAPH_CONTACTS_FOLDER_ID || '1',
+    folder: process.env.GRAPH_CONTACTS_FOLDER_ID || '',
     cc: process.env.CONTACTS_DEFAULT_CC || '33',
     authority: (process.env.GRAPH_AUTHORITY || 'https://login.microsoftonline.com').replace(/\/+$/, ''),
     base: (process.env.GRAPH_BASE || 'https://graph.microsoft.com/v1.0').replace(/\/+$/, ''),
