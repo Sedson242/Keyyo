@@ -1,18 +1,17 @@
 // Vercel Serverless Function -> /api/contacts
 // Synchro LIVE des contacts via Microsoft Graph (mode application / client_credentials).
-// Lit le carnet d'un mailbox (le propriétaire du dossier partagé) et renvoie une map
-// normalisée { "+33XXXXXXXXX": "Nom" } consommée par le dashboard.
+// Renvoie une map normalisee { "+33XXXXXXXXX": "Nom" } consommee par le dashboard.
 //
-// Variables d'environnement requises :
-//   GRAPH_TENANT_ID        (Directory / tenant ID)
-//   GRAPH_CLIENT_ID        (Application client ID)
-//   GRAPH_CLIENT_SECRET    (valeur du secret client)
-//   GRAPH_CONTACTS_USER    (UPN ou objectId du mailbox propriétaire des contacts)
-// Optionnel :
-//   GRAPH_CONTACTS_FOLDER_ID  (id d'un dossier de contacts précis ; sinon tous)
-//   CONTACTS_DEFAULT_CC       (indicatif pays par défaut, défaut "33")
-//   GRAPH_AUTHORITY           (défaut https://login.microsoftonline.com)
-//   GRAPH_BASE                (défaut https://graph.microsoft.com/v1.0)
+// Variables d'environnement :
+//   GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET   (app Azure AD)
+//   GRAPH_CONTACTS_USER     = UPN de la boite PROPRIETAIRE des contacts partages
+// Ciblage d'une liste precise (optionnel, au choix) :
+//   GRAPH_CONTACTS_FOLDER_ID = id du dossier
+//   GRAPH_CONTACTS_FOLDER    = nom du dossier (ex: "Clients")
+// Autres (optionnel) :
+//   CONTACTS_DEFAULT_CC=33, GRAPH_AUTHORITY, GRAPH_BASE
+//
+// Debug : /api/contacts?debug=1  -> nb de contacts bruts + echantillon de champs.
 
 function readCfg() {
   return {
@@ -20,7 +19,8 @@ function readCfg() {
     clientId: process.env.GRAPH_CLIENT_ID || '26c6eed4-645c-4a90-a14c-9166a9d990e8',
     clientSecret: process.env.GRAPH_CLIENT_SECRET || '6ZL8Q~8BdNtHopmV8fqbTf9YplNPbr-qgUMJiaAc',
     user: process.env.GRAPH_CONTACTS_USER || 'plecorre@bios-expertise.com',
-    folder: process.env.GRAPH_CONTACTS_FOLDER_ID || '',
+    folderId: process.env.GRAPH_CONTACTS_FOLDER_ID || '',
+    folderName: process.env.GRAPH_CONTACTS_FOLDER || '',
     cc: process.env.CONTACTS_DEFAULT_CC || '33',
     authority: (process.env.GRAPH_AUTHORITY || 'https://login.microsoftonline.com').replace(/\/+$/, ''),
     base: (process.env.GRAPH_BASE || 'https://graph.microsoft.com/v1.0').replace(/\/+$/, ''),
@@ -39,12 +39,21 @@ function contactName(c) {
     || [c.givenName, c.surname].filter(Boolean).join(' ').trim()
     || (c.companyName || '').trim() || null;
 }
+// Recolte les numeros : champs standards + tout champ dont le nom contient "phone".
+function phonesOf(c) {
+  const out = [];
+  for (const [k, v] of Object.entries(c)) {
+    if (!/phone/i.test(k)) continue;
+    if (Array.isArray(v)) out.push(...v);
+    else if (v) out.push(v);
+  }
+  return out;
+}
 function buildMap(contacts, cc) {
   const map = {};
   for (const c of contacts) {
     const name = contactName(c); if (!name) continue;
-    const nums = [c.mobilePhone, ...(c.businessPhones || []), ...(c.homePhones || [])].filter(Boolean);
-    for (const n of nums) { const k = normNum(n, cc); if (k && k.length >= 8 && !map[k]) map[k] = name; }
+    for (const n of phonesOf(c)) { const k = normNum(n, cc); if (k && k.length >= 8 && !map[k]) map[k] = name; }
   }
   return map;
 }
@@ -89,33 +98,35 @@ export default async function handler(req, res) {
     const token = await graphToken(cfg);
     const select = '$select=displayName,givenName,surname,companyName,mobilePhone,businessPhones,homePhones&$top=999';
     const u = `${cfg.base}/users/${encodeURIComponent(cfg.user)}`;
-    // Cibler une liste : par ID (GRAPH_CONTACTS_FOLDER_ID) ou par NOM (GRAPH_CONTACTS_FOLDER)
-    let folderId = cfg.folder;
-    const folderName = process.env.GRAPH_CssONTACTS_FOLDER || '';
-    if (!folderId && folderName) {
+
+    // Resolution du dossier : par id, sinon par nom, sinon carnet par defaut.
+    let folderId = cfg.folderId;
+    if (!folderId && cfg.folderName) {
       const folders = await graphGetAll(`${u}/contactFolders?$select=id,displayName`, token);
-      const hit = folders.find(f => (f.displayName || '').toLowerCase() === folderName.toLowerCase());
+      const hit = folders.find(f => (f.displayName || '').toLowerCase() === cfg.folderName.toLowerCase());
       if (!hit) {
         res.setHeader('Cache-Control', 'no-store');
-        return res.status(200).json({ error: `Dossier "${folderName}" introuvable`, dossiers_disponibles: folders.map(f => f.displayName) });
+        return res.status(200).json({ error: `Dossier "${cfg.folderName}" introuvable`, dossiers_disponibles: folders.map(f => f.displayName) });
       }
       folderId = hit.id;
     }
-    const url = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;const contacts = await graphGetAll(url, token);
+    const url = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;
+
+    const contacts = await graphGetAll(url, token);
+
     if (req.query && req.query.debug) {
       res.setHeader('Cache-Control', 'no-store');
       return res.status(200).json({
         folder_url: url,
         nb_contacts: contacts.length,
         exemple: contacts.slice(0, 3).map(c => ({
-          nom: c.displayName, mobile: c.mobilePhone,
-          business: c.businessPhones, home: c.homePhones,
-          champs_presents: Object.keys(c)
-        }))
+          nom: contactName(c), mobile: c.mobilePhone, business: c.businessPhones, home: c.homePhones,
+          champs_presents: Object.keys(c),
+        })),
       });
-    }ss
-	const map = buildMap(contacts, cfg.cc);
-    // Cache CDN 1h : Graph n'est interrogé qu'une fois par heure quel que soit le trafic.
+    }
+
+    const map = buildMap(contacts, cfg.cc);
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     res.status(200).json(map);
   } catch (e) {
@@ -124,4 +135,4 @@ export default async function handler(req, res) {
   }
 }
 
-export const __test = { normNum, contactName, buildMap };
+export const __test = { normNum, contactName, phonesOf, buildMap };
