@@ -86,6 +86,27 @@ async function graphGetAll(url, token, maxPages = 50) {
   return out;
 }
 
+// Liste les sous-dossiers d'un dossier de contacts (ou les dossiers racine si folderId vide).
+async function listChildFolders(u, folderId, token) {
+  const path = folderId
+    ? `${u}/contactFolders/${encodeURIComponent(folderId)}/childFolders?$select=id,displayName`
+    : `${u}/contactFolders?$select=id,displayName`;
+  try { return await graphGetAll(path, token); } catch (e) { return []; }
+}
+
+// Collecte les contacts d'un dossier ET de tous ses sous-dossiers (recursif).
+async function collectContacts(u, folderId, token, select, depth = 0, visited = new Set()) {
+  if (folderId) { if (visited.has(folderId)) return []; visited.add(folderId); }
+  const cPath = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;
+  let contacts = []; try { contacts = await graphGetAll(cPath, token); } catch (e) {}
+  if (depth < 6) {
+    for (const ch of await listChildFolders(u, folderId, token)) {
+      contacts = contacts.concat(await collectContacts(u, ch.id, token, select, depth + 1, visited));
+    }
+  }
+  return contacts;
+}
+
 export default async function handler(req, res) {
   const cfg = readCfg();
   for (const k of ['tenant', 'clientId', 'clientSecret', 'user']) {
@@ -112,16 +133,17 @@ export default async function handler(req, res) {
     }
     const url = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;
 
-    const contacts = await graphGetAll(url, token);
+    const contacts = await collectContacts(u, folderId, token, select);
 
     if (req.query && req.query.debug) {
       res.setHeader('Cache-Control', 'no-store');
+      const children = await listChildFolders(u, folderId, token);
       return res.status(200).json({
         folder_url: url,
-        nb_contacts: contacts.length,
-        exemple: contacts.slice(0, 3).map(c => ({
+        nb_contacts_total: contacts.length,
+        sous_dossiers: children.map(f => ({ id: f.id, nom: f.displayName })),
+        exemple: contacts.slice(0, 5).map(c => ({
           nom: contactName(c), mobile: c.mobilePhone, business: c.businessPhones, home: c.homePhones,
-          champs_presents: Object.keys(c),
         })),
       });
     }
