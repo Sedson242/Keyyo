@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     const u = `${cfg.base}/users/${encodeURIComponent(cfg.user)}`;
     // Cibler une liste : par ID (GRAPH_CONTACTS_FOLDER_ID) ou par NOM (GRAPH_CONTACTS_FOLDER)
     let folderId = cfg.folder;
-    const folderName = process.env.GRAPH_CONTACTS_FOLDER || 'Clients';
+    const folderName = process.env.GRAPH_CONTACTS_FOLDER || 'Partagés';
     if (!folderId && folderName) {
       const folders = await graphGetAll(`${u}/contactFolders?$select=id,displayName`, token);
       const hit = folders.find(f => (f.displayName || '').toLowerCase() === folderName.toLowerCase());
