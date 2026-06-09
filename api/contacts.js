@@ -89,8 +89,19 @@ export default async function handler(req, res) {
     const token = await graphToken(cfg);
     const select = '$select=displayName,givenName,surname,companyName,mobilePhone,businessPhones,homePhones&$top=999';
     const u = `${cfg.base}/users/${encodeURIComponent(cfg.user)}`;
-    const url = cfg.folder ? `${u}/contactFolders/${encodeURIComponent(cfg.folder)}/contacts?${select}` : `${u}/contacts?${select}`;
-    const contacts = await graphGetAll(url, token);
+    // Cibler une liste : par ID (GRAPH_CONTACTS_FOLDER_ID) ou par NOM (GRAPH_CONTACTS_FOLDER)
+    let folderId = cfg.folder;
+    const folderName = process.env.GRAPH_CONTACTS_FOLDER || '';
+    if (!folderId && folderName) {
+      const folders = await graphGetAll(`${u}/contactFolders?$select=id,displayName`, token);
+      const hit = folders.find(f => (f.displayName || '').toLowerCase() === folderName.toLowerCase());
+      if (!hit) {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).json({ error: `Dossier "${folderName}" introuvable`, dossiers_disponibles: folders.map(f => f.displayName) });
+      }
+      folderId = hit.id;
+    }
+    const url = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;const contacts = await graphGetAll(url, token);
     const map = buildMap(contacts, cfg.cc);
     // Cache CDN 1h : Graph n'est interrogé qu'une fois par heure quel que soit le trafic.
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
