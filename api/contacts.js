@@ -102,7 +102,19 @@ export default async function handler(req, res) {
       folderId = hit.id;
     }
     const url = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;const contacts = await graphGetAll(url, token);
-    const map = buildMap(contacts, cfg.cc);
+    if (req.query && req.query.debug) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({
+        folder_url: url,
+        nb_contacts: contacts.length,
+        exemple: contacts.slice(0, 3).map(c => ({
+          nom: c.displayName, mobile: c.mobilePhone,
+          business: c.businessPhones, home: c.homePhones,
+          champs_presents: Object.keys(c)
+        }))
+      });
+    }
+	const map = buildMap(contacts, cfg.cc);
     // Cache CDN 1h : Graph n'est interrogé qu'une fois par heure quel que soit le trafic.
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     res.status(200).json(map);
