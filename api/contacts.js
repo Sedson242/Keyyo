@@ -19,7 +19,7 @@ function readCfg() {
     tenant: process.env.GRAPH_TENANT_ID || 'c21cd161-570d-4f7e-81ac-bc2a2d8963c4',
     clientId: process.env.GRAPH_CLIENT_ID || '26c6eed4-645c-4a90-a14c-9166a9d990e8',
     clientSecret: process.env.GRAPH_CLIENT_SECRET || '6ZL8Q~8BdNtHopmV8fqbTf9YplNPbr-qgUMJiaAc',
-    user: process.env.GRAPH_CONTACTS_USER || 'plecorre@bios-expertise.com',
+    user: process.env.GRAPH_CONTACTS_USER || '',
     folder: process.env.GRAPH_CONTACTS_FOLDER_ID || '',
     cc: process.env.CONTACTS_DEFAULT_CC || '33',
     authority: (process.env.GRAPH_AUTHORITY || 'https://login.microsoftonline.com').replace(/\/+$/, ''),

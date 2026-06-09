@@ -327,8 +327,8 @@ function buildMeta(rows) {
   };
 }
 
-// export pour tests offline
-export const __test = { extractRecords, normalizeRecord, parseTimestamp, findAnyTimestamp, buildUrl, readConfig };
+// export pour tests offline et reutilisation (probe)
+export const __test = { extractRecords, normalizeRecord, parseTimestamp, findAnyTimestamp, buildUrl, readConfig, getAccessToken, safeTz };
 
 if (process.argv.includes('--selftest')) {
   console.log('Test Keyyo (OAuth refresh + Manager API)...');
