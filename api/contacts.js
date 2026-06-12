@@ -1,160 +1,132 @@
-// Vercel Serverless Function -> /api/contacts
-// Synchro LIVE des contacts via Microsoft Graph (mode application / client_credentials).
-// Renvoie une map normalisee { "+33XXXXXXXXX": "Nom" } consommee par le dashboard.
+// /api/contacts — Annuaire unifié : Microsoft Graph (Outlook) + Répertoire Keyyo.
+// Renvoie une map normalisée { "+33XXXXXXXXX": "Nom" } pour le dashboard.
 //
-// Variables d'environnement :
-//   GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET   (app Azure AD)
-//   GRAPH_CONTACTS_USER     = UPN de la boite PROPRIETAIRE des contacts partages
-// Ciblage d'une liste precise (optionnel, au choix) :
-//   GRAPH_CONTACTS_FOLDER_ID = id du dossier
-//   GRAPH_CONTACTS_FOLDER    = nom du dossier (ex: "Clients")
-// Autres (optionnel) :
-//   CONTACTS_DEFAULT_CC=33, GRAPH_AUTHORITY, GRAPH_BASE
-//
-// Debug : /api/contacts?debug=1  -> nb de contacts bruts + echantillon de champs.
+// Sources (env CONTACTS_SOURCE = both | graph | keyyo ; défaut both) :
+//   - Microsoft Graph : GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_CONTACTS_USER
+//                       (+ GRAPH_CONTACTS_FOLDER / GRAPH_CONTACTS_FOLDER_ID)
+//   - Répertoire Keyyo : GET /directory_contacts (auth Keyyo déjà configurée)
+// En cas de doublon, Graph est prioritaire (modifiable via CONTACTS_PRIORITY=keyyo).
+// Debug : /api/contacts?debug=1   (compte par source + échantillons)
+import { __test as KEYYO } from './_keyyo.js';
 
-function readCfg() {
-  return {
-    tenant: process.env.GRAPH_TENANT_ID || 'c21cd161-570d-4f7e-81ac-bc2a2d8963c4',
-    clientId: process.env.GRAPH_CLIENT_ID || '26c6eed4-645c-4a90-a14c-9166a9d990e8',
-    clientSecret: process.env.GRAPH_CLIENT_SECRET || '6ZL8Q~8BdNtHopmV8fqbTf9YplNPbr-qgUMJiaAc',
-    user: process.env.GRAPH_CONTACTS_USER || 'plecorre@bios-expertise.com',
-    folderId: process.env.GRAPH_CONTACTS_FOLDER_ID || '',
-    folderName: process.env.GRAPH_CONTACTS_FOLDER || '',
-    cc: process.env.CONTACTS_DEFAULT_CC || '33',
-    authority: (process.env.GRAPH_AUTHORITY || 'https://login.microsoftonline.com').replace(/\/+$/, ''),
-    base: (process.env.GRAPH_BASE || 'https://graph.microsoft.com/v1.0').replace(/\/+$/, ''),
-  };
-}
-
-function normNum(s, cc) {
-  if (s == null) return '';
-  let x = String(s).replace(/[^\d+]/g, ''); if (!x) return '';
+const CC = process.env.CONTACTS_DEFAULT_CC || '33';
+function normNum(s, cc = CC) {
+  if (s == null) return ''; let x = String(s).replace(/[^\d+]/g, ''); if (!x) return '';
   if (x.startsWith('00')) x = '+' + x.slice(2);
   if (x[0] !== '+') { if (x.length === 10 && x[0] === '0') x = '+' + cc + x.slice(1); else x = '+' + x; }
   return x;
 }
-function contactName(c) {
-  return (c.displayName && c.displayName.trim())
-    || [c.givenName, c.surname].filter(Boolean).join(' ').trim()
-    || (c.companyName || '').trim() || null;
+function addAll(map, pairs) { for (const [num, name] of pairs) { const k = normNum(num); if (k && k.length >= 8 && name && !map[k]) map[k] = name; } }
+
+/* ---------- HAL ---------- */
+function halRecords(payload) {
+  const out = [];
+  if (Array.isArray(payload)) return payload;
+  if (payload && payload._embedded && typeof payload._embedded === 'object') {
+    for (const g of Object.values(payload._embedded)) {
+      if (Array.isArray(g)) out.push(...g);
+      else if (g && typeof g === 'object') { let nested = false; for (const v of Object.values(g)) if (Array.isArray(v)) { out.push(...v); nested = true; } if (!nested) out.push(g); }
+    }
+  }
+  return out;
 }
-// Recolte les numeros : champs standards + tout champ dont le nom contient "phone".
-function phonesOf(c) {
+
+/* ---------- Microsoft Graph ---------- */
+let _g = { value: 0, exp: 0 };
+async function graphToken(c) {
+  const now = Date.now(); if (_g.value && now < _g.exp - 60000) return _g.value;
+  const body = new URLSearchParams({ client_id: c.clientId, client_secret: c.clientSecret, grant_type: 'client_credentials', scope: 'https://graph.microsoft.com/.default' });
+  const res = await fetch(`${c.authority}/${c.tenant}/oauth2/v2.0/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  const t = await res.text(); let j = {}; try { j = JSON.parse(t); } catch (e) {}
+  if (!res.ok || !j.access_token) throw new Error('Graph OAuth (' + res.status + ') : ' + (j.error_description || j.error || t.slice(0, 140)));
+  _g.value = j.access_token; _g.exp = now + ((j.expires_in || 3600) * 1000); return _g.value;
+}
+async function graphAll(url, token, max = 50) {
+  const out = []; let next = url, p = 0;
+  while (next && p < max) { const res = await fetch(next, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    const t = await res.text(); let j = {}; try { j = JSON.parse(t); } catch (e) {}
+    if (!res.ok) throw new Error('Graph ' + res.status + ' : ' + ((j.error && j.error.message) || t.slice(0, 140)));
+    if (Array.isArray(j.value)) out.push(...j.value); next = j['@odata.nextLink'] || null; p++; }
+  return out;
+}
+function gName(c) { return (c.displayName && c.displayName.trim()) || [c.givenName, c.surname].filter(Boolean).join(' ').trim() || (c.companyName || '').trim() || null; }
+function gPhones(c) { const o = []; for (const [k, v] of Object.entries(c)) { if (!/phone/i.test(k)) continue; if (Array.isArray(v)) o.push(...v); else if (v) o.push(v); } return o; }
+async function graphContacts(token, u, folderId, select, depth = 0, seen = new Set()) {
+  if (folderId) { if (seen.has(folderId)) return []; seen.add(folderId); }
+  const path = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;
+  let c = []; try { c = await graphAll(path, token); } catch (e) {}
+  if (depth < 6) { const ch = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/childFolders?$select=id,displayName` : `${u}/contactFolders?$select=id,displayName`;
+    let kids = []; try { kids = await graphAll(ch, token); } catch (e) {}
+    for (const k of kids) c = c.concat(await graphContacts(token, u, k.id, select, depth + 1, seen)); }
+  return c;
+}
+async function fromGraph(map) {
+  const c = { tenant: process.env.GRAPH_TENANT_ID, clientId: process.env.GRAPH_CLIENT_ID, clientSecret: process.env.GRAPH_CLIENT_SECRET,
+    user: process.env.GRAPH_CONTACTS_USER, folderId: process.env.GRAPH_CONTACTS_FOLDER_ID || '', folderName: process.env.GRAPH_CONTACTS_FOLDER || '',
+    authority: (process.env.GRAPH_AUTHORITY || 'https://login.microsoftonline.com').replace(/\/+$/, ''), base: (process.env.GRAPH_BASE || 'https://graph.microsoft.com/v1.0').replace(/\/+$/, '') };
+  if (!c.tenant || !c.clientId || !c.clientSecret || !c.user) return { skipped: 'config Graph absente', count: 0 };
+  const token = await graphToken(c);
+  const u = `${c.base}/users/${encodeURIComponent(c.user)}`;
+  const select = '$select=displayName,givenName,surname,companyName,mobilePhone,businessPhones,homePhones&$top=999';
+  let folderId = c.folderId;
+  if (!folderId && c.folderName) { const fs = await graphAll(`${u}/contactFolders?$select=id,displayName`, token);
+    const hit = fs.find(f => (f.displayName || '').toLowerCase() === c.folderName.toLowerCase());
+    if (!hit) return { error: `Dossier Graph "${c.folderName}" introuvable`, dossiers: fs.map(f => f.displayName), count: 0 };
+    folderId = hit.id; }
+  const contacts = await graphContacts(token, u, folderId, select);
+  let n = 0; for (const ct of contacts) { const nm = gName(ct); if (!nm) continue; for (const ph of gPhones(ct)) { const k = normNum(ph); if (k && k.length >= 8 && !map[k]) { map[k] = nm; n++; } } }
+  return { count: n, raw: contacts.length };
+}
+
+/* ---------- Répertoire Keyyo ---------- */
+function deepStrings(o, out = []) { if (o == null) return out; if (typeof o !== 'object') { out.push(String(o)); return out; } for (const v of Object.values(o)) deepStrings(v, out); return out; }
+function kName(c) {
+  return (c.display_name || c.displayname || c.name || c.fullname || c.full_name || '').toString().trim()
+    || [c.firstname || c.first_name || c.given_name, c.lastname || c.last_name || c.surname].filter(Boolean).join(' ').trim()
+    || (c.company || c.organization || c.companyname || c.company_name || '').toString().trim() || null;
+}
+function kPhones(c) {
   const out = [];
   for (const [k, v] of Object.entries(c)) {
-    if (!/phone/i.test(k)) continue;
-    if (Array.isArray(v)) out.push(...v);
-    else if (v) out.push(v);
+    if (/fax/i.test(k)) continue;
+    if (!/num|phone|tel|mobile|gsm|portable/i.test(k)) continue;
+    if (Array.isArray(v)) for (const x of v) out.push(x && typeof x === 'object' ? (x.number || x.value || x.tel || x.phone) : x);
+    else if (v && typeof v === 'object') out.push(v.number || v.value); else out.push(v);
   }
-  return out;
+  if (!out.length) for (const s of deepStrings(c)) if (/^\+?[\d .()/-]{8,}$/.test(s)) out.push(s);
+  return out.filter(Boolean);
 }
-function buildMap(contacts, cc) {
-  const map = {};
-  for (const c of contacts) {
-    const name = contactName(c); if (!name) continue;
-    for (const n of phonesOf(c)) { const k = normNum(n, cc); if (k && k.length >= 8 && !map[k]) map[k] = name; }
+async function fromKeyyo(map) {
+  let cfg; try { cfg = KEYYO.readConfig(); } catch (e) { return { skipped: 'config Keyyo absente', count: 0 }; }
+  let token; try { token = await KEYYO.getAccessToken(cfg); } catch (e) { return { error: 'Auth Keyyo : ' + e.message, count: 0 }; }
+  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  let url = `${cfg.base}/directory_contacts`, all = [], pages = 0;
+  while (url && pages < 50) {
+    const res = await fetch(url, { headers }); const t = await res.text(); let j = {}; try { j = JSON.parse(t); } catch (e) {}
+    if (!res.ok) { if (pages === 0) return { error: 'Keyyo ' + res.status + ' : ' + t.slice(0, 120), count: 0 }; break; }
+    all.push(...halRecords(j)); const nx = j && j._links && j._links.next && j._links.next.href;
+    url = nx ? (nx.startsWith('http') ? nx : new URL(nx, cfg.base + '/').toString()) : null; pages++;
   }
-  return map;
+  let n = 0; for (const c of all) { const nm = kName(c); if (!nm) continue; for (const ph of kPhones(c)) { const k = normNum(ph); if (k && k.length >= 8 && !map[k]) { map[k] = nm; n++; } } }
+  return { count: n, raw: all.length, sample: all[0] ? Object.keys(all[0]) : null };
 }
 
-let _g = { value: null, exp: 0 };
-async function graphToken(cfg) {
-  const now = Date.now();
-  if (_g.value && now < _g.exp - 60000) return _g.value;
-  const body = new URLSearchParams({
-    client_id: cfg.clientId, client_secret: cfg.clientSecret,
-    grant_type: 'client_credentials', scope: 'https://graph.microsoft.com/.default',
-  });
-  const res = await fetch(`${cfg.authority}/${cfg.tenant}/oauth2/v2.0/token`, {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body,
-  });
-  const text = await res.text(); let j = {}; try { j = JSON.parse(text); } catch (e) {}
-  if (!res.ok || !j.access_token) throw new Error('Graph OAuth (' + res.status + ') : ' + (j.error_description || j.error || text.slice(0, 160)));
-  _g.value = j.access_token; _g.exp = now + ((j.expires_in || 3600) * 1000);
-  return _g.value;
-}
-async function graphGetAll(url, token, maxPages = 50) {
-  const out = []; let next = url, pages = 0;
-  while (next && pages < maxPages) {
-    const res = await fetch(next, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-    const text = await res.text(); let j = {}; try { j = JSON.parse(text); } catch (e) {}
-    if (!res.ok) throw new Error('Graph ' + res.status + ' : ' + ((j.error && j.error.message) || text.slice(0, 160)));
-    if (Array.isArray(j.value)) out.push(...j.value);
-    next = j['@odata.nextLink'] || null; pages++;
-  }
-  return out;
-}
-
-// Liste les sous-dossiers d'un dossier de contacts (ou les dossiers racine si folderId vide).
-async function listChildFolders(u, folderId, token) {
-  const path = folderId
-    ? `${u}/contactFolders/${encodeURIComponent(folderId)}/childFolders?$select=id,displayName`
-    : `${u}/contactFolders?$select=id,displayName`;
-  try { return await graphGetAll(path, token); } catch (e) { return []; }
-}
-
-// Collecte les contacts d'un dossier ET de tous ses sous-dossiers (recursif).
-async function collectContacts(u, folderId, token, select, depth = 0, visited = new Set()) {
-  if (folderId) { if (visited.has(folderId)) return []; visited.add(folderId); }
-  const cPath = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;
-  let contacts = []; try { contacts = await graphGetAll(cPath, token); } catch (e) {}
-  if (depth < 6) {
-    for (const ch of await listChildFolders(u, folderId, token)) {
-      contacts = contacts.concat(await collectContacts(u, ch.id, token, select, depth + 1, visited));
-    }
-  }
-  return contacts;
-}
-
+/* ---------- Handler ---------- */
 export default async function handler(req, res) {
-  const cfg = readCfg();
-  for (const k of ['tenant', 'clientId', 'clientSecret', 'user']) {
-    if (!cfg[k]) {
-      res.setHeader('Cache-Control', 'no-store');
-      return res.status(200).json({ error: 'Config Graph manquante : ' + k, _need: ['GRAPH_TENANT_ID', 'GRAPH_CLIENT_ID', 'GRAPH_CLIENT_SECRET', 'GRAPH_CONTACTS_USER'] });
-    }
-  }
+  const source = (process.env.CONTACTS_SOURCE || 'both').toLowerCase();
+  const priorityKeyyo = (process.env.CONTACTS_PRIORITY || 'graph').toLowerCase() === 'keyyo';
+  const map = {}; const diag = { source };
   try {
-    const token = await graphToken(cfg);
-    const select = '$select=displayName,givenName,surname,companyName,mobilePhone,businessPhones,homePhones&$top=999';
-    const u = `${cfg.base}/users/${encodeURIComponent(cfg.user)}`;
-
-    // Resolution du dossier : par id, sinon par nom, sinon carnet par defaut.
-    let folderId = cfg.folderId;
-    if (!folderId && cfg.folderName) {
-      const folders = await graphGetAll(`${u}/contactFolders?$select=id,displayName`, token);
-      const hit = folders.find(f => (f.displayName || '').toLowerCase() === cfg.folderName.toLowerCase());
-      if (!hit) {
-        res.setHeader('Cache-Control', 'no-store');
-        return res.status(200).json({ error: `Dossier "${cfg.folderName}" introuvable`, dossiers_disponibles: folders.map(f => f.displayName) });
-      }
-      folderId = hit.id;
+    // L'ordre détermine la priorité (le premier qui pose une clé gagne).
+    const order = priorityKeyyo ? ['keyyo', 'graph'] : ['graph', 'keyyo'];
+    for (const src of order) {
+      if (source !== 'both' && source !== src) continue;
+      diag[src] = src === 'graph' ? await fromGraph(map) : await fromKeyyo(map);
     }
-    const url = folderId ? `${u}/contactFolders/${encodeURIComponent(folderId)}/contacts?${select}` : `${u}/contacts?${select}`;
-
-    const contacts = await collectContacts(u, folderId, token, select);
-
-    if (req.query && req.query.debug) {
-      res.setHeader('Cache-Control', 'no-store');
-      const children = await listChildFolders(u, folderId, token);
-      return res.status(200).json({
-        folder_url: url,
-        nb_contacts_total: contacts.length,
-        sous_dossiers: children.map(f => ({ id: f.id, nom: f.displayName })),
-        exemple: contacts.slice(0, 5).map(c => ({
-          nom: contactName(c), mobile: c.mobilePhone, business: c.businessPhones, home: c.homePhones,
-        })),
-      });
-    }
-
-    const map = buildMap(contacts, cfg.cc);
+    if (req.query && req.query.debug) { res.setHeader('Cache-Control', 'no-store'); return res.status(200).json({ total: Object.keys(map).length, ...diag, exemple: Object.entries(map).slice(0, 6) }); }
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     res.status(200).json(map);
-  } catch (e) {
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ error: e.message });
-  }
+  } catch (e) { res.setHeader('Cache-Control', 'no-store'); res.status(200).json({ error: e.message, ...diag }); }
 }
 
-export const __test = { normNum, contactName, phonesOf, buildMap };
+export const __test = { normNum, kName, kPhones, gName, gPhones, halRecords };

@@ -1,626 +1,703 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
 <meta charset="utf-8">
-<title>Reporting Téléphonie Keyyo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Keyyo · Pilotage téléphonie</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
-  --bg:#F4F6F9; --panel:#FFFFFF; --ink:#1C2430; --muted:#6B7785; --line:#E3E8EF;
-  --sort:#1A73E8; --entr:#13A8A0; --alert:#E8710A; --bad:#D93025; --good:#188038;
-  --sidebar:#141B2B; --sidebar2:#1E283C; --sbtext:#A9B4C5; --sbactive:#2EE6C8;
-  --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.1);
+  --ink:#0E1A2B; --ink2:#16273D; --surface:#EEF1F6; --card:#FFFFFF;
+  --line:#E4E8F0; --text:#1B2A3D; --muted:#6A7A92; --muted2:#94A2B8;
+  --cyan:#08A6C4; --cyan-d:#067E96; --in:#16B57F; --out:#5570F1;
+  --miss:#F0883E; --alert:#E5484D; --gold:#E9B949;
+  --r:16px; --r-s:11px; --shadow:0 1px 2px rgba(16,30,50,.04),0 8px 24px -12px rgba(16,30,50,.18);
+  --shadow-lg:0 24px 60px -20px rgba(16,30,50,.35);
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-size:14px}
-.app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
-/* SIDEBAR */
-.side{background:var(--sidebar);color:var(--sbtext);padding:0;display:flex;flex-direction:column}
-.brand{padding:22px 20px 18px;border-bottom:1px solid #26324a}
-.brand b{color:#fff;font-size:16px;font-weight:700;letter-spacing:.3px;display:block}
-.brand span{font-size:11px;color:var(--sbactive);text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
-.nav{padding:12px 10px;flex:1}
-.nav button{width:100%;text-align:left;background:none;border:0;color:var(--sbtext);padding:11px 14px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer;display:flex;gap:11px;align-items:center;margin-bottom:2px;transition:.15s}
-.nav button:hover{background:var(--sidebar2);color:#fff}
-.nav button.on{background:linear-gradient(90deg,rgba(46,230,200,.16),transparent);color:#fff;font-weight:600;box-shadow:inset 3px 0 0 var(--sbactive)}
-.nav .ic{width:18px;text-align:center;opacity:.9;font-size:15px}
-.scope{padding:14px 18px;border-top:1px solid #26324a;font-size:11px;line-height:1.55;color:#7a8699}
-.scope b{color:#cdd6e4;font-weight:600}
-/* TOPBAR */
-.main{display:flex;flex-direction:column;min-width:0}
-.top{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 26px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
-.top h1{font-size:18px;margin:0;font-weight:600;flex:1;min-width:160px}
-.flt{display:flex;gap:8px;align-items:center}
-.flt label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
-.flt select{font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);cursor:pointer}
-.reset{font:inherit;font-size:12px;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;color:var(--muted)}
-.reset:hover{border-color:var(--sort);color:var(--sort)}
-.wrap{padding:22px 26px 40px;overflow:auto}
-.page{display:none;animation:fade .35s ease}
+html,body{margin:0;height:100%}
+body{font-family:Inter,system-ui,sans-serif;background:var(--surface);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px}
+h1,h2,h3,.disp{font-family:'Space Grotesk',sans-serif}
+.mono{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+a{color:inherit}
+::selection{background:var(--cyan);color:#fff}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- Shell ---------- */
+.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.side{background:linear-gradient(180deg,var(--ink) 0%,var(--ink2) 100%);color:#fff;padding:22px 16px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:40}
+.brand{display:flex;align-items:center;gap:11px;padding:4px 8px 22px}
+.brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--cyan),#27D3B6);display:grid;place-items:center;flex:none;box-shadow:0 6px 16px -4px rgba(8,166,196,.6)}
+.brand .logo svg{width:19px;height:19px}
+.brand b{font-family:'Space Grotesk';font-size:15px;letter-spacing:-.2px;line-height:1.15;display:block}
+.brand span{font-size:11px;color:#8FA3BC;letter-spacing:.3px}
+.nav{display:flex;flex-direction:column;gap:3px;margin-top:6px}
+.nav a{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:11px;color:#AFC0D6;font-weight:500;font-size:13.5px;transition:.15s;cursor:pointer;text-decoration:none}
+.nav a svg{width:18px;height:18px;flex:none;opacity:.85}
+.nav a:hover{background:rgba(255,255,255,.06);color:#fff}
+.nav a.on{background:linear-gradient(90deg,rgba(8,166,196,.22),rgba(8,166,196,.04));color:#fff}
+.nav a.on svg{opacity:1;color:var(--cyan)}
+.nav a.on{box-shadow:inset 2px 0 0 var(--cyan)}
+.side-foot{margin-top:auto;padding:14px 10px 2px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:#7E92AD}
+.side-foot .row{display:flex;justify-content:space-between;align-items:center;margin-top:9px}
+.switch{width:38px;height:21px;border-radius:20px;background:rgba(255,255,255,.16);position:relative;transition:.2s;flex:none}
+.switch.on{background:var(--cyan)}
+.switch i{position:absolute;top:2.5px;left:2.5px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+.switch.on i{left:19.5px}
+
+.main{min-width:0;display:flex;flex-direction:column}
+.top{position:sticky;top:0;z-index:30;background:rgba(238,241,246,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:14px 26px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.top .ttl{display:flex;flex-direction:column;margin-right:auto;min-width:0}
+.top .ttl h1{margin:0;font-size:20px;letter-spacing:-.4px}
+.top .ttl p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.burger{display:none}
+.live{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--line);padding:7px 12px;border-radius:10px;font-weight:500}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--in);box-shadow:0 0 0 0 rgba(22,181,127,.5);animation:pulse 2.4s infinite}
+.live.warn .dot{background:var(--miss);animation:pulse 2s infinite}
+.live.err .dot{background:var(--alert);animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(22,181,127,.5)}70%{box-shadow:0 0 0 7px rgba(22,181,127,0)}100%{box-shadow:0 0 0 0 rgba(22,181,127,0)}}
+.iconbtn{position:relative;width:40px;height:40px;border-radius:11px;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;transition:.15s}
+.iconbtn:hover{border-color:var(--cyan);color:var(--cyan-d)}
+.iconbtn svg{width:18px;height:18px}
+.iconbtn .badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--alert);color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center;font-family:'Space Grotesk'}
+.iconbtn .badge.hide{display:none}
+
+/* ---------- Date control ---------- */
+.daterange{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px}
+.seg button{padding:7px 12px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--muted);transition:.12s;white-space:nowrap}
+.seg button.on{background:var(--ink);color:#fff}
+.seg button:hover:not(.on){background:var(--surface);color:var(--text)}
+.dpick{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:5px 8px}
+.dpick input{border:none;background:none;font-family:inherit;font-size:12.5px;color:var(--text);width:118px}
+.dpick input:focus{outline:none;color:var(--cyan-d)}
+.dpick span{color:var(--muted2)}
+select.site{appearance:none;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:8px 30px 8px 12px;font-size:12.5px;font-weight:500;color:var(--text);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236A7A92' stroke-width='2'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
+
+/* ---------- Page / grid ---------- */
+.page{padding:24px 26px 60px;display:none;animation:fade .35s ease}
 .page.on{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-/* GRID + CARDS */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px}
-.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 17px;box-shadow:var(--shadow);position:relative;overflow:hidden}
-.kpi .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-weight:600}
-.kpi .val{font-family:'IBM Plex Mono',monospace;font-size:27px;font-weight:600;margin-top:6px;letter-spacing:-.5px}
-.kpi .sub{font-size:11.5px;color:var(--muted);margin-top:3px}
-.kpi.accentS{box-shadow:inset 4px 0 0 var(--sort),var(--shadow)}
-.kpi.accentE{box-shadow:inset 4px 0 0 var(--entr),var(--shadow)}
-.kpi.accentA{box-shadow:inset 4px 0 0 var(--alert),var(--shadow)}
 .grid{display:grid;gap:16px}
-.g2{grid-template-columns:1fr 1fr}
-.g3{grid-template-columns:2fr 1fr}
-.g12{grid-template-columns:1fr}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow);min-width:0}
-.card h3{margin:0 0 4px;font-size:14px;font-weight:600}
-.card .hint{font-size:11.5px;color:var(--muted);margin:0 0 12px}
-.cw{position:relative;height:260px}
-.cw.sm{height:210px}
-.cw.lg{height:320px}
-canvas{max-width:100%}
-@media(max-width:1050px){.g2,.g3{grid-template-columns:1fr}}
-/* TABLES */
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line)}
-th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
-th:hover{color:var(--sort)}
-td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace}
-.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
-.tag.s{background:#E8F0FE;color:#174ea6}.tag.e{background:#E0F5F3;color:#0b6e68}
-.tag.ok{background:#E6F4EA;color:#137333}.tag.no{background:#FCE8E6;color:#a50e0e}
-.scrollT{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:10px}
-.scrollT table th{position:sticky;top:0;background:#fff;z-index:2}
-.search{width:100%;padding:10px 13px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:13px;margin-bottom:12px}
-/* MATRIX */
-.matrix td.num{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600}
-.matrix tr.tot td{border-top:2px solid var(--ink);font-weight:700}
-/* HEATMAP */
-.heat{display:grid;gap:3px;font-size:10.5px}
-.heat .hh{color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace}
-.heat .rl{color:var(--muted);font-weight:600;padding-right:6px;display:flex;align-items:center;justify-content:flex-end}
-.hcell{aspect-ratio:1.6/1;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#fff;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;cursor:default}
-.note{background:#FFF8EC;border:1px solid #F5D9A8;border-left:4px solid var(--alert);border-radius:10px;padding:13px 16px;font-size:12.5px;color:#7a5418;line-height:1.55;margin-top:4px}
-.note b{color:#5c3f12}
-.insight{background:#EEF4FF;border:1px solid #C9DCFF;border-left:4px solid var(--sort);border-radius:10px;padding:13px 16px;font-size:12.5px;color:#1f3a66;line-height:1.55}
-.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
-.legend i{width:11px;height:11px;border-radius:3px;display:inline-block;margin-right:6px;vertical-align:-1px}
-.bd{font-weight:600;color:var(--ink)}
+.k6{grid-template-columns:repeat(6,1fr)}
+.k4{grid-template-columns:repeat(4,1fr)}
+.k3{grid-template-columns:repeat(3,1fr)}
+.k2{grid-template-columns:repeat(2,1fr)}
+.span2{grid-column:span 2}.span3{grid-column:span 3}.span4{grid-column:span 4}.span6{grid-column:span 6}
+.sec-h{display:flex;align-items:baseline;gap:10px;margin:30px 2px 14px}
+.sec-h h2{margin:0;font-size:16px;letter-spacing:-.3px}
+.sec-h span{font-size:12.5px;color:var(--muted)}
 
-.live{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;white-space:nowrap}
-.live .dot{width:9px;height:9px;border-radius:50%;background:#bcc6d2;flex:none}
-.live.ok .dot{background:var(--good);animation:pulse 2.2s infinite}
-.live.err .dot{background:var(--bad)}
-.live.load .dot{background:var(--alert)}
-.live.warn .dot{background:var(--alert);animation:pulse 2.2s infinite}.live.warn{border-color:var(--alert)}
-.empty-note{background:#FFF8EC;border:1px solid #F2C779;border-left:4px solid var(--alert);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:13px;color:#8a5a00;line-height:1.5}
-.empty-note b{color:#7a4f00}.empty-note code{background:#fff;border:1px solid #eadbb0;border-radius:4px;padding:1px 5px;font-size:12px}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(24,128,56,.45)}70%{box-shadow:0 0 0 6px rgba(24,128,56,0)}100%{box-shadow:0 0 0 0 rgba(24,128,56,0)}}
-.live b{color:var(--ink);font-weight:600}
-.iconbtn{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;color:var(--muted)}
-.iconbtn:hover{border-color:var(--sort);color:var(--sort)}.iconbtn:disabled{opacity:.5;cursor:default}
-#overlay{position:fixed;inset:0;background:rgba(244,246,249,.94);display:flex;align-items:center;justify-content:center;z-index:999;backdrop-filter:blur(2px)}
-#overlay .box{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px 30px;box-shadow:var(--shadow);max-width:440px;text-align:center}
-#overlay .spin{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--sort);border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-#overlay h2{margin:0 0 6px;font-size:16px}#overlay p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
-#overlay.err .spin{display:none}#overlay .retry{margin-top:16px}
-#toast{position:fixed;bottom:18px;right:18px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--bad);border-radius:10px;padding:12px 16px;box-shadow:var(--shadow);font-size:12.5px;color:#7a1d18;max-width:360px;z-index:998;display:none}
+/* ---------- KPI ---------- */
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:17px 17px 15px;position:relative;overflow:hidden;transition:.18s;cursor:pointer}
+.kpi:hover{border-color:#CBD5E6;box-shadow:var(--shadow);transform:translateY(-2px)}
+.kpi .top-row{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+.kpi .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none}
+.kpi .ic svg{width:16px;height:16px}
+.kpi .lbl{font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.kpi .q{margin-left:auto;width:18px;height:18px;border-radius:50%;border:1px solid var(--line);color:var(--muted2);font-size:11px;display:grid;place-items:center;font-weight:700;transition:.15s}
+.kpi:hover .q{border-color:var(--cyan);color:var(--cyan)}
+.kpi .val{font-family:'Space Grotesk';font-size:30px;font-weight:600;letter-spacing:-1px;line-height:1}
+.kpi .val small{font-size:15px;color:var(--muted);font-weight:500;margin-left:2px}
+.kpi .sub{font-size:12px;color:var(--muted);margin-top:6px}
+.kpi .sub b{color:var(--text);font-weight:600}
+.kpi .accent{position:absolute;left:0;top:0;bottom:0;width:3px}
+.kpi.expl .explbox{display:block}
+.explbox{display:none;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted);line-height:1.5;animation:fade .2s}
+
+.ic.c-tot{background:rgba(8,166,196,.12);color:var(--cyan-d)} .accent.c-tot{background:var(--cyan)}
+.ic.c-in{background:rgba(22,181,127,.12);color:var(--in)} .accent.c-in{background:var(--in)}
+.ic.c-out{background:rgba(85,112,241,.12);color:var(--out)} .accent.c-out{background:var(--out)}
+.ic.c-miss{background:rgba(240,136,62,.14);color:var(--miss)} .accent.c-miss{background:var(--miss)}
+.ic.c-rate{background:rgba(233,185,73,.16);color:#B98900} .accent.c-rate{background:var(--gold)}
+.ic.c-dur{background:rgba(27,42,61,.08);color:var(--ink)} .accent.c-dur{background:var(--ink)}
+
+/* ---------- Cards / charts ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.card .hd{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}
+.card .hd h3{margin:0;font-size:14.5px;letter-spacing:-.2px}
+.card .hd p{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.card .hd .pill{margin-left:auto;font-size:11px;font-weight:600;color:var(--cyan-d);background:rgba(8,166,196,.1);padding:4px 9px;border-radius:20px}
+.chart-wrap{position:relative;height:260px;margin-top:14px}
+.chart-wrap.sm{height:210px}
+.chart-wrap.lg{height:320px}
+
+/* ---------- Lists ---------- */
+.rank{display:flex;flex-direction:column;gap:2px;margin-top:10px}
+.rank .it{display:flex;align-items:center;gap:11px;padding:9px 8px;border-radius:10px;cursor:pointer;transition:.12s}
+.rank .it:hover{background:var(--surface)}
+.rank .av{width:34px;height:34px;border-radius:9px;background:var(--surface);display:grid;place-items:center;font-family:'Space Grotesk';font-weight:600;font-size:13px;color:var(--ink);flex:none}
+.rank .nm{min-width:0;flex:1}
+.rank .nm b{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank .nm span{font-size:11.5px;color:var(--muted)}
+.rank .bar{height:6px;border-radius:4px;background:var(--surface);overflow:hidden;width:80px;flex:none}
+.rank .bar i{display:block;height:100%;border-radius:4px;background:var(--cyan)}
+.rank .ct{font-family:'Space Grotesk';font-weight:600;font-size:14px;width:34px;text-align:right;flex:none}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:7px}
+.tag.in{background:rgba(22,181,127,.12);color:var(--in)} .tag.out{background:rgba(85,112,241,.12);color:var(--out)}
+.tag.ok{background:rgba(22,181,127,.12);color:var(--in)} .tag.miss{background:rgba(229,72,77,.12);color:var(--alert)}
+
+/* ---------- Table ---------- */
+.tbl-wrap{overflow-x:auto;margin-top:12px;border-radius:12px;border:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+thead th{background:var(--surface);text-align:left;padding:11px 14px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);position:sticky;top:0}
+tbody td{padding:11px 14px;border-top:1px solid var(--line)}
+tbody tr{transition:.1s}
+tbody tr:hover{background:var(--surface)}
+td.num{text-align:right;font-family:'IBM Plex Mono';font-variant-numeric:tabular-nums}
+.lnk{color:var(--cyan-d);font-weight:600;cursor:pointer;text-decoration:none}
+.lnk:hover{text-decoration:underline}
+.search{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:9px 13px;max-width:340px}
+.search input{border:none;background:none;font-family:inherit;font-size:13px;width:100%;color:var(--text)}
+.search input:focus{outline:none}
+.search svg{width:16px;height:16px;color:var(--muted2);flex:none}
+
+/* ---------- Heatmap ---------- */
+.heat{margin-top:16px;overflow-x:auto}
+.heat table{min-width:560px;border-collapse:separate;border-spacing:3px}
+.heat td,.heat th{padding:0;border:none;background:none}
+.heat .hl{font-size:10px;color:var(--muted);text-align:center;font-weight:600;font-family:'IBM Plex Mono'}
+.heat .rl{font-size:11px;color:var(--muted);font-weight:600;padding-right:8px;text-align:right;white-space:nowrap}
+.heat .cell{width:100%;height:22px;border-radius:5px;background:var(--surface);position:relative;cursor:default}
+.heat .cell[data-v]:hover{outline:2px solid var(--cyan)}
+
+/* ---------- Modal ---------- */
+.scrim{position:fixed;inset:0;background:rgba(14,26,43,.55);backdrop-filter:blur(3px);z-index:80;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+.scrim.on{display:flex;animation:fade .2s}
+.modal{background:var(--card);border-radius:20px;width:100%;max-width:680px;box-shadow:var(--shadow-lg);overflow:hidden;animation:pop .26s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(10px)}to{opacity:1;transform:none}}
+.modal .mh{padding:22px 24px;background:linear-gradient(135deg,var(--ink),var(--ink2));color:#fff;position:relative}
+.modal .mh .who{display:flex;align-items:center;gap:14px}
+.modal .mh .mav{width:50px;height:50px;border-radius:13px;background:rgba(255,255,255,.12);display:grid;place-items:center;font-family:'Space Grotesk';font-weight:600;font-size:18px;flex:none}
+.modal .mh h3{margin:0;font-size:19px;letter-spacing:-.3px}
+.modal .mh .num{font-family:'IBM Plex Mono';font-size:13px;color:#9FB3CC;margin-top:2px}
+.modal .mh .x{position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:grid;place-items:center;color:#fff;transition:.15s}
+.modal .mh .x:hover{background:rgba(255,255,255,.24)}
+.modal .mb{padding:20px 24px 26px;max-height:62vh;overflow-y:auto}
+.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.mini .m{background:var(--surface);border-radius:12px;padding:12px}
+.mini .m .l{font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.mini .m .v{font-family:'Space Grotesk';font-size:20px;font-weight:600;margin-top:4px;letter-spacing:-.5px}
+.tl{display:flex;flex-direction:column;gap:0}
+.tl .e{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.tl .e:first-child{border-top:none}
+.tl .e .when{font-family:'IBM Plex Mono';font-size:12px;color:var(--muted);white-space:nowrap;width:120px;flex:none}
+.tl .e .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px}
+
+/* ---------- Toast ---------- */
+.toasts{position:fixed;right:18px;bottom:18px;z-index:90;display:flex;flex-direction:column;gap:10px;max-width:330px}
+.toast{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--miss);border-radius:13px;box-shadow:var(--shadow-lg);padding:13px 15px;display:flex;gap:12px;align-items:flex-start;animation:slidein .35s cubic-bezier(.2,.9,.3,1.1)}
+@keyframes slidein{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+.toast .ti{width:34px;height:34px;border-radius:10px;background:rgba(240,136,62,.14);color:var(--miss);display:grid;place-items:center;flex:none}
+.toast .tc b{font-size:13px;display:block}
+.toast .tc span{font-size:12px;color:var(--muted)}
+.toast .tx{margin-left:6px;color:var(--muted2);align-self:center}
+
+/* ---------- Notif center ---------- */
+.notif{position:absolute;top:54px;right:0;width:340px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);z-index:60;display:none;overflow:hidden}
+.notif.on{display:block;animation:fade .18s}
+.notif .nh{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.notif .nh b{font-size:14px;font-family:'Space Grotesk'}
+.notif .nl{max-height:380px;overflow-y:auto}
+.notif .ni{display:flex;gap:11px;padding:12px 16px;border-top:1px solid var(--line);cursor:pointer;transition:.1s}
+.notif .ni:first-child{border-top:none}
+.notif .ni:hover{background:var(--surface)}
+.notif .ni .d{width:34px;height:34px;border-radius:10px;background:rgba(240,136,62,.14);color:var(--miss);display:grid;place-items:center;flex:none}
+.notif .ni .t b{font-size:13px;display:block}
+.notif .ni .t span{font-size:11.5px;color:var(--muted)}
+.notif .empty{padding:34px 20px;text-align:center;color:var(--muted);font-size:13px}
+
+/* ---------- Empty / overlay ---------- */
+.empty-note{background:#FFF8EC;border:1px solid #F2C779;border-left:4px solid var(--miss);border-radius:12px;padding:15px 17px;font-size:13px;color:#8a5a00;line-height:1.5}
+.overlay{position:fixed;inset:0;background:rgba(238,241,246,.94);z-index:100;display:none;place-items:center;text-align:center;padding:20px}
+.overlay.on{display:grid}
+.overlay .box{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:34px 30px;max-width:440px;box-shadow:var(--shadow)}
+.overlay h3{margin:0 0 8px;font-size:18px}
+.overlay p{color:var(--muted);font-size:13px;margin:0 0 18px;line-height:1.5}
+.btn{background:var(--ink);color:#fff;padding:11px 20px;border-radius:11px;font-weight:600;font-size:13px;transition:.15s}
+.btn:hover{background:var(--ink2)}
+.skel{background:linear-gradient(90deg,var(--surface) 25%,#E8ECF3 50%,var(--surface) 75%);background-size:200% 100%;animation:sh 1.3s infinite;border-radius:8px}
+@keyframes sh{to{background-position:-200% 0}}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1100px){.k6{grid-template-columns:repeat(3,1fr)}.k4{grid-template-columns:repeat(2,1fr)}.span3,.span4{grid-column:span 6}}
+@media (max-width:920px){
+  .shell{grid-template-columns:1fr}
+  .side{position:fixed;left:0;top:0;width:264px;transform:translateX(-100%);transition:.28s;box-shadow:var(--shadow-lg)}
+  .side.open{transform:none}
+  .burger{display:grid}
+  .scrim-nav{position:fixed;inset:0;background:rgba(14,26,43,.4);z-index:35;display:none}
+  .scrim-nav.on{display:block}
+  .k6,.k4,.k3,.k2{grid-template-columns:repeat(2,1fr)}
+  .span2,.span3,.span4,.span6{grid-column:span 2}
+  .top{padding:12px 16px}
+  .page{padding:18px 16px 70px}
+  .mini{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:540px){
+  .k6,.k4,.k3,.k2{grid-template-columns:1fr}
+  .span2,.span3,.span4,.span6{grid-column:span 1}
+  .top .ttl h1{font-size:17px}
+  .daterange{width:100%}
+}
 </style>
-
-<div class="app">
-  <aside class="side">
-    <div class="brand"><span>Keyyo Phone</span><b>Reporting Téléphonie</b></div>
-    <nav class="nav" id="nav">
-      <button data-p="exec" class="on"><span class="ic">◆</span>Vue Exécutive</button>
-      <button data-p="vol"><span class="ic">↕</span>Analyse des Volumes</button>
-      <button data-p="time"><span class="ic">◷</span>Analyse Temporelle</button>
-      <button data-p="site"><span class="ic">⌂</span>Analyse des Sites</button>
-      <button data-p="corr"><span class="ic">⚇</span>Correspondants</button>
-      <button data-p="dur"><span class="ic">⧗</span>Analyse des Durées</button>
-      <button data-p="rate"><span class="ic">✓</span>Réussite des Appels</button>
-      <button data-p="det"><span class="ic">≣</span>Détail des Appels</button>
-    </nav>
-    <div class="scope" id="scope"></div>
+</head>
+<body>
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="side" id="side">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div>
+      <div><b>BIOS Téléphonie</b><span>Pilotage Keyyo</span></div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <div class="row"><span>Son des alertes</span><div class="switch on" id="sw-sound" onclick="toggleSound()"><i></i></div></div>
+      <div class="row"><span>Alertes appels manqués</span><div class="switch on" id="sw-notif" onclick="toggleNotif()"><i></i></div></div>
+      <div class="row" style="margin-top:14px;color:#6E82A0"><span id="foot-period">—</span></div>
+    </div>
   </aside>
+  <div class="scrim-nav" id="scrim-nav" onclick="closeNav()"></div>
 
+  <!-- Main -->
   <div class="main">
-    <div class="top">
-      <h1 id="ptitle">Vue Exécutive</h1>
-      <div class="flt"><label>Période</label><select id="fMonth"></select></div>
-      <div class="flt"><label>Site</label><select id="fSite"></select></div>
-      <div class="flt"><label>Sens</label><select id="fNat">
-        <option value="all">Tous</option><option value="1">Sortants</option><option value="0">Entrants</option>
-      </select></div>
-      <button class="reset" id="reset">Réinitialiser</button><button class="iconbtn" id="btnRefresh" title="Forcer une actualisation">⟳</button><div class="live load" id="liveBadge"><span class="dot"></span><span id="liveText">Connexion…</span></div>
-    </div>
-    <div class="wrap">
-      <section class="page on" id="p-exec"></section>
-      <section class="page" id="p-vol"></section>
-      <section class="page" id="p-time"></section>
-      <section class="page" id="p-site"></section>
-      <section class="page" id="p-corr"></section>
-      <section class="page" id="p-dur"></section>
-      <section class="page" id="p-rate"></section>
-      <section class="page" id="p-det"></section>
-    </div>
+    <header class="top">
+      <button class="burger iconbtn" onclick="openNav()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+      <div class="ttl"><h1 id="pg-title">Vue d'ensemble</h1><p id="pg-sub">Activité téléphonique consolidée</p></div>
+      <div class="daterange" id="daterange"></div>
+      <span class="live" id="live"><span class="dot"></span><span id="live-tx">Connexion…</span></span>
+      <button class="iconbtn" id="bell" onclick="toggleNotifCenter(event)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="badge hide" id="bell-badge">0</span>
+        <div class="notif" id="notif" onclick="event.stopPropagation()"></div>
+      </button>
+    </header>
+
+    <main id="pages">
+      <section class="page on" data-page="overview" id="p-overview"></section>
+      <section class="page" data-page="incoming" id="p-incoming"></section>
+      <section class="page" data-page="missed" id="p-missed"></section>
+      <section class="page" data-page="outgoing" id="p-outgoing"></section>
+      <section class="page" data-page="contacts" id="p-contacts"></section>
+      <section class="page" data-page="detail" id="p-detail"></section>
+    </main>
   </div>
 </div>
 
-<div id="overlay"><div class="box"><div class="spin"></div>
-  <h2 id="ovTitle">Connexion à Keyyo…</h2>
-  <p id="ovMsg">Récupération des appels entrants et sortants en cours.</p>
-  <button class="iconbtn retry" id="ovRetry" style="display:none">Réessayer</button></div></div>
-<div id="toast"></div>
+<div class="scrim" id="scrim" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
+<div class="toasts" id="toasts"></div>
+<div class="overlay" id="overlay"><div class="box"><h3 id="ov-t">Connexion impossible</h3><p id="ov-p"></p><button class="btn" onclick="loadData(true)">Réessayer</button></div></div>
 
 <script>
-let R=[], M={};
-
-const C = {ISO:0,HOUR:1,CALLER:2,CALLED:3,NAT:4,DUR:5,SITE:6,OK:7,CORR:8,WD:9,YM:10};
-const COL = {sort:'#1A73E8', entr:'#13A8A0', alert:'#E8710A', good:'#188038', ink:'#1C2430', muted:'#6B7785', grid:'#EAEef3'};
-const MONTHS_FR={'01':'janv.','02':'févr.','03':'mars','04':'avr.','05':'mai','06':'juin','07':'juil.','08':'août','09':'sept.','10':'oct.','11':'nov.','12':'déc.'};
+"use strict";
+/* ===================== Constantes & état ===================== */
+const C={ISO:0,HOUR:1,CALLER:2,CALLED:3,NAT:4,DUR:5,SITE:6,OK:7,CORR:8,WD:9,YM:10,MIN:11};
 const WD=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-Chart.defaults.font.family="'IBM Plex Sans',sans-serif";
-Chart.defaults.font.size=12; Chart.defaults.color=COL.muted; Chart.defaults.plugins.legend.labels.boxWidth=12;
-
-const state={month:'all',site:'all',nat:'all',page:'exec'};
+const COL={in:'#16B57F',out:'#5570F1',cyan:'#08A6C4',miss:'#F0883E',gold:'#E9B949',muted:'#94A2B8',line:'#E4E8F0'};
+const NAV=[
+  ['overview','Vue d\'ensemble','Activité téléphonique consolidée','M3 12l9-9 9 9M5 10v10h14V10'],
+  ['incoming','Appels entrants','Qui appelle, quand, vers quel site','M12 19V5M5 12l7-7 7 7'],
+  ['missed','Appels manqués','À rappeler en priorité — analyse détaillée','M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6M23 1l-6 6M17 1l6 6'],
+  ['outgoing','Appels sortants','Activité émise par site','M12 5v14M19 12l-7 7-7-7'],
+  ['contacts','Correspondants','Classement et fiches détaillées','M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'],
+  ['detail','Détail des appels','Journal complet et recherche','M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01']
+];
+let RAW=[],META={},CONTACTS={},DIAG={};
+let state={page:'overview',preset:'90',from:null,to:null,site:'all',dir:'all'};
+let soundOn=true,notifOn=true,firstLoad=true;
+let seenMissed=loadSeen(),unread=[],notifOpen=false;
 const charts={};
 
-// ---------- helpers ----------
-const fmt=n=>n.toLocaleString('fr-FR');
-const pct=(a,b)=>b?Math.round(a/b*1000)/10+' %':'– %';
-// ---------- Contacts (rapprochement numéro -> nom) ----------
-let CONTACTS={};
-function normNum(s){
-  if(s==null)return''; let x=String(s).replace(/[^\d+]/g,''); if(!x)return'';
-  if(x.startsWith('00'))x='+'+x.slice(2);
-  if(x[0]!=='+'){
-    if(x.length===10&&x[0]==='0')x='+33'+x.slice(1);   // national FR -> E.164
-    else x='+'+x;                                        // déjà international sans +
-  }
-  return x;
-}
-function nameOf(num){const k=normNum(num);return CONTACTS[k]||null;}
-function escH(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function buildContactMap(data){
-  const map={};
-  if(Array.isArray(data)){
-    for(const c of data){const nm=c.name||c.display||c.displayName||'';
-      const nums=c.numbers||(c.number?[c.number]:[]); for(const n of nums){const k=normNum(n); if(k&&nm)map[k]=nm;}}
-  } else if(data&&typeof data==='object'){
-    for(const [k,v] of Object.entries(data)){const kk=normNum(k); if(kk&&typeof v==='string'&&v)map[kk]=v;}
-  }
-  return map;
-}
+/* ===================== Stockage tolérant ===================== */
+function ls(){try{return window.localStorage}catch(e){return null}}
+function loadSeen(){try{return new Set(JSON.parse(ls().getItem('keyyo_seen')||'[]'))}catch(e){return new Set()}}
+function saveSeen(){try{ls().setItem('keyyo_seen',JSON.stringify([...seenMissed].slice(-2000)))}catch(e){}}
+
+/* ===================== Contacts ===================== */
+function normNum(s){if(s==null)return'';let x=String(s).replace(/[^\d+]/g,'');if(!x)return'';if(x.startsWith('00'))x='+'+x.slice(2);if(x[0]!=='+'){if(x.length===10&&x[0]==='0')x='+33'+x.slice(1);else x='+'+x;}return x;}
+function nameOf(num){return CONTACTS[normNum(num)]||null;}
+function labelOf(num){return nameOf(num)||fmtNum(num);}
+function fmtNum(n){const k=normNum(n);if(/^\+33[1-9]\d{8}$/.test(k)){const d='0'+k.slice(3);return d.replace(/(\d{2})(?=\d)/g,'$1 ').trim();}return n||'—';}
+function initials(s){const w=String(s).replace(/[^\wÀ-ÿ ]/g,'').trim().split(/\s+/);if(!w[0])return'?';return((w[0][0]||'')+(w[1]?w[1][0]:'')).toUpperCase();}
+function buildContactMap(d){const m={};if(Array.isArray(d)){for(const c of d){const nm=c.name||c.displayName||'';const ns=c.numbers||(c.number?[c.number]:[]);for(const n of ns){const k=normNum(n);if(k&&nm)m[k]=nm;}}}else if(d&&typeof d==='object'){for(const[k,v]of Object.entries(d)){const kk=normNum(k);if(kk&&typeof v==='string'&&v)m[kk]=v;}}return m;}
 async function loadContacts(){
-  // 1) Synchro live Microsoft Graph
-  try{
-    const r=await fetch('/api/contacts',{cache:'no-store'});
-    if(r.ok){const d=await r.json(); if(d&&!d.error){const m=buildContactMap(d); if(Object.keys(m).length){CONTACTS=m; return;}}}
-  }catch(e){}
-  // 2) Repli : fichier statique contacts.json
-  try{
-    const r=await fetch('/contacts.json',{cache:'no-store'}); if(!r.ok)return;
-    CONTACTS=buildContactMap(await r.json());
-  }catch(e){}
-}
-function mmss(s){if(s==null)return'';const m=Math.floor(s/60),x=s%60;return m+':'+String(x).padStart(2,'0');}
-function median(arr){if(!arr.length)return 0;const a=[...arr].sort((x,y)=>x-y),m=a.length>>1;return a.length%2?a[m]:Math.round((a[m-1]+a[m])/2);}
-function mlabel(ym){return MONTHS_FR[ym.slice(5)]+' '+ym.slice(2,4);}
-function filtered(){return R.filter(r=>(state.month==='all'||r[C.YM]===state.month)&&(state.site==='all'||r[C.SITE]===state.site)&&(state.nat==='all'||r[C.NAT]==+state.nat));}
-function mk(parent,html){const d=document.createElement('div');d.innerHTML=html;parent.innerHTML='';parent.appendChild(d);}
-function newChart(id,cfg){if(charts[id])charts[id].destroy();const el=document.getElementById(id);if(el)charts[id]=new Chart(el,cfg);}
-function kpi(lab,val,sub,cls){return `<div class="kpi ${cls||''}"><div class="lab">${lab}</div><div class="val">${val}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`;}
-
-// ---------- EXEC ----------
-function renderExec(){
-  const f=filtered();
-  const ent=f.filter(r=>r[C.NAT]===0),sor=f.filter(r=>r[C.NAT]===1);
-  const durTot=f.reduce((s,r)=>s+r[C.DUR],0);
-  const okDur=f.filter(r=>r[C.DUR]>0).map(r=>r[C.DUR]);
-  const ok=f.filter(r=>r[C.OK]).length;
-  const html=`
-  <div class="kpis">
-    ${kpi('Appels',fmt(f.length),'sur la période filtrée')}
-    ${kpi('Entrants',fmt(ent.length),pct(ent.length,f.length)+' du total','accentE')}
-    ${kpi('Sortants',fmt(sor.length),pct(sor.length,f.length)+' du total','accentS')}
-    ${kpi('Durée totale',(durTot/3600).toFixed(1)+' h',fmt(durTot)+' s cumulées')}
-    ${kpi('Durée médiane',median(okDur)+' s','hors appels nuls')}
-    ${kpi('Taux abouti',pct(ok,f.length),'durée > 0 (proxy)','accentA')}
-  </div>
-  <div class="grid g3" style="margin-bottom:16px">
-    <div class="card"><h3>Évolution mensuelle</h3><p class="hint">Volume d'appels entrants et sortants par mois</p><div class="cw"><canvas id="cExecLine"></canvas></div></div>
-    <div class="card"><h3>Répartition par sens</h3><p class="hint">Part entrants / sortants</p><div class="cw"><canvas id="cExecDonut"></canvas></div></div>
-  </div>
-  <div class="grid g2">
-    <div class="card"><h3>Volume par site × sens</h3><p class="hint">Les deux lignes ont un usage opposé — comparer à sens égal</p><div class="cw sm"><canvas id="cExecSite"></canvas></div></div>
-    <div class="card"><h3>Profil horaire</h3><p class="hint">Répartition des appels sur la journée</p><div class="cw sm"><canvas id="cExecHour"></canvas></div></div>
-  </div>`;
-  document.getElementById('p-exec').innerHTML=html;
-  // monthly line
-  const months=M.ym;
-  const eM=months.map(m=>ent.filter(r=>r[C.YM]===m).length);
-  const sM=months.map(m=>sor.filter(r=>r[C.YM]===m).length);
-  newChart('cExecLine',{type:'line',data:{labels:months.map(mlabel),datasets:[
-    {label:'Sortants',data:sM,borderColor:COL.sort,backgroundColor:COL.sort+'22',tension:.3,fill:true,borderWidth:2.5,pointRadius:3},
-    {label:'Entrants',data:eM,borderColor:COL.entr,backgroundColor:COL.entr+'22',tension:.3,fill:true,borderWidth:2.5,pointRadius:3}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'}}}});
-  newChart('cExecDonut',{type:'doughnut',data:{labels:['Sortants','Entrants'],datasets:[{data:[sor.length,ent.length],backgroundColor:[COL.sort,COL.entr],borderWidth:0}]},
-    options:{maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom'}}}});
-  // site x sens
-  const sites=M.sites;
-  const sS=sites.map(s=>f.filter(r=>r[C.SITE]===s&&r[C.NAT]===1).length);
-  const sE=sites.map(s=>f.filter(r=>r[C.SITE]===s&&r[C.NAT]===0).length);
-  newChart('cExecSite',{type:'bar',data:{labels:sites,datasets:[
-    {label:'Sortants',data:sS,backgroundColor:COL.sort},{label:'Entrants',data:sE,backgroundColor:COL.entr}]},
-    options:{indexAxis:'y',maintainAspectRatio:false,scales:{x:{stacked:true,grid:{color:COL.grid}},y:{stacked:true,grid:{display:false}}},plugins:{legend:{position:'bottom'}}}});
-  // hour
-  const hrs=[...Array(14)].map((_,i)=>i+7);
-  const hC=hrs.map(h=>f.filter(r=>r[C.HOUR]===h).length);
-  newChart('cExecHour',{type:'bar',data:{labels:hrs.map(h=>h+'h'),datasets:[{data:hC,backgroundColor:COL.sort,borderRadius:3}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{display:false}}}});
+  try{const r=await fetch('/api/contacts',{cache:'no-store'});if(r.ok){const d=await r.json();if(d&&!d.error){const m=buildContactMap(d);if(Object.keys(m).length){CONTACTS=m;return;}}}}catch(e){}
+  try{const r=await fetch('/contacts.json',{cache:'no-store'});if(r.ok)CONTACTS=buildContactMap(await r.json());}catch(e){}
 }
 
-// ---------- VOLUMES ----------
-function renderVol(){
-  const f=filtered();
-  const ent=f.filter(r=>r[C.NAT]===0),sor=f.filter(r=>r[C.NAT]===1);
-  const entMiss=ent.filter(r=>!r[C.OK]).length, sorMiss=sor.filter(r=>!r[C.OK]).length;
-  document.getElementById('p-vol').innerHTML=`
-  <div class="kpis">
-    ${kpi('Appels',fmt(f.length))}
-    ${kpi('% Entrants',pct(ent.length,f.length),'','accentE')}
-    ${kpi('% Sortants',pct(sor.length,f.length),'','accentS')}
-    ${kpi('Entrants non aboutis',fmt(entMiss),pct(entMiss,ent.length)+' des entrants','accentA')}
-    ${kpi('Ratio E / S',sor.length?(ent.length/sor.length).toFixed(2):'–')}
-  </div>
-  <div class="grid g3" style="margin-bottom:16px">
-    <div class="card"><h3>Volume par mois × sens</h3><p class="hint">Barres groupées</p><div class="cw"><canvas id="cVolBar"></canvas></div></div>
-    <div class="card"><h3>Matrice Site × Sens</h3><p class="hint">Le cœur de l'asymétrie</p>
-      <table class="matrix"><thead><tr><th>Site</th><th class="num">Entrants</th><th class="num">Sortants</th><th class="num">Total</th></tr></thead><tbody id="volMx"></tbody></table>
+/* ===================== Helpers ===================== */
+const fmt=n=>(n||0).toLocaleString('fr-FR');
+const pctN=(a,b)=>b?Math.round(a/b*100):0;
+function hhmm(r){return String(r[C.HOUR]).padStart(2,'0')+':'+String(r[C.MIN]||0).padStart(2,'0');}
+function mmss(s){s=s||0;const m=Math.floor(s/60),x=s%60;return m?`${m}m${String(x).padStart(2,'0')}`:`${x}s`;}
+function hms(s){s=s||0;const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h}h${String(m).padStart(2,'0')}`:`${m} min`;}
+function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),m=Math.floor(s.length/2);return s.length%2?s[m]:Math.round((s[m-1]+s[m])/2);}
+function frDate(iso){const[y,m,d]=iso.split('-');return `${d}/${m}/${y}`;}
+function isMissed(r){return r[C.NAT]===0&&r[C.OK]===0;}
+function sigOf(r,i){return r[C.ISO]+'|'+r[C.HOUR]+'|'+r[C.CORR]+'|'+i;}
+function filtered(){return RAW.filter(r=>{
+  if(state.from&&r[C.ISO]<state.from)return false;
+  if(state.to&&r[C.ISO]>state.to)return false;
+  if(state.site!=='all'&&r[C.SITE]!==state.site)return false;
+  if(state.dir==='in'&&r[C.NAT]!==0)return false;
+  if(state.dir==='out'&&r[C.NAT]!==1)return false;
+  return true;});}
+function groupCount(rows,keyFn){const m=new Map();for(const r of rows){const k=keyFn(r);m.set(k,(m.get(k)||0)+1);}return m;}
+
+/* ===================== Charts ===================== */
+Chart.defaults.font.family="Inter";Chart.defaults.font.size=11.5;Chart.defaults.color=COL.muted;
+function mk(id,cfg){if(typeof Chart==='undefined')return;if(charts[id])charts[id].destroy();const el=document.getElementById(id);if(!el)return;try{charts[id]=new Chart(el,cfg);}catch(e){}}
+function gridOpt(extra={}){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},y:{beginAtZero:true,grid:{color:COL.line,drawBorder:false},ticks:{precision:0}}},...extra};}
+
+/* ===================== Date selector ===================== */
+function renderDateBar(){
+  const presets=[['7','7 j'],['30','30 j'],['90','3 mois'],['all','Tout']];
+  document.getElementById('daterange').innerHTML=`
+    <div class="seg">${presets.map(p=>`<button class="${state.preset===p[0]?'on':''}" onclick="setPreset('${p[0]}')">${p[1]}</button>`).join('')}</div>
+    <div class="dpick"><input type="date" id="d-from" value="${state.from||''}" onchange="setCustom()"><span>→</span><input type="date" id="d-to" value="${state.to||''}" onchange="setCustom()"></div>
+    <select class="site" id="sel-site" onchange="state.site=this.value;render()">
+      <option value="all">Tous les sites</option>${(META.sites||[]).map(s=>`<option value="${s}" ${state.site===s?'selected':''}>${s}</option>`).join('')}
+    </select>`;
+}
+function setPreset(p){state.preset=p;const max=META.max||new Date().toISOString().slice(0,10);if(p==='all'){state.from=META.min||null;state.to=max;}else{const d=new Date(max+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-(+p-1));state.from=d.toISOString().slice(0,10);state.to=max;}renderDateBar();render();}
+function setCustom(){state.preset='';state.from=document.getElementById('d-from').value||null;state.to=document.getElementById('d-to').value||null;renderDateBar();render();}
+
+/* ===================== Navigation ===================== */
+function buildNav(){document.getElementById('nav').innerHTML=NAV.map(n=>`<a data-go="${n[0]}" onclick="go('${n[0]}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${n[3]}"/></svg>${n[1]}</a>`).join('');}
+function go(p){state.page=p;document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.go===p));document.querySelectorAll('.page').forEach(s=>s.classList.toggle('on',s.dataset.page===p));const n=NAV.find(x=>x[0]===p);document.getElementById('pg-title').textContent=n[1];document.getElementById('pg-sub').textContent=n[2];closeNav();render();window.scrollTo({top:0,behavior:'smooth'});}
+function openNav(){document.getElementById('side').classList.add('open');document.getElementById('scrim-nav').classList.add('on');}
+function closeNav(){document.getElementById('side').classList.remove('open');document.getElementById('scrim-nav').classList.remove('on');}
+
+/* ===================== KPI ===================== */
+const EXPL={
+  tot:'Nombre total d\'appels (entrants + sortants) sur la période et les filtres sélectionnés.',
+  in:'Appels reçus sur vos lignes. Cliquez un correspondant pour voir son historique.',
+  out:'Appels émis depuis vos lignes vers l\'extérieur.',
+  miss:'Appels entrants non décrochés (durée nulle). À rappeler en priorité — voir la cloche en haut à droite.',
+  rate:'Part des appels entrants effectivement décrochés. Un bon indicateur de qualité d\'accueil.',
+  dur:'Durée moyenne d\'un appel abouti (durée > 0). Les appels manqués ne comptent pas.',
+  ans:'Durée cumulée de communication sur la période.'
+};
+function kpi(o){return `<div class="kpi" onclick="this.classList.toggle('expl')">
+  <div class="accent c-${o.c}"></div>
+  <div class="top-row"><div class="ic c-${o.c}">${o.icon}</div><div class="lbl">${o.label}</div><div class="q">?</div></div>
+  <div class="val">${o.val}${o.unit?`<small>${o.unit}</small>`:''}</div>
+  <div class="sub">${o.sub||''}</div>
+  <div class="explbox">${o.expl||EXPL[o.c]||''}</div></div>`;}
+const IC={phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+in:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7 7 7-7"/></svg>',
+out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7-7 7 7"/></svg>',
+miss:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
+rate:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3"/></svg>',
+dur:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>'};
+
+/* ===================== Pages ===================== */
+function render(){const p=state.page;if(p==='overview')renderOverview();else if(p==='incoming')renderIncoming();else if(p==='missed')renderMissed();else if(p==='outgoing')renderOutgoing();else if(p==='contacts')renderContacts();else if(p==='detail')renderDetail();renderNotifCenter();}
+
+function statBlock(rows){
+  const inc=rows.filter(r=>r[C.NAT]===0),out=rows.filter(r=>r[C.NAT]===1);
+  const miss=inc.filter(r=>r[C.OK]===0),ans=inc.filter(r=>r[C.OK]===1);
+  const durOk=rows.filter(r=>r[C.OK]===1).map(r=>r[C.DUR]);
+  return{n:rows.length,inc,out,miss,ans,inN:inc.length,outN:out.length,missN:miss.length,
+    rate:pctN(ans.length,inc.length),totDur:rows.reduce((s,r)=>s+r[C.DUR],0),
+    avg:durOk.length?Math.round(durOk.reduce((a,b)=>a+b,0)/durOk.length):0};
+}
+
+function renderOverview(){
+  const f=filtered(),s=statBlock(f);
+  document.getElementById('p-overview').innerHTML=`
+    ${f.length===0?emptyNote():''}
+    <div class="grid k6">
+      ${kpi({c:'tot',icon:IC.phone,label:'Appels',val:fmt(s.n),sub:`sur la période filtrée`})}
+      ${kpi({c:'in',icon:IC.in,label:'Entrants',val:fmt(s.inN),sub:`<b>${pctN(s.inN,s.n)}%</b> du total`})}
+      ${kpi({c:'out',icon:IC.out,label:'Sortants',val:fmt(s.outN),sub:`<b>${pctN(s.outN,s.n)}%</b> du total`})}
+      ${kpi({c:'miss',icon:IC.miss,label:'Manqués',val:fmt(s.missN),sub:s.inN?`<b>${pctN(s.missN,s.inN)}%</b> des entrants`:'—'})}
+      ${kpi({c:'rate',icon:IC.rate,label:'Taux de réponse',val:s.rate,unit:'%',sub:`${fmt(s.ans.length)} décrochés`})}
+      ${kpi({c:'dur',icon:IC.dur,label:'Durée moyenne',val:mmss(s.avg),sub:`${hms(s.totDur)} cumulées`})}
     </div>
-  </div>
-  <div class="grid g2">
-    <div class="card"><h3>Volume aboutis vs non aboutis</h3><p class="hint">Par sens — proxy via durée</p><div class="cw sm"><canvas id="cVolOk"></canvas></div></div>
-    <div class="card"><h3>Volume par site</h3><div class="cw sm"><canvas id="cVolSite"></canvas></div></div>
-  </div>`;
-  const months=M.ym;
-  newChart('cVolBar',{type:'bar',data:{labels:months.map(mlabel),datasets:[
-    {label:'Sortants',data:months.map(m=>sor.filter(r=>r[C.YM]===m).length),backgroundColor:COL.sort},
-    {label:'Entrants',data:months.map(m=>ent.filter(r=>r[C.YM]===m).length),backgroundColor:COL.entr}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'}}}});
-  // matrix
-  let mx='';let tE=0,tS=0;
-  M.sites.forEach(s=>{const e=f.filter(r=>r[C.SITE]===s&&r[C.NAT]===0).length,o=f.filter(r=>r[C.SITE]===s&&r[C.NAT]===1).length;tE+=e;tS+=o;
-    mx+=`<tr><td class="bd">${s}</td><td class="num">${fmt(e)}</td><td class="num">${fmt(o)}</td><td class="num">${fmt(e+o)}</td></tr>`;});
-  mx+=`<tr class="tot"><td>Total</td><td class="num">${fmt(tE)}</td><td class="num">${fmt(tS)}</td><td class="num">${fmt(tE+tS)}</td></tr>`;
-  document.getElementById('volMx').innerHTML=mx;
-  newChart('cVolOk',{type:'bar',data:{labels:['Entrants','Sortants'],datasets:[
-    {label:'Aboutis',data:[ent.filter(r=>r[C.OK]).length,sor.filter(r=>r[C.OK]).length],backgroundColor:COL.good},
-    {label:'Non aboutis',data:[ent.length-ent.filter(r=>r[C.OK]).length,sor.length-sor.filter(r=>r[C.OK]).length],backgroundColor:COL.alert}]},
-    options:{maintainAspectRatio:false,scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,beginAtZero:true,grid:{color:COL.grid}}},plugins:{legend:{position:'bottom'}}}});
-  newChart('cVolSite',{type:'bar',data:{labels:M.sites,datasets:[{data:M.sites.map(s=>f.filter(r=>r[C.SITE]===s).length),backgroundColor:[COL.sort,COL.entr],borderRadius:4}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{display:false}}}});
+    <div class="sec-h"><h2>Tendance</h2><span>Volume d'appels dans le temps</span></div>
+    <div class="grid k3">
+      <div class="card span2"><div class="hd"><div><h3>Évolution des appels</h3><p>Entrants et sortants par jour</p></div></div><div class="chart-wrap"><canvas id="cEvo"></canvas></div></div>
+      <div class="card"><div class="hd"><div><h3>Répartition</h3><p>Sens des appels</p></div></div><div class="chart-wrap"><canvas id="cSplit"></canvas></div></div>
+    </div>
+    <div class="sec-h"><h2>Activité récente</h2><span>Derniers appels — cliquez un correspondant</span></div>
+    <div class="card"><div class="tbl-wrap" id="recent"></div></div>`;
+  // Évolution
+  const days=[...new Set(f.map(r=>r[C.ISO]))].sort();
+  const byDayIn=groupCount(f.filter(r=>r[C.NAT]===0),r=>r[C.ISO]),byDayOut=groupCount(f.filter(r=>r[C.NAT]===1),r=>r[C.ISO]);
+  mk('cEvo',{type:'line',data:{labels:days.map(frDate),datasets:[
+    {label:'Entrants',data:days.map(d=>byDayIn.get(d)||0),borderColor:COL.in,backgroundColor:'rgba(22,181,127,.08)',fill:true,tension:.35,pointRadius:0,borderWidth:2.5},
+    {label:'Sortants',data:days.map(d=>byDayOut.get(d)||0),borderColor:COL.out,backgroundColor:'rgba(85,112,241,.06)',fill:true,tension:.35,pointRadius:0,borderWidth:2.5}
+  ]},options:gridOpt({plugins:{legend:{display:true,position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16,boxWidth:7}}}})});
+  // Split
+  mk('cSplit',{type:'doughnut',data:{labels:['Entrants','Sortants'],datasets:[{data:[s.inN,s.outN],backgroundColor:[COL.in,COL.out],borderWidth:0,cutout:'68%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16,boxWidth:7}}}}});
+  // Recent
+  const rec=[...f].slice(0,12);
+  document.getElementById('recent').innerHTML=`<table><thead><tr><th>Date</th><th>Heure</th><th>Correspondant</th><th>Sens</th><th>Site</th><th>Durée</th><th>État</th></tr></thead><tbody>${rec.map(r=>`<tr><td>${frDate(r[C.ISO])}</td><td class="num">${hhmm(r)}</td><td><span class="lnk" onclick="openDrill('${r[C.CORR]}')">${escH(labelOf(r[C.CORR]))}</span></td><td><span class="tag ${r[C.NAT]?'out':'in'}">${r[C.NAT]?'Sortant':'Entrant'}</span></td><td>${r[C.SITE]}</td><td class="num">${mmss(r[C.DUR])}</td><td>${isMissed(r)?'<span class="tag miss">Manqué</span>':'<span class="tag ok">OK</span>'}</td></tr>`).join('')||emptyRow(7)}</tbody></table>`;
 }
 
-// ---------- TEMPOREL ----------
-function renderTime(){
+function renderIncoming(){
+  const f=filtered().filter(r=>r[C.NAT]===0),s=statBlock(filtered());
+  const ans=f.filter(r=>r[C.OK]===1),miss=f.filter(r=>r[C.OK]===0);
+  const callers=[...groupCount(f,r=>r[C.CORR]).entries()].sort((a,b)=>b[1]-a[1]);
+  const byHour=Array.from({length:24},(_,h)=>f.filter(r=>r[C.HOUR]===h).length);
+  const byWd=Array.from({length:7},(_,w)=>f.filter(r=>r[C.WD]===w).length);
+  const bySite=[...groupCount(f,r=>r[C.SITE]).entries()].sort((a,b)=>b[1]-a[1]);
+  const peakH=byHour.indexOf(Math.max(...byHour,0)),peakD=byWd.indexOf(Math.max(...byWd,0));
+  document.getElementById('p-incoming').innerHTML=`
+    ${f.length===0?emptyNote():''}
+    <div class="grid k4">
+      ${kpi({c:'in',icon:IC.in,label:'Appels entrants',val:fmt(f.length),sub:`${bySite.length} site(s)`})}
+      ${kpi({c:'rate',icon:IC.rate,label:'Taux de réponse',val:pctN(ans.length,f.length),unit:'%',sub:`${fmt(ans.length)} décrochés`})}
+      ${kpi({c:'miss',icon:IC.miss,label:'Manqués',val:fmt(miss.length),sub:miss.length?'à rappeler':'aucun '})}
+      ${kpi({c:'dur',icon:IC.dur,label:'Heure de pointe',val:peakH<0?'—':String(peakH).padStart(2,'0')+'h',sub:peakD>=0?`Jour fort : <b>${WD[peakD]}</b>`:''})}
+    </div>
+    <div class="grid k3" style="margin-top:16px">
+      <div class="card span2"><div class="hd"><div><h3>Qui appelle le plus</h3><p>Top correspondants entrants — cliquez pour la fiche</p></div><span class="pill">${callers.length} numéros</span></div><div class="rank" id="topIn"></div></div>
+      <div class="card"><div class="hd"><div><h3>Répondus vs manqués</h3></div></div><div class="chart-wrap sm"><canvas id="cAns"></canvas></div></div>
+    </div>
+    <div class="grid k2" style="margin-top:16px">
+      <div class="card"><div class="hd"><div><h3>Affluence par heure</h3><p>Quand vos lignes sonnent</p></div></div><div class="chart-wrap sm"><canvas id="cHour"></canvas></div></div>
+      <div class="card"><div class="hd"><div><h3>Affluence par jour</h3><p>Répartition hebdomadaire</p></div></div><div class="chart-wrap sm"><canvas id="cWd"></canvas></div></div>
+    </div>
+    <div class="grid k3" style="margin-top:16px">
+      <div class="card span2"><div class="hd"><div><h3>Carte d'affluence</h3><p>Volume d'entrants par jour et par heure</p></div></div><div class="heat" id="heat"></div></div>
+      <div class="card"><div class="hd"><div><h3>Par site</h3><p>Ligne la plus sollicitée</p></div></div><div class="chart-wrap sm"><canvas id="cSite"></canvas></div></div>
+    </div>`;
+  // top callers
+  document.getElementById('topIn').innerHTML=callers.slice(0,10).map(([k,v])=>{const mx=callers[0][1];const nm=nameOf(k);return `<div class="it" onclick="openDrill('${k}')"><div class="av">${nm?initials(nm):'#'}</div><div class="nm"><b>${escH(nm||fmtNum(k))}</b><span>${nm?fmtNum(k):'numéro non répertorié'}</span></div><div class="bar"><i style="width:${v/mx*100}%"></i></div><div class="ct">${v}</div></div>`;}).join('')||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Aucun appel entrant</div>';
+  mk('cAns',{type:'doughnut',data:{labels:['Répondus','Manqués'],datasets:[{data:[ans.length,miss.length],backgroundColor:[COL.in,COL.miss],borderWidth:0,cutout:'68%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14,boxWidth:7}}}}});
+  mk('cHour',{type:'bar',data:{labels:Array.from({length:24},(_,h)=>h+'h'),datasets:[{data:byHour,backgroundColor:COL.cyan,borderRadius:5,maxBarThickness:18}]},options:gridOpt()});
+  mk('cWd',{type:'bar',data:{labels:WD,datasets:[{data:byWd,backgroundColor:COL.in,borderRadius:5,maxBarThickness:32}]},options:gridOpt()});
+  mk('cSite',{type:'bar',data:{labels:bySite.map(x=>x[0]),datasets:[{data:bySite.map(x=>x[1]),backgroundColor:[COL.out,COL.cyan,COL.gold,COL.miss],borderRadius:5,maxBarThickness:40}]},options:gridOpt({indexAxis:'y',scales:{x:{beginAtZero:true,grid:{color:COL.line},ticks:{precision:0}},y:{grid:{display:false}}}})});
+  renderHeat(f);
+}
+function renderHeat(rows){
+  const grid=Array.from({length:7},()=>Array(24).fill(0));let mx=0;
+  for(const r of rows){grid[r[C.WD]][r[C.HOUR]]++;if(grid[r[C.WD]][r[C.HOUR]]>mx)mx=grid[r[C.WD]][r[C.HOUR]];}
+  const hours=[7,8,9,10,11,12,13,14,15,16,17,18,19,20];
+  const sc=v=>{if(!v)return'background:var(--surface)';const t=v/mx;const a=.15+t*.85;return `background:rgba(8,166,196,${a.toFixed(2)})`;};
+  document.getElementById('heat').innerHTML=`<table><tr><th></th>${hours.map(h=>`<th class="hl">${h}h</th>`).join('')}</tr>${grid.map((row,w)=>`<tr><td class="rl">${WD[w]}</td>${hours.map(h=>`<td><div class="cell" ${row[h]?`data-v="${row[h]}" title="${WD[w]} ${h}h — ${row[h]} appel(s)"`:''} style="${sc(row[h])}"></div></td>`).join('')}</tr>`).join('')}</table>`;
+}
+
+function renderMissed(){
+  const all=filtered();
+  const inc=all.filter(r=>r[C.NAT]===0);
+  const missed=inc.filter(r=>r[C.OK]===0);
+  const stamp=r=>r[C.ISO]+'#'+String(r[C.HOUR]*60+(r[C.MIN]||0)).padStart(4,'0');
+  // Détection des rappels : un manqué est "rappelé" s'il existe un sortant vers ce numéro APRÈS l'appel manqué (sur l'ensemble des données).
+  const outByCorr=new Map();
+  for(const r of RAW){if(r[C.NAT]===1){if(!outByCorr.has(r[C.CORR]))outByCorr.set(r[C.CORR],[]);outByCorr.get(r[C.CORR]).push(stamp(r));}}
+  const calledBack=m=>{const a=outByCorr.get(m[C.CORR]);if(!a)return false;const s=stamp(m);return a.some(x=>x>=s);};
+  const toCall=missed.filter(m=>!calledBack(m)),rappeles=missed.length-toCall.length;
+  // Distincts à rappeler (par numéro, dernier manqué en tête)
+  const tcMap=new Map();
+  for(const m of toCall){if(!tcMap.has(m[C.CORR]))tcMap.set(m[C.CORR],{n:0,last:m});const o=tcMap.get(m[C.CORR]);o.n++;if(stamp(m)>stamp(o.last))o.last=m;}
+  const tcArr=[...tcMap.entries()].sort((a,b)=>stamp(b[1].last)<stamp(a[1].last)?1:-1);
+  const topMiss=[...groupCount(missed,r=>r[C.CORR]).entries()].sort((a,b)=>b[1]-a[1]);
+  const byHour=Array.from({length:24},(_,h)=>missed.filter(r=>r[C.HOUR]===h).length);
+  const byWd=Array.from({length:7},(_,w)=>missed.filter(r=>r[C.WD]===w).length);
+  const bySite=[...groupCount(missed,r=>r[C.SITE]).entries()].sort((a,b)=>b[1]-a[1]);
+  const days=[...new Set(missed.map(r=>r[C.ISO]))].sort(),byDay=groupCount(missed,r=>r[C.ISO]);
+  const peakH=byHour.indexOf(Math.max(...byHour,0)),peakD=byWd.indexOf(Math.max(...byWd,0));
+  const tx=inc.length?Math.round(missed.length/inc.length*100):0;
+  document.getElementById('p-missed').innerHTML=`
+    ${missed.length===0?`<div class="empty-note" style="margin-bottom:18px;background:#EAF8F1;border-color:#9BD9BC;border-left-color:var(--in);color:#0B6B47"><b>Aucun appel manqué sur la période 🎉</b> Tous vos appels entrants ont été décrochés.</div>`:''}
+    <div class="grid k6">
+      ${kpi({c:'miss',icon:IC.miss,label:'Appels manqués',val:fmt(missed.length),sub:`sur ${fmt(inc.length)} entrants`,expl:'Appels entrants non décrochés (durée nulle) sur la période et le site sélectionnés.'})}
+      ${kpi({c:'rate',icon:IC.rate,label:'Taux de manqués',val:tx,unit:'%',sub:tx>20?'<b style="color:var(--alert)">à surveiller</b>':'maîtrisé',expl:'Part des appels entrants restés sans réponse. Au-delà de 20%, l\'accueil téléphonique est à renforcer.'})}
+      ${kpi({c:'miss',icon:IC.phone,label:'À rappeler',val:fmt(tcMap.size),sub:`${fmt(toCall.length)} appel(s)`,expl:'Numéros ayant un appel manqué SANS rappel sortant ultérieur de votre part. Cliquez un numéro dans la liste pour le traiter.'})}
+      ${kpi({c:'in',icon:IC.rate,label:'Rappelés',val:missed.length?Math.round(rappeles/missed.length*100):0,unit:'%',sub:`${fmt(rappeles)} traités`,expl:'Manqués pour lesquels vous avez passé un appel sortant ensuite vers le même numéro.'})}
+      ${kpi({c:'dur',icon:IC.dur,label:'Heure de pointe',val:peakH<0||!missed.length?'—':String(peakH).padStart(2,'0')+'h',sub:'des manqués',expl:'Tranche horaire où vous manquez le plus d\'appels — utile pour ajuster les présences.'})}
+      ${kpi({c:'out',icon:IC.miss,label:'Jour le plus touché',val:peakD<0||!missed.length?'—':WD[peakD],sub:'des manqués',expl:'Jour de la semaine avec le plus d\'appels manqués cumulés sur la période.'})}
+    </div>
+    <div class="grid k3" style="margin-top:16px">
+      <div class="card span2"><div class="hd"><div><h3>À rappeler en priorité</h3><p>Numéros sans rappel — cliquez pour la fiche</p></div><span class="pill">${tcMap.size}</span></div><div class="rank" id="mToCall"></div></div>
+      <div class="card"><div class="hd"><div><h3>Traitement</h3><p>Rappelés vs à rappeler</p></div></div><div class="chart-wrap sm"><canvas id="mDonut"></canvas></div></div>
+    </div>
+    <div class="grid k2" style="margin-top:16px">
+      <div class="card"><div class="hd"><div><h3>Manqués par heure</h3><p>Quand les appels échappent</p></div></div><div class="chart-wrap sm"><canvas id="mHour"></canvas></div></div>
+      <div class="card"><div class="hd"><div><h3>Manqués par jour</h3><p>Répartition hebdomadaire</p></div></div><div class="chart-wrap sm"><canvas id="mWd"></canvas></div></div>
+    </div>
+    <div class="grid k3" style="margin-top:16px">
+      <div class="card span2"><div class="hd"><div><h3>Évolution des manqués</h3><p>Tendance jour par jour</p></div></div><div class="chart-wrap sm"><canvas id="mEvo"></canvas></div></div>
+      <div class="card"><div class="hd"><div><h3>Par site</h3></div></div><div class="chart-wrap sm"><canvas id="mSite"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="hd"><div><h3>Qui manque le plus d'appels</h3><p>Top numéros manqués — cliquez pour l'historique</p></div></div><div class="rank" id="mTop"></div></div>`;
+  // à rappeler
+  document.getElementById('mToCall').innerHTML=tcArr.slice(0,12).map(([k,o])=>{const nm=nameOf(k);return `<div class="it" onclick="openDrill('${k}')"><div class="av" style="background:rgba(240,136,62,.14);color:var(--miss)">${nm?initials(nm):'!'}</div><div class="nm"><b>${escH(nm||fmtNum(k))}</b><span>dernier : ${frDate(o.last[C.ISO])} · ${hhmm(o.last)} · ${o.last[C.SITE]}</span></div><div class="ct" style="color:var(--miss)">${o.n}</div></div>`;}).join('')||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Rien à rappeler 🎉</div>';
+  document.getElementById('mTop').innerHTML=topMiss.slice(0,10).map(([k,v])=>{const mx=topMiss[0][1];const nm=nameOf(k);return `<div class="it" onclick="openDrill('${k}')"><div class="av">${nm?initials(nm):'#'}</div><div class="nm"><b>${escH(nm||fmtNum(k))}</b><span>${nm?fmtNum(k):'non répertorié'}</span></div><div class="bar"><i style="width:${v/mx*100}%;background:var(--miss)"></i></div><div class="ct">${v}</div></div>`;}).join('')||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Aucun manqué</div>';
+  mk('mDonut',{type:'doughnut',data:{labels:['Rappelés','À rappeler'],datasets:[{data:[rappeles,toCall.length],backgroundColor:[COL.in,COL.miss],borderWidth:0,cutout:'68%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14,boxWidth:7}}}}});
+  mk('mHour',{type:'bar',data:{labels:Array.from({length:24},(_,h)=>h+'h'),datasets:[{data:byHour,backgroundColor:COL.miss,borderRadius:5,maxBarThickness:18}]},options:gridOpt()});
+  mk('mWd',{type:'bar',data:{labels:WD,datasets:[{data:byWd,backgroundColor:COL.miss,borderRadius:5,maxBarThickness:32}]},options:gridOpt()});
+  mk('mEvo',{type:'line',data:{labels:days.map(frDate),datasets:[{data:days.map(d=>byDay.get(d)||0),borderColor:COL.miss,backgroundColor:'rgba(240,136,62,.1)',fill:true,tension:.35,pointRadius:0,borderWidth:2.5}]},options:gridOpt()});
+  mk('mSite',{type:'doughnut',data:{labels:bySite.map(x=>x[0]),datasets:[{data:bySite.map(x=>x[1]),backgroundColor:[COL.miss,COL.gold,COL.out,COL.cyan],borderWidth:0,cutout:'66%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14,boxWidth:7}}}}});
+}
+
+function renderOutgoing(){
+  const f=filtered().filter(r=>r[C.NAT]===1);
+  const dest=[...groupCount(f,r=>r[C.CORR]).entries()].sort((a,b)=>b[1]-a[1]);
+  const byHour=Array.from({length:24},(_,h)=>f.filter(r=>r[C.HOUR]===h).length);
+  const bySite=[...groupCount(f,r=>r[C.SITE]).entries()].sort((a,b)=>b[1]-a[1]);
+  const durOk=f.filter(r=>r[C.OK]===1).map(r=>r[C.DUR]);
+  document.getElementById('p-outgoing').innerHTML=`
+    ${f.length===0?emptyNote():''}
+    <div class="grid k4">
+      ${kpi({c:'out',icon:IC.out,label:'Appels sortants',val:fmt(f.length)})}
+      ${kpi({c:'dur',icon:IC.dur,label:'Durée moyenne',val:mmss(durOk.length?Math.round(durOk.reduce((a,b)=>a+b,0)/durOk.length):0),sub:`${hms(f.reduce((s,r)=>s+r[C.DUR],0))} cumulées`})}
+      ${kpi({c:'tot',icon:IC.phone,label:'Numéros appelés',val:fmt(dest.length)})}
+      ${kpi({c:'rate',icon:IC.rate,label:'Médiane durée',val:mmss(median(durOk))})}
+    </div>
+    <div class="grid k3" style="margin-top:16px">
+      <div class="card span2"><div class="hd"><div><h3>Numéros les plus appelés</h3><p>Cliquez pour la fiche</p></div></div><div class="rank" id="topOut"></div></div>
+      <div class="card"><div class="hd"><div><h3>Par site</h3></div></div><div class="chart-wrap sm"><canvas id="cSiteO"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="hd"><div><h3>Affluence par heure</h3><p>Quand vous émettez</p></div></div><div class="chart-wrap sm"><canvas id="cHourO"></canvas></div></div>`;
+  document.getElementById('topOut').innerHTML=dest.slice(0,10).map(([k,v])=>{const mx=dest[0][1];const nm=nameOf(k);return `<div class="it" onclick="openDrill('${k}')"><div class="av">${nm?initials(nm):'#'}</div><div class="nm"><b>${escH(nm||fmtNum(k))}</b><span>${nm?fmtNum(k):'non répertorié'}</span></div><div class="bar"><i style="width:${v/mx*100}%;background:${COL.out}"></i></div><div class="ct">${v}</div></div>`;}).join('')||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Aucun appel sortant</div>';
+  mk('cSiteO',{type:'doughnut',data:{labels:bySite.map(x=>x[0]),datasets:[{data:bySite.map(x=>x[1]),backgroundColor:[COL.out,COL.cyan,COL.gold],borderWidth:0,cutout:'66%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14,boxWidth:7}}}}});
+  mk('cHourO',{type:'bar',data:{labels:Array.from({length:24},(_,h)=>h+'h'),datasets:[{data:byHour,backgroundColor:COL.out,borderRadius:5,maxBarThickness:18}]},options:gridOpt()});
+}
+
+function renderContacts(){
   const f=filtered();
-  // peak hour
-  const hrs=[...Array(14)].map((_,i)=>i+7);
-  const hC=hrs.map(h=>f.filter(r=>r[C.HOUR]===h).length);
-  const peakH=hrs[hC.indexOf(Math.max(...hC))];
-  // by weekday
-  const wC=[0,1,2,3,4,5,6].map(w=>f.filter(r=>r[C.WD]===w).length);
-  const peakW=WD[wC.indexOf(Math.max(...wC))];
-  const days=[...new Set(f.map(r=>r[C.ISO]))];
-  const we=f.filter(r=>r[C.WD]>=5).length;
-  document.getElementById('p-time').innerHTML=`
-  <div class="kpis">
-    ${kpi('Heure de pic',peakH+'h',Math.max(...hC)+' appels')}
-    ${kpi('Jour le + chargé',peakW)}
-    ${kpi('Moy. / jour actif',days.length?Math.round(f.length/days.length):0,fmt(days.length)+' jours')}
-    ${kpi('Activité week-end',pct(we,f.length),'','accentA')}
-  </div>
-  <div class="card" style="margin-bottom:16px"><h3>Carte de chaleur — Jour × Heure</h3><p class="hint">Intensité = nombre d'appels. Révèle les créneaux de pic et les creux.</p><div id="heat"></div>
-   <div class="legend"><span>Moins</span><i style="background:#E0F5F3"></i><i style="background:#7FD4CC"></i><i style="background:#1A73E8;opacity:.6"></i><i style="background:#1A73E8"></i><span>Plus</span></div></div>
-  <div class="grid g2">
-    <div class="card"><h3>Volume par jour de semaine</h3><div class="cw sm"><canvas id="cTimeWd"></canvas></div></div>
-    <div class="card"><h3>Profil horaire détaillé</h3><div class="cw sm"><canvas id="cTimeHour"></canvas></div></div>
-  </div>`;
-  // heatmap grid
-  const hrange=[...Array(14)].map((_,i)=>i+7);
-  let max=0;const grid={};
-  [0,1,2,3,4,5,6].forEach(w=>{grid[w]={};hrange.forEach(h=>{const v=f.filter(r=>r[C.WD]===w&&r[C.HOUR]===h).length;grid[w][h]=v;if(v>max)max=v;});});
-  let g='<div class="heat" style="grid-template-columns:38px repeat('+hrange.length+',1fr)">';
-  g+='<div></div>'+hrange.map(h=>`<div class="hh">${h}h</div>`).join('');
-  [0,1,2,3,4,5,6].forEach(w=>{g+=`<div class="rl">${WD[w]}</div>`;hrange.forEach(h=>{const v=grid[w][h];const t=max?v/max:0;
-    let bg;if(v===0)bg='#F4F6F9';else if(t<.25)bg='#E0F5F3';else if(t<.5)bg='#7FD4CC';else if(t<.75)bg='rgba(26,115,232,.6)';else bg='#1A73E8';
-    g+=`<div class="hcell" style="background:${bg};color:${t>.4?'#fff':'#5a6470'}" title="${WD[w]} ${h}h : ${v} appels">${v||''}</div>`;});});
-  g+='</div>';document.getElementById('heat').innerHTML=g;
-  newChart('cTimeWd',{type:'bar',data:{labels:WD,datasets:[{data:wC,backgroundColor:COL.sort,borderRadius:4}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{display:false}}}});
-  newChart('cTimeHour',{type:'line',data:{labels:hrs.map(h=>h+'h'),datasets:[{data:hC,borderColor:COL.entr,backgroundColor:COL.entr+'22',fill:true,tension:.35,borderWidth:2.5,pointRadius:2}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{display:false}}}});
+  const map=new Map();
+  for(const r of f){const k=r[C.CORR];if(!map.has(k))map.set(k,{n:0,in:0,out:0,miss:0,dur:0,last:r[C.ISO]});const o=map.get(k);o.n++;o[r[C.NAT]?'out':'in']++;if(isMissed(r))o.miss++;o.dur+=r[C.DUR];if(r[C.ISO]>o.last)o.last=r[C.ISO];}
+  const arr=[...map.entries()].sort((a,b)=>b[1].n-a[1].n);
+  document.getElementById('p-contacts').innerHTML=`
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg><input id="cSearch" placeholder="Rechercher un nom ou un numéro…" oninput="filterContacts()"></div>
+    <div class="card" style="margin-top:14px"><div class="tbl-wrap"><table id="cTable"><thead><tr><th>Correspondant</th><th>Total</th><th>Entrants</th><th>Sortants</th><th>Manqués</th><th>Durée</th><th>Dernier appel</th></tr></thead><tbody id="cBody"></tbody></table></div></div>`;
+  window.__contacts=arr;fillContacts(arr);
 }
+function fillContacts(arr){document.getElementById('cBody').innerHTML=arr.slice(0,200).map(([k,o])=>{const nm=nameOf(k);return `<tr onclick="openDrill('${k}')" style="cursor:pointer"><td><div style="display:flex;align-items:center;gap:10px"><div class="av" style="width:30px;height:30px;border-radius:8px">${nm?initials(nm):'#'}</div><div><b style="font-size:13px">${escH(nm||fmtNum(k))}</b>${nm?`<div style="font-size:11px;color:var(--muted)" class="mono">${fmtNum(k)}</div>`:''}</div></div></td><td class="num">${o.n}</td><td class="num">${o.in}</td><td class="num">${o.out}</td><td class="num">${o.miss?'<b style="color:var(--alert)">'+o.miss+'</b>':'0'}</td><td class="num">${hms(o.dur)}</td><td class="num">${frDate(o.last)}</td></tr>`;}).join('')||emptyRow(7);}
+function filterContacts(){const q=document.getElementById('cSearch').value.toLowerCase().trim();const a=window.__contacts.filter(([k])=>!q||fmtNum(k).includes(q)||normNum(k).includes(q)||(nameOf(k)||'').toLowerCase().includes(q));fillContacts(a);}
 
-// ---------- SITES ----------
-function renderSite(){
-  const f=filtered();
-  function box(s){const sf=f.filter(r=>r[C.SITE]===s);const e=sf.filter(r=>r[C.NAT]===0).length,o=sf.filter(r=>r[C.NAT]===1).length;
-    const med=median(sf.filter(r=>r[C.DUR]>0).map(r=>r[C.DUR]));const ok=sf.filter(r=>r[C.OK]).length;
-    const profile=o>e?'Ligne émettrice':'Ligne réceptrice';
-    return `<div class="card"><h3>${s} <span style="font-weight:500;color:var(--muted);font-size:12px">— ${profile}</span></h3>
-      <div class="kpis" style="margin:10px 0 0">
-        ${kpi('Appels',fmt(sf.length))}${kpi('% Entrants',pct(e,sf.length),'','accentE')}${kpi('% Sortants',pct(o,sf.length),'','accentS')}
-        ${kpi('Durée médiane',med+' s')}${kpi('% Abouti',pct(ok,sf.length))}</div></div>`;}
-  document.getElementById('p-site').innerHTML=`
-   <div class="insight" style="margin-bottom:16px"><b>Lecture clé :</b> Tana fonctionne comme une <span class="bd">ligne émettrice</span> (quasi 100 % de sortants) et Antsirabe comme une <span class="bd">ligne réceptrice</span> (majorité d'entrants). Ce sont deux métiers téléphoniques distincts : éviter toute comparaison de volume brut.</div>
-   <div class="grid g2" style="margin-bottom:16px">${M.sites.map(box).join('')}</div>
-   <div class="grid g2">
-     <div class="card"><h3>Entrants / Sortants par site</h3><div class="cw sm"><canvas id="cSiteBar"></canvas></div></div>
-     <div class="card"><h3>Profil horaire par site</h3><div class="cw sm"><canvas id="cSiteHour"></canvas></div></div>
-   </div>`;
-  newChart('cSiteBar',{type:'bar',data:{labels:M.sites,datasets:[
-    {label:'Sortants',data:M.sites.map(s=>f.filter(r=>r[C.SITE]===s&&r[C.NAT]===1).length),backgroundColor:COL.sort},
-    {label:'Entrants',data:M.sites.map(s=>f.filter(r=>r[C.SITE]===s&&r[C.NAT]===0).length),backgroundColor:COL.entr}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'}}}});
-  const hrs=[...Array(14)].map((_,i)=>i+7);
-  const pal=[COL.sort,COL.entr];
-  newChart('cSiteHour',{type:'line',data:{labels:hrs.map(h=>h+'h'),datasets:M.sites.map((s,i)=>({label:s,data:hrs.map(h=>f.filter(r=>r[C.SITE]===s&&r[C.HOUR]===h).length),borderColor:pal[i],backgroundColor:pal[i]+'18',tension:.35,borderWidth:2.5,pointRadius:0,fill:false}))},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{position:'bottom'}}}});
+let detSearch='';
+function renderDetail(){
+  document.getElementById('p-detail').innerHTML=`
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg><input id="dSearch" placeholder="Nom, numéro…" value="${detSearch}" oninput="detSearch=this.value;fillDetail()"></div>
+      <div class="seg"><button class="${state.dir==='all'?'on':''}" onclick="state.dir='all';render()">Tous</button><button class="${state.dir==='in'?'on':''}" onclick="state.dir='in';render()">Entrants</button><button class="${state.dir==='out'?'on':''}" onclick="state.dir='out';render()">Sortants</button></div>
+      <button class="btn" style="margin-left:auto;background:var(--card);color:var(--text);border:1px solid var(--line)" onclick="exportCSV()">Exporter CSV</button>
+    </div>
+    <div class="card" style="margin-top:14px"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Heure</th><th>Appelant</th><th>Appelé</th><th>Sens</th><th>Site</th><th>Durée</th><th>État</th></tr></thead><tbody id="dBody"></tbody></table></div></div>
+    <p style="color:var(--muted);font-size:12px;margin-top:10px" id="dCount"></p>`;
+  fillDetail();
 }
+function detRows(){let f=filtered();if(detSearch.trim()){const q=detSearch.toLowerCase().trim();f=f.filter(r=>fmtNum(r[C.CALLER]).includes(q)||fmtNum(r[C.CALLED]).includes(q)||(nameOf(r[C.CALLER])||'').toLowerCase().includes(q)||(nameOf(r[C.CALLED])||'').toLowerCase().includes(q));}return f;}
+function cellNum(num){const n=nameOf(num);return n?`<span class="lnk" onclick="openDrill('${num}')" title="${escH(fmtNum(num))}">${escH(n)}</span>`:`<span class="lnk mono" onclick="openDrill('${num}')">${escH(fmtNum(num))}</span>`;}
+function fillDetail(){const f=detRows();document.getElementById('dBody').innerHTML=f.slice(0,800).map(r=>`<tr><td>${frDate(r[C.ISO])}</td><td class="num">${hhmm(r)}</td><td>${cellNum(r[C.CALLER])}</td><td>${cellNum(r[C.CALLED])}</td><td><span class="tag ${r[C.NAT]?'out':'in'}">${r[C.NAT]?'Sortant':'Entrant'}</span></td><td>${r[C.SITE]}</td><td class="num">${mmss(r[C.DUR])}</td><td>${isMissed(r)?'<span class="tag miss">Manqué</span>':'<span class="tag ok">OK</span>'}</td></tr>`).join('')||emptyRow(8);const c=document.getElementById('dCount');if(c)c.textContent=`${fmt(f.length)} appel(s)`+(f.length>800?' — 800 affichés':'');}
+function exportCSV(){const f=detRows();const head=['Date','Heure','Appelant','Appelé','Sens','Site','Duree_s','Abouti'];const lines=[head.join(';')].concat(f.map(r=>[r[C.ISO],r[C.HOUR]+'h',labelOf(r[C.CALLER]),labelOf(r[C.CALLED]),r[C.NAT]?'Sortant':'Entrant',r[C.SITE],r[C.DUR],r[C.OK]?'Oui':'Non'].map(x=>`"${String(x).replace(/"/g,'""')}"`).join(';')));const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='appels.csv';a.click();}
 
-// ---------- CORRESPONDANTS ----------
-function renderCorr(){
-  const f=filtered();
-  function topN(field,n){const m={};f.forEach(r=>{m[r[field]]=(m[r[field]]||0)+1;});return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,n);}
-  const called=topN(C.CALLED,10), callers=topN(C.CALLER,10);
-  // pareto on correspondant
-  const cm={};f.forEach(r=>{const k=r[C.CORR];if(!cm[k])cm[k]={n:0,d:0};cm[k].n++;cm[k].d+=r[C.DUR];});
-  const arr=Object.entries(cm).sort((a,b)=>b[1].n-a[1].n);
-  const top10share=arr.slice(0,10).reduce((s,x)=>s+x[1].n,0);
-  const mask=k=>k.length>6?k.slice(0,4)+' ** ** '+k.slice(-2):k;
-  // étiquette : nom du contact si connu, sinon numéro masqué
-  const disp=k=>{const n=nameOf(k);return n?n:mask(k);};
-  const cellCorr=k=>{const n=nameOf(k);return n
-    ?`${escH(n)}<br><span style="font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace">${mask(k)}</span>`
-    :`<span style="font-family:'IBM Plex Mono',monospace">${mask(k)}</span>`;};
-  document.getElementById('p-corr').innerHTML=`
-   <div class="kpis">
-     ${kpi('Correspondants',fmt(arr.length),'numéros distincts')}
-     ${kpi('% volume top 10',pct(top10share,f.length),'concentration','accentA')}
-     ${kpi('Top correspondant',arr.length?disp(arr[0][0]):'–',arr.length?arr[0][1].n+' appels':'')}
-   </div>
-   <div class="grid g2" style="margin-bottom:16px">
-     <div class="card"><h3>Top 10 numéros appelés</h3><div class="cw"><canvas id="cCalled"></canvas></div></div>
-     <div class="card"><h3>Top 10 numéros appelants</h3><div class="cw"><canvas id="cCallers"></canvas></div></div>
-   </div>
-   <div class="card" style="margin-bottom:16px"><h3>Concentration (Pareto)</h3><p class="hint">% cumulé du volume par correspondant classé</p><div class="cw"><canvas id="cPareto"></canvas></div></div>
-   <div class="card"><h3>Détail correspondants</h3><div class="scrollT" style="max-height:340px"><table>
-     <thead><tr><th>Correspondant</th><th class="num">Appels</th><th class="num">Durée cumulée</th><th class="num">Durée médiane</th></tr></thead>
-     <tbody>${arr.slice(0,40).map(([k,v])=>`<tr><td>${cellCorr(k)}</td><td class="num">${v.n}</td><td class="num">${(v.d/60).toFixed(0)} min</td><td class="num">${median(f.filter(r=>r[C.CORR]===k&&r[C.DUR]>0).map(r=>r[C.DUR]))} s</td></tr>`).join('')}</tbody></table></div></div>`;
-  const barOpt=h=>({indexAxis:'y',maintainAspectRatio:false,scales:{x:{beginAtZero:true,grid:{color:COL.grid}},y:{grid:{display:false}}},plugins:{legend:{display:false}}});
-  newChart('cCalled',{type:'bar',data:{labels:called.map(x=>disp(x[0])),datasets:[{data:called.map(x=>x[1]),backgroundColor:COL.sort,borderRadius:3}]},options:barOpt()});
-  newChart('cCallers',{type:'bar',data:{labels:callers.map(x=>disp(x[0])),datasets:[{data:callers.map(x=>x[1]),backgroundColor:COL.entr,borderRadius:3}]},options:barOpt()});
-  const top=arr.slice(0,25);let cum=0;const cumPct=top.map(x=>{cum+=x[1].n;return Math.round(cum/f.length*1000)/10;});
-  newChart('cPareto',{data:{labels:top.map((x,i)=>i+1),datasets:[
-    {type:'bar',label:'Appels',data:top.map(x=>x[1].n),backgroundColor:COL.sort+'cc',yAxisID:'y',borderRadius:2},
-    {type:'line',label:'% cumulé',data:cumPct,borderColor:COL.alert,borderWidth:2.5,pointRadius:0,yAxisID:'y1',tension:.2}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,position:'left',grid:{color:COL.grid}},y1:{beginAtZero:true,max:100,position:'right',grid:{display:false},ticks:{callback:v=>v+'%'}},x:{grid:{display:false},title:{display:true,text:'correspondants classés'}}},plugins:{legend:{position:'bottom'}}}});
+/* ===================== Drilldown ===================== */
+function openDrill(num){
+  const calls=RAW.filter(r=>r[C.CORR]===num).sort((a,b)=>a[C.ISO]<b[C.ISO]?1:-1);
+  const nm=nameOf(num);const inc=calls.filter(r=>r[C.NAT]===0),out=calls.filter(r=>r[C.NAT]===1),miss=calls.filter(isMissed);
+  const dur=calls.reduce((s,r)=>s+r[C.DUR],0);const isos=calls.map(r=>r[C.ISO]);
+  const hours=calls.map(r=>r[C.HOUR]);const minH=hours.length?Math.min(...hours):null,maxH=hours.length?Math.max(...hours):null;
+  const plage=minH==null?'—':(minH===maxH?String(minH).padStart(2,'0')+'h':String(minH).padStart(2,'0')+'h–'+String(maxH).padStart(2,'0')+'h');
+  const txMiss=inc.length?Math.round(miss.length/inc.length*100):0;
+  const avg=calls.filter(r=>r[C.OK]).length?Math.round(calls.filter(r=>r[C.OK]).reduce((a,r)=>a+r[C.DUR],0)/calls.filter(r=>r[C.OK]).length):0;
+  const byDay=[...groupCount(calls,r=>r[C.ISO]).entries()].sort((a,b)=>a[0]<b[0]?-1:1);
+  document.getElementById('modal').innerHTML=`
+    <div class="mh"><button class="x" onclick="closeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <div class="who"><div class="mav">${nm?initials(nm):'#'}</div><div><h3>${escH(nm||fmtNum(num))}</h3><div class="num">${escH(fmtNum(num))}${nm?'':' · non répertorié'}</div></div></div></div>
+    <div class="mb">
+      <div class="mini" style="grid-template-columns:repeat(3,1fr)">
+        <div class="m" style="border:1px solid var(--line)"><div class="l">Taux manqué</div><div class="v" style="color:${txMiss>30?'var(--alert)':txMiss>0?'var(--miss)':'var(--in)'}">${inc.length?txMiss+'%':'—'}</div><div style="font-size:11px;color:var(--muted);margin-top:3px">${miss.length}/${inc.length} entrants</div></div>
+        <div class="m" style="border:1px solid var(--line)"><div class="l">Nb d'appels</div><div class="v">${calls.length}</div><div style="font-size:11px;color:var(--muted);margin-top:3px">${inc.length} entr. · ${out.length} sort.</div></div>
+        <div class="m" style="border:1px solid var(--line)"><div class="l">Plage horaire</div><div class="v" style="font-size:18px">${plage}</div><div style="font-size:11px;color:var(--muted);margin-top:3px">heures d'appel</div></div>
+      </div>
+      <div class="mini">
+        <div class="m"><div class="l">Durée totale</div><div class="v" style="font-size:16px">${hms(dur)}</div></div>
+        <div class="m"><div class="l">Durée moy.</div><div class="v" style="font-size:16px">${mmss(avg)}</div></div>
+        <div class="m"><div class="l">Premier appel</div><div class="v" style="font-size:14px">${isos.length?frDate(isos[isos.length-1]):'—'}</div></div>
+        <div class="m"><div class="l">Dernier appel</div><div class="v" style="font-size:14px">${isos.length?frDate(isos[0]):'—'}</div></div>
+      </div>
+      ${byDay.length>1?`<div class="chart-wrap sm" style="margin-bottom:18px"><canvas id="cDrill"></canvas></div>`:''}
+      <h3 style="font-family:'Space Grotesk';font-size:14px;margin:0 0 6px">Historique des appels</h3>
+      <div class="tl">${calls.slice(0,40).map(r=>`<div class="e"><div class="when">${frDate(r[C.ISO])} · ${hhmm(r)}</div><div class="meta"><span class="tag ${r[C.NAT]?'out':'in'}">${r[C.NAT]?'Sortant':'Entrant'}</span><span class="tag ${isMissed(r)?'miss':'ok'}">${isMissed(r)?'Manqué':mmss(r[C.DUR])}</span><span style="color:var(--muted)">${r[C.SITE]}</span></div></div>`).join('')}</div>
+    </div>`;
+  document.getElementById('scrim').classList.add('on');
+  if(byDay.length>1)mk('cDrill',{type:'bar',data:{labels:byDay.map(x=>frDate(x[0])),datasets:[{data:byDay.map(x=>x[1]),backgroundColor:COL.cyan,borderRadius:4,maxBarThickness:24}]},options:gridOpt()});
 }
+function closeModal(){document.getElementById('scrim').classList.remove('on');}
 
-// ---------- DURÉES ----------
-function renderDur(){
-  const f=filtered();
-  const nz=f.filter(r=>r[C.DUR]>0).map(r=>r[C.DUR]);
-  const mean=nz.length?Math.round(nz.reduce((a,b)=>a+b,0)/nz.length):0;
-  const med=median(nz);const max=Math.max(0,...f.map(r=>r[C.DUR]));
-  const lt30=f.filter(r=>r[C.DUR]>0&&r[C.DUR]<30).length, gt180=f.filter(r=>r[C.DUR]>180).length;
-  const bins=[['Non abouti',r=>r===0],['1–30 s',r=>r>0&&r<30],['30–60 s',r=>r>=30&&r<60],['1–3 min',r=>r>=60&&r<180],['3–10 min',r=>r>=180&&r<600],['> 10 min',r=>r>=600]];
-  const binC=bins.map(b=>f.filter(r=>b[1](r[C.DUR])).length);
-  document.getElementById('p-dur').innerHTML=`
-   <div class="kpis">
-     ${kpi('Durée moyenne',mean+' s','hors nuls')}
-     ${kpi('Durée médiane',med+' s','plus représentative','accentS')}
-     ${kpi('Durée max',mmss(max),Math.round(max/60)+' min')}
-     ${kpi('% < 30 s',pct(lt30,nz.length),'appels courts')}
-     ${kpi('% > 3 min',pct(gt180,f.length),'appels longs')}
-   </div>
-   <div class="note" style="margin-bottom:16px"><b>Asymétrie de distribution :</b> la moyenne (${mean} s) est très supérieure à la médiane (${med} s). Quelques appels longs tirent la moyenne vers le haut. Pour le pilotage, <b>privilégier la médiane</b> : la moitié des communications durent moins de ${med} s.</div>
-   <div class="card" style="margin-bottom:16px"><h3>Distribution des durées</h3><p class="hint">Répartition des appels par tranche</p><div class="cw"><canvas id="cDist"></canvas></div></div>
-   <div class="grid g2">
-     <div class="card"><h3>Durée médiane par heure</h3><div class="cw sm"><canvas id="cDurHour"></canvas></div></div>
-     <div class="card"><h3>Durée médiane par site</h3><div class="cw sm"><canvas id="cDurSite"></canvas></div></div>
-   </div>`;
-  newChart('cDist',{type:'bar',data:{labels:bins.map(b=>b[0]),datasets:[{data:binC,backgroundColor:bins.map((b,i)=>i===0?COL.alert:COL.sort),borderRadius:4}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid}},x:{grid:{display:false}}},plugins:{legend:{display:false}}}});
-  const hrs=[...Array(14)].map((_,i)=>i+7);
-  newChart('cDurHour',{type:'bar',data:{labels:hrs.map(h=>h+'h'),datasets:[{data:hrs.map(h=>median(f.filter(r=>r[C.HOUR]===h&&r[C.DUR]>0).map(r=>r[C.DUR]))),backgroundColor:COL.entr,borderRadius:3}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid},title:{display:true,text:'secondes'}},x:{grid:{display:false}}},plugins:{legend:{display:false}}}});
-  newChart('cDurSite',{type:'bar',data:{labels:M.sites,datasets:[{data:M.sites.map(s=>median(f.filter(r=>r[C.SITE]===s&&r[C.DUR]>0).map(r=>r[C.DUR]))),backgroundColor:[COL.sort,COL.entr],borderRadius:4}]},
-    options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:COL.grid},title:{display:true,text:'secondes'}},x:{grid:{display:false}}},plugins:{legend:{display:false}}}});
+/* ===================== Notifications appels manqués ===================== */
+function recentMissed(){return RAW.filter(isMissed).slice(0,60);}
+function detectMissed(){
+  const cur=RAW.map((r,i)=>[r,i]).filter(([r])=>isMissed(r));
+  if(firstLoad){cur.forEach(([r,i])=>seenMissed.add(sigOf(r,i)));saveSeen();return;}
+  const fresh=[];
+  cur.forEach(([r,i])=>{const sg=sigOf(r,i);if(!seenMissed.has(sg)){seenMissed.add(sg);fresh.push(r);}});
+  if(fresh.length){saveSeen();fresh.slice(0,4).forEach(r=>notifyMissed(r));unread=fresh.concat(unread).slice(0,60);updateBell();if(notifOn)chime();}
 }
-
-// ---------- DÉTAIL ----------
-let detSort={k:0,dir:-1},detSearch='';
-function renderDet(){
-  const f=filtered();
-  document.getElementById('p-det').innerHTML=`
-   <div class="card">
-     <input class="search" id="detSearch" placeholder="🔍 Rechercher un numéro (appelant ou appelé)…" value="${detSearch}">
-     <p class="hint" id="detCount"></p>
-     <div class="scrollT"><table id="detTable">
-       <thead><tr>
-         <th data-k="0">Date</th><th data-k="1">Heure</th><th data-k="2">Appelant</th><th data-k="3">Appelé</th>
-         <th data-k="4">Sens</th><th data-k="6">Site</th><th class="num" data-k="5">Durée</th><th data-k="7">Abouti</th>
-       </tr></thead><tbody id="detBody"></tbody></table></div>
-   </div>`;
-  document.getElementById('detSearch').addEventListener('input',e=>{detSearch=e.target.value;fillDet();});
-  document.querySelectorAll('#detTable th').forEach(th=>th.addEventListener('click',()=>{const k=+th.dataset.k;detSort.dir=detSort.k===k?-detSort.dir:1;detSort.k=k;fillDet();}));
-  fillDet();
+function notifyMissed(r){
+  const nm=nameOf(r[C.CORR]);const num=fmtNum(r[C.CORR]);const heure=hhmm(r);
+  const sub=`${num}${nm?' · '+nm:''} · ${heure} · ${r[C.SITE]}`;
+  toast('Appel entrant manqué',sub);
+  if(notifOn&&'Notification'in window&&Notification.permission==='granted'){try{new Notification('📞 Appel manqué',{body:`${num} — ${heure} — ${r[C.SITE]}`,silent:true});}catch(e){}}
 }
-function fillDet(){
-  let f=filtered();
-  if(detSearch.trim()){const q=detSearch.trim().toLowerCase();f=f.filter(r=>r[C.CALLER].toLowerCase().includes(q)||r[C.CALLED].toLowerCase().includes(q)||(nameOf(r[C.CALLER])||'').toLowerCase().includes(q)||(nameOf(r[C.CALLED])||'').toLowerCase().includes(q));}
-  f=[...f].sort((a,b)=>{const k=detSort.k;let va=a[k],vb=b[k];if(k===1){va=a[C.ISO]+a[C.HOUR];vb=b[C.ISO]+b[C.HOUR];}if(va<vb)return-detSort.dir;if(va>vb)return detSort.dir;return 0;});
-  document.getElementById('detCount').textContent=`${fmt(f.length)} appels affichés`+(detSearch?` (recherche : "${detSearch}")`:'');
-  const cellNum=num=>{const n=nameOf(num);return n
-    ?`<span title="${escH(num)}">${escH(n)}</span>`
-    :`<span style="font-family:'IBM Plex Mono',monospace">${escH(num)}</span>`;};
-  const rows=f.slice(0,600).map(r=>`<tr>
-    <td>${r[C.ISO].split('-').reverse().join('/')}</td><td style="font-family:'IBM Plex Mono',monospace">${String(r[C.HOUR]).padStart(2,'0')}h</td>
-    <td>${cellNum(r[C.CALLER])}</td><td>${cellNum(r[C.CALLED])}</td>
-    <td><span class="tag ${r[C.NAT]?'s':'e'}">${r[C.NAT]?'Sortant':'Entrant'}</span></td><td>${r[C.SITE]}</td>
-    <td class="num">${mmss(r[C.DUR])}</td><td><span class="tag ${r[C.OK]?'ok':'no'}">${r[C.OK]?'Oui':'Non'}</span></td></tr>`).join('');
-  document.getElementById('detBody').innerHTML=rows+(f.length>600?`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px">… ${fmt(f.length-600)} lignes supplémentaires (affiner les filtres pour les voir)</td></tr>`:'');
+function toast(title,sub){
+  const t=document.createElement('div');t.className='toast';
+  t.innerHTML=`<div class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div><div class="tc"><b>${escH(title)}</b><span>${escH(sub)}</span></div><button class="tx" onclick="this.parentNode.remove()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+  document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),9000);
 }
-
-// ---------- RÉUSSITE DES APPELS ----------
-function tauxColor(t){if(t>=95)return'#E6F4EA';if(t>=90)return'#F4F6F9';if(t>=85)return'#FFF8EC';return'#FCE8E6';}
-function tauxInk(t){if(t>=95)return'#137333';if(t>=90)return'#5a6470';if(t>=85)return'#9a6212';return'#a50e0e';}
-function renderRate(){
-  const f=filtered();
-  const hours=[...new Set(f.map(r=>r[C.HOUR]))].sort((a,b)=>a-b);
-  const rowsH=hours.map(h=>{const hf=f.filter(r=>r[C.HOUR]===h);const ok=hf.filter(r=>r[C.OK]).length;const tot=hf.length;return{lab:String(h).padStart(2,'0')+' h',ok,ko:tot-ok,tot,taux:tot?Math.round(ok/tot*1000)/10:0};});
-  const totOk=f.filter(r=>r[C.OK]).length, totN=f.length, totKo=totN-totOk;
-  // plages
-  const plages=[['Matin (avant 12 h)',r=>r<12],['Midi (12 h – 14 h)',r=>r>=12&&r<14],['Après-midi (14 h – 18 h)',r=>r>=14&&r<18],['Soir (18 h et +)',r=>r>=18]];
-  const rowsP=plages.map(([lab,fn])=>{const pf=f.filter(r=>fn(r[C.HOUR]));const ok=pf.filter(r=>r[C.OK]).length;const tot=pf.length;return{lab,ok,ko:tot-ok,tot,taux:tot?Math.round(ok/tot*1000)/10:0};}).filter(r=>r.tot>0);
-  // pire créneau
-  const worst=[...rowsH].filter(r=>r.tot>=10).sort((a,b)=>a.taux-b.taux)[0];
-  document.getElementById('p-rate').innerHTML=`
-   <div class="kpis">
-     ${kpi('Appels',fmt(totN),'sur la sélection')}
-     ${kpi('Réussis',fmt(totOk),pct(totOk,totN)+' du total','accentE')}
-     ${kpi('Ratés',fmt(totKo),pct(totKo,totN)+' du total','accentA')}
-     ${kpi('Taux de réussite',pct(totOk,totN))}
-     ${kpi('Pire créneau',worst?worst.lab:'–',worst?worst.taux+' % de réussite':'')}
-   </div>
-   <div class="card" style="margin-bottom:16px"><h3>Réussis vs ratés par heure</h3><p class="hint">Empilement par tranche horaire — réagit aux filtres Site / Sens / Période</p><div class="cw"><canvas id="cRateBar"></canvas></div></div>
-   <div class="grid g2">
-     <div class="card"><h3>Détail par tranche horaire</h3><p class="hint">Couleur = taux de réussite (vert ≥ 95 %, ambre 85–90 %, rouge < 85 %)</p>
-       <div class="scrollT" style="max-height:430px"><table>
-         <thead><tr><th>Tranche</th><th class="num">Réussis</th><th class="num">Ratés</th><th class="num">Total</th><th class="num">Taux</th></tr></thead>
-         <tbody>${rowsH.map(r=>`<tr><td class="bd">${r.lab}</td><td class="num">${r.ok}</td><td class="num">${r.ko}</td><td class="num">${r.tot}</td><td class="num" style="background:${tauxColor(r.taux)};color:${tauxInk(r.taux)};font-weight:600">${r.taux} %</td></tr>`).join('')}
-         <tr class="tot" style="border-top:2px solid var(--ink)"><td><b>Total</b></td><td class="num"><b>${fmt(totOk)}</b></td><td class="num"><b>${fmt(totKo)}</b></td><td class="num"><b>${fmt(totN)}</b></td><td class="num"><b>${pct(totOk,totN)}</b></td></tr>
-         </tbody></table></div></div>
-     <div class="card"><h3>Synthèse par plage horaire</h3><p class="hint">Regroupement matin / midi / après-midi / soir</p>
-       <div class="scrollT" style="max-height:430px"><table>
-         <thead><tr><th>Plage</th><th class="num">Réussis</th><th class="num">Ratés</th><th class="num">Total</th><th class="num">Taux</th></tr></thead>
-         <tbody>${rowsP.map(r=>`<tr><td class="bd">${r.lab}</td><td class="num">${r.ok}</td><td class="num">${r.ko}</td><td class="num">${r.tot}</td><td class="num" style="background:${tauxColor(r.taux)};color:${tauxInk(r.taux)};font-weight:600">${r.taux} %</td></tr>`).join('')}</tbody></table></div>
-       <div class="note" style="margin-top:14px"><b>Note :</b> « raté » est un proxy (durée = 0 s) en l'absence du statut d'appel Keyyo. Il regroupe appels manqués, raccrochés immédiats, échecs réseau et messagerie. À lire comme une tendance.</div>
-     </div>
-   </div>`;
-  newChart('cRateBar',{type:'bar',data:{labels:rowsH.map(r=>r.lab),datasets:[
-    {label:'Réussis',data:rowsH.map(r=>r.ok),backgroundColor:COL.good},
-    {label:'Ratés',data:rowsH.map(r=>r.ko),backgroundColor:COL.alert}]},
-    options:{maintainAspectRatio:false,scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,beginAtZero:true,grid:{color:COL.grid}}},plugins:{legend:{position:'bottom'}}}});
+function updateBell(){const b=document.getElementById('bell-badge');const n=unread.length;b.textContent=n>9?'9+':n;b.classList.toggle('hide',n===0);}
+function toggleNotifCenter(e){e.stopPropagation();notifOpen=!notifOpen;document.getElementById('notif').classList.toggle('on',notifOpen);if(notifOpen){unread=[];updateBell();renderNotifCenter();}}
+function renderNotifCenter(){
+  const list=recentMissed();
+  document.getElementById('notif').innerHTML=`<div class="nh"><b>Appels manqués</b><span style="font-size:12px;color:var(--muted)">${list.length}</span></div><div class="nl">${list.length?list.map(r=>`<div class="ni" onclick="closeNotifCenter();openDrill('${r[C.CORR]}')"><div class="d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6"/></svg></div><div class="t"><b>${escH(fmtNum(r[C.CORR]))}</b><span>${hhmm(r)} · ${r[C.SITE]}${nameOf(r[C.CORR])?' · '+escH(nameOf(r[C.CORR])):''}</span></div></div>`).join(''):'<div class="empty">Aucun appel manqué 🎉</div>'}</div>`;
 }
+function closeNotifCenter(){notifOpen=false;document.getElementById('notif').classList.remove('on');}
+document.addEventListener('click',()=>{if(notifOpen)closeNotifCenter();});
 
-// ---------- ROUTER ----------
-const TITLES={exec:'Vue Exécutive',vol:'Analyse des Volumes',time:'Analyse Temporelle',site:'Analyse des Sites',corr:'Analyse des Correspondants',dur:'Analyse des Durées',rate:'Réussite des Appels',det:'Détail des Appels'};
-const RENDER={exec:renderExec,vol:renderVol,time:renderTime,site:renderSite,corr:renderCorr,dur:renderDur,rate:renderRate,det:renderDet};
-function render(){RENDER[state.page]();}
-function go(p){state.page=p;document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));document.getElementById('p-'+p).classList.add('on');
-  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.p===p));document.getElementById('ptitle').textContent=TITLES[p];render();}
+/* ===================== Son ===================== */
+let actx;
+function unlockAudio(){if(!actx){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}if(actx&&actx.state==='suspended')actx.resume();}
+document.addEventListener('click',unlockAudio,{once:true});
+function chime(){if(!soundOn||!actx)return;try{const now=actx.currentTime;[[784,0],[1047,.13],[1319,.26]].forEach(([f,d])=>{const o=actx.createOscillator(),g=actx.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(actx.destination);const t=now+d;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.16,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.45);o.start(t);o.stop(t+.5);});}catch(e){}}
+function toggleSound(){soundOn=!soundOn;document.getElementById('sw-sound').classList.toggle('on',soundOn);if(soundOn){unlockAudio();chime();}}
+function toggleNotif(){notifOn=!notifOn;document.getElementById('sw-notif').classList.toggle('on',notifOn);if(notifOn&&'Notification'in window&&Notification.permission==='default')Notification.requestPermission();}
 
-// init filters
-function initFilters(){
-  const fm=document.getElementById('fMonth');fm.innerHTML='<option value="all">Toute la période</option>'+M.ym.map(m=>`<option value="${m}">${mlabel(m)}</option>`).join('');
-  const fs=document.getElementById('fSite');fs.innerHTML='<option value="all">Tous</option>'+M.sites.map(s=>`<option value="${s}">${s}</option>`).join('');
-  fm.onchange=e=>{state.month=e.target.value;render();};
-  fs.onchange=e=>{state.site=e.target.value;render();};
-  document.getElementById('fNat').onchange=e=>{state.nat=e.target.value;render();};
-  document.getElementById('reset').onclick=()=>{state.month='all';state.site='all';state.nat='all';fm.value='all';fs.value='all';document.getElementById('fNat').value='all';render();};
-}
-document.getElementById('nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b)go(b.dataset.p);});
-/* boot gere par la couche live */
+/* ===================== Divers UI ===================== */
+function escH(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function emptyRow(n){return `<tr><td colspan="${n}" style="text-align:center;color:var(--muted);padding:30px">Aucune donnée sur cette période</td></tr>`;}
+function emptyNote(){return `<div class="empty-note" style="margin-bottom:18px"><b>Aucun appel sur la période sélectionnée.</b> Élargissez les dates (essayez « Tout ») ou vérifiez les filtres. ${DIAG&&DIAG.rawSeen===0?'L\'API n\'a renvoyé aucun enregistrement.':''}</div>`;}
 
+/* ===================== Live status ===================== */
+function fmtTime(iso){try{return new Date(iso).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch(e){return'—';}}
+function setLive(kind,at,warn){const el=document.getElementById('live');el.className='live'+(kind==='warn'?' warn':kind==='err'?' err':'');const t=document.getElementById('live-tx');if(kind==='ok')t.innerHTML='Live · '+fmtTime(at);else if(kind==='warn')t.innerHTML='Live · 0 appel';else if(kind==='err')t.textContent='Hors-ligne';el.title=warn||'';}
 
-// =================== COUCHE LIVE (Vercel serverless /api/data) ===================
-const API_URL = '/api/data';
-const CLIENT_POLL_MS = 60000;
-let __firstLoad = true, __lastUpdatedAt = null, __pollTimer = null;
-
-function fmtTime(d){ try{ return new Date(d).toLocaleTimeString('fr-FR'); }catch(e){ return '—'; } }
-function setLive(kind, updatedAt, warning){
-  const b=document.getElementById('liveBadge'), t=document.getElementById('liveText'); if(!b) return;
-  b.className='live '+kind;
-  if(kind==='ok'){ t.innerHTML='Live · maj <b>'+fmtTime(updatedAt)+'</b>'; b.title=warning?('Avertissement: '+warning):'Connecté à Keyyo'; }
-  else if(kind==='warn'){ t.innerHTML='Live · 0 appel · maj <b>'+fmtTime(updatedAt)+'</b>'; b.title=warning||'Connecté mais aucune donnée'; }
-  else if(kind==='err'){ t.innerHTML='Hors-ligne · maj '+(updatedAt?fmtTime(updatedAt):'—'); b.title=warning||'Erreur'; }
-  else { t.textContent='Connexion…'; b.title=''; }
-}
-function showOverlay(title,msg,isErr){ const o=document.getElementById('overlay');
-  document.getElementById('ovTitle').textContent=title; document.getElementById('ovMsg').textContent=msg;
-  document.getElementById('ovRetry').style.display=isErr?'inline-block':'none'; o.className=isErr?'err':''; o.style.display='flex'; }
-function hideOverlay(){ document.getElementById('overlay').style.display='none'; }
-function toast(msg){ const el=document.getElementById('toast'); if(!el) return; el.textContent=msg; el.style.display='block';
-  clearTimeout(el.__t); el.__t=setTimeout(()=>el.style.display='none',6000); }
-
-function rebuildFilters(){
-  const fm=document.getElementById('fMonth');
-  if(fm){ fm.innerHTML='<option value="all">Toute la période</option>'+M.ym.map(m=>`<option value="${m}">${mlabel(m)}</option>`).join('');
-    if(![...fm.options].some(o=>o.value===state.month)) state.month='all'; fm.value=state.month; }
-  const fs=document.getElementById('fSite');
-  if(fs){ fs.innerHTML='<option value="all">Tous</option>'+M.sites.map(s=>`<option value="${s}">${s}</option>`).join('');
-    if(![...fs.options].some(o=>o.value===state.site)) state.site='all'; fs.value=state.site; }
-}
-function updateScope(){ const el=document.getElementById('scope'); if(!el||!M.n) return;
-  el.innerHTML=`<b>Périmètre</b><br>${fmt(M.n)} appels · ${M.sites.length} sites<br>${M.min.split('-').reverse().join('/')} → ${M.max.split('-').reverse().join('/')}<br>${M.days} jours d'activité<br><span style="color:#5a6678">Statut « abouti » approximé via la durée &gt; 0.</span>`; }
-
-function showEmptyNote(p){
-  const host=document.getElementById('p-exec'); if(!host) return;
-  const d=p.diag||{};
-  const why=p.warning||'Aucun appel renvoyé par l’API.';
-  host.innerHTML=`<div class="empty-note">
-    <b>Connecté à Keyyo, mais 0 appel exploitable.</b><br>
-    ${why}<br><br>
-    Vu côté API : <b>${(d.rawSeen??0)}</b> enregistrement(s) brut(s) · <b>${(d.kept??0)}</b> gardé(s) · <b>${(d.dropped??0)}</b> écarté(s).<br>
-    Étape suivante : ouvrir <code>/api/debug</code> pour voir la réponse brute de Keyyo (CSI, filtres, noms de champs).
-  </div>`;
-}
-function applyData(p){
-  R=p.rows||[]; M=p.meta||{}; __lastUpdatedAt=p.updatedAt||new Date().toISOString();
-  const empty = R.length===0;
-  if(__firstLoad){ __firstLoad=false;
-    if(empty){ go('exec'); showEmptyNote(p); }
-    else { updateScope(); initFilters(); go('exec'); }
-  } else {
-    if(empty){ showEmptyNote(p); }
-    else { updateScope(); rebuildFilters(); render(); }
-  }
-  if(empty){ setLive('warn', __lastUpdatedAt, p.warning||'0 appel'); toast('0 appel renvoyé — voir le diagnostic affiché.'); }
-  else { setLive('ok', __lastUpdatedAt, p.warning); if(p.warning) toast('Données partielles : '+p.warning); }
-}
-
-async function loadData(){
+/* ===================== Chargement ===================== */
+async function loadData(force){
   try{
-    const r=await fetch(API_URL);                 // URL stable -> profite du cache CDN
-    if(!r.ok){ let j={}; try{ j=await r.json(); }catch(e){} throw new Error(j.error||('HTTP '+r.status)); }
-    hideOverlay(); applyData(await r.json());
+    const r=await fetch('/api/data'+(force?'?force=1':''),{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const p=await r.json();
+    if(p.error)throw new Error(p.error);
+    document.getElementById('overlay').classList.remove('on');
+    RAW=p.rows||[];META=p.meta||{};DIAG=p.diag||{};
+    document.getElementById('foot-period').textContent=META.min?`${frDate(META.min)} → ${frDate(META.max)} · ${fmt(META.n)} appels`:'—';
+    if(firstLoad){if(!state.from){const max=META.max||new Date().toISOString().slice(0,10);const d=new Date(max+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-89);state.from=d.toISOString().slice(0,10);state.to=max;}renderDateBar();}
+    detectMissed();
+    setLive(RAW.length?'ok':'warn',p.updatedAt,p.warning);
+    render();
+    firstLoad=false;
   }catch(e){
-    if(__firstLoad){ showOverlay('Connexion impossible', e.message, true); }
-    else { setLive('err', __lastUpdatedAt, e.message); toast('Actualisation échouée : '+e.message); }
+    if(firstLoad){document.getElementById('ov-p').textContent=String(e.message||e);document.getElementById('overlay').classList.add('on');}
+    setLive('err',null,String(e.message||e));
   }
 }
-async function forceRefresh(){
-  const btn=document.getElementById('btnRefresh'); if(btn){ btn.disabled=true; btn.textContent='…'; }
-  setLive('load');
-  try{
-    const r=await fetch(API_URL+'?force=1&_='+Date.now(),{cache:'no-store'});  // bypass CDN
-    if(!r.ok){ let j={}; try{ j=await r.json(); }catch(e){} throw new Error(j.error||('HTTP '+r.status)); }
-    hideOverlay(); applyData(await r.json());
-  }catch(e){ setLive('err', __lastUpdatedAt, e.message); toast('Actualisation échouée : '+e.message); }
-  if(btn){ btn.disabled=false; btn.textContent='⟳'; }
-}
+function startPolling(){setInterval(()=>{if(!document.hidden)loadData();},60000);}
 
-document.getElementById('btnRefresh').addEventListener('click', forceRefresh);
-document.getElementById('ovRetry').addEventListener('click', ()=>{ showOverlay('Connexion à Keyyo…','Nouvelle tentative…',false); loadData(); });
-function startPolling(){ if(__pollTimer) return; __pollTimer=setInterval(loadData, CLIENT_POLL_MS); }
-function stopPolling(){ clearInterval(__pollTimer); __pollTimer=null; }
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stopPolling(); } else { startPolling(); loadData(); } });
-
-(async()=>{ await loadContacts(); loadData(); startPolling(); })();
-
+/* ===================== Boot ===================== */
+buildNav();
+document.querySelector('.nav a[data-go="overview"]').classList.add('on');
+(async()=>{await loadContacts();await loadData();startPolling();})();
 </script>
+</body>
+</html>

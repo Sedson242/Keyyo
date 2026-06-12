@@ -40,6 +40,7 @@ function readConfig() {
     // Endpoint confirme OK sans filtre -> off par defaut. Mettre a 1 pour tester
     // un filtrage serveur (le format Keyyo attend probablement de l'unix).
     sendDateFilters: (process.env.KEYYO_SEND_DATE_FILTERS || '0') !== '0',
+    autoDiscover: (process.env.KEYYO_AUTODISCOVER || '1') !== '0',
     // 'date' (YYYY-MM-DD) | 'datetime' (YYYY-MM-DD HH:MM:SS) | 'unix'
     dateFilterFormat: process.env.KEYYO_DATE_FILTER_FORMAT || 'unix',
     historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
@@ -97,11 +98,11 @@ function safeTz(tz) {
 }
 
 function localParts(date, tz) {
-  const fmt = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false });
+  const fmt = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
   const p = Object.fromEntries(fmt.formatToParts(date).map(x => [x.type, x.value]));
   const iso = `${p.year}-${p.month}-${p.day}`;
   const wdJs = new Date(`${iso}T12:00:00Z`).getUTCDay();
-  return { iso, hour: parseInt(p.hour, 10) % 24, ym: iso.slice(0, 7), wd: (wdJs + 6) % 7 };
+  return { iso, hour: parseInt(p.hour, 10) % 24, min: parseInt(p.minute, 10) || 0, ym: iso.slice(0, 7), wd: (wdJs + 6) % 7 };
 }
 
 // Horodatage : accepte unix (s ou ms) et chaines ISO / "YYYY-MM-DD HH:MM:SS".
@@ -167,8 +168,8 @@ function normalizeRecord(raw, ctx) {
   }
   dur = parseInt(dur, 10); if (isNaN(dur) || dur < 0) dur = 0;
   const nat = direction === 'out' ? 1 : 0;
-  const { iso, hour, ym, wd } = localParts(ts, tz);
-  return [iso, hour, caller, called, nat, dur, site, dur > 0 ? 1 : 0, nat === 1 ? called : caller, wd, ym];
+  const { iso, hour, min, ym, wd } = localParts(ts, tz);
+  return [iso, hour, caller, called, nat, dur, site, dur > 0 ? 1 : 0, nat === 1 ? called : caller, wd, ym, min];
 }
 
 // Extraction robuste : _embedded (a plat ou imbrique), enveloppes connues,
@@ -200,19 +201,61 @@ function extractRecords(payload) {
   return out;
 }
 
-function buildUrl(cfg, csi, resource) {
+// --- Strategies de filtrage des call_detail (auto-decouverte de la bonne) ---
+function strategyMakers(cfg) {
+  const u = x => String(Math.floor(x.getTime() / 1000));
+  const d = x => x.toISOString().slice(0, 10);
+  const win = () => ({ since: new Date(Date.now() - cfg.historyDays * 864e5), until: new Date() });
+  return [
+    { label: 'baseline', make: () => ({}) },
+    { label: 'filters_begin_unix', make: () => { const { since, until } = win(); return { [`filters[${cfg.filterBegin}]`]: u(since), [`filters[${cfg.filterEnd}]`]: u(until) }; } },
+    { label: 'filters_begin_iso', make: () => { const { since, until } = win(); return { [`filters[${cfg.filterBegin}]`]: d(since), [`filters[${cfg.filterEnd}]`]: d(until) }; } },
+    { label: 'filters_start_time_minmax', make: () => { const { since, until } = win(); return { 'filters[start_time][min]': u(since), 'filters[start_time][max]': u(until) }; } },
+    { label: 'since_until_unix', make: () => { const { since, until } = win(); return { since: u(since), until: u(until) }; } },
+    { label: 'date_begin_end_unix', make: () => { const { since, until } = win(); return { date_begin: u(since), date_end: u(until) }; } },
+    { label: 'count_1000', make: () => ({ count: '1000' }) },
+  ];
+}
+
+let _disc; // strategie retenue (cache process) : {label, make} | null
+async function discoverStrategy(cfg, token) {
+  if (_disc !== undefined) return _disc;
+  if (!cfg.autoDiscover) { _disc = null; return null; }
+  const csi = Object.keys(cfg.services)[0];
+  if (!csi) { _disc = null; return null; }
+  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  const path = cfg.resourcePath.replace('{csi}', encodeURIComponent(csi)).replace('{resource}', 'outgoing_call_detail');
+  let best = null;
+  for (const cand of strategyMakers(cfg)) {
+    try {
+      const url = new URL(`${cfg.base}/${path}`);
+      for (const [k, v] of Object.entries(cand.make())) url.searchParams.set(k, v);
+      if (cfg.localizedNumbers) url.searchParams.set('localized_numbers', '1');
+      const payload = await fetchJson(url.toString(), headers, { retries: 1, timeoutMs: 12000 });
+      const recs = extractRecords(payload);
+      if (!recs.length) continue;
+      let oldest = Infinity;
+      for (const r of recs) { const ts = parseTimestamp(pick(r, DATE_FIELDS)) || findAnyTimestamp(r); if (ts && ts.getTime() < oldest) oldest = ts.getTime(); }
+      const sc = { label: cand.label, make: cand.make, count: recs.length, oldest };
+      // On privilegie la couverture (record le plus ancien), puis le volume.
+      if (!best || sc.oldest < best.oldest - 864e5 || (Math.abs(sc.oldest - best.oldest) <= 864e5 && sc.count > best.count)) best = sc;
+    } catch (e) { /* candidat suivant */ }
+  }
+  _disc = best || null;
+  return _disc;
+}
+
+function buildUrl(cfg, csi, resource, strat) {
   const path = cfg.resourcePath.replace('{csi}', encodeURIComponent(csi)).replace('{resource}', resource);
   const url = new URL(`${cfg.base}/${path}`);
-  if (cfg.sendDateFilters) {
+  let params = {};
+  if (strat && strat.make) params = strat.make();
+  else if (cfg.sendDateFilters) {
     const until = new Date(), since = new Date(Date.now() - cfg.historyDays * 864e5);
-    const fmt = (x) => {
-      if (cfg.dateFilterFormat === 'unix') return String(Math.floor(x.getTime() / 1000));
-      if (cfg.dateFilterFormat === 'datetime') return x.toISOString().slice(0, 19).replace('T', ' ');
-      return x.toISOString().slice(0, 10);
-    };
-    url.searchParams.set(`filters[${cfg.filterBegin}]`, fmt(since));
-    url.searchParams.set(`filters[${cfg.filterEnd}]`, fmt(until));
+    const fmt = (x) => cfg.dateFilterFormat === 'unix' ? String(Math.floor(x.getTime() / 1000)) : cfg.dateFilterFormat === 'datetime' ? x.toISOString().slice(0, 19).replace('T', ' ') : x.toISOString().slice(0, 10);
+    params = { [`filters[${cfg.filterBegin}]`]: fmt(since), [`filters[${cfg.filterEnd}]`]: fmt(until) };
   }
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   if (cfg.localizedNumbers) url.searchParams.set('localized_numbers', '1');
   return url.toString();
 }
@@ -236,9 +279,9 @@ async function fetchJson(url, headers, { retries = 3, timeoutMs = 15000 } = {}) 
   throw lastErr;
 }
 
-async function fetchResource(cfg, token, csi, site, resource, direction) {
+async function fetchResource(cfg, token, csi, site, resource, direction, strat) {
   const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
-  let url = buildUrl(cfg, csi, resource);
+  let url = buildUrl(cfg, csi, resource, strat);
   const rows = [];
   let rawSeen = 0, dropped = 0, pages = 0, sampleRaw = null, sampleKeys = null;
   const ctx = { direction, site, tz: cfg.tz, dropped: (r) => { dropped++; if (!sampleRaw) { sampleRaw = r; sampleKeys = Object.keys(r || {}); } } };
@@ -276,10 +319,12 @@ export async function fetchAllCalls(cfgOverride) {
   let csiCheck = null;
   if (cfg.validateCsi) csiCheck = await validateCsis(cfg, token);
 
+  const strat = await discoverStrategy(cfg, token);
+
   const tasks = [];
   for (const [csi, site] of Object.entries(cfg.services)) {
-    tasks.push(fetchResource(cfg, token, csi, site, 'outgoing_call_detail', 'out'));
-    tasks.push(fetchResource(cfg, token, csi, site, 'incoming_call_detail', 'in'));
+    tasks.push(fetchResource(cfg, token, csi, site, 'outgoing_call_detail', 'out', strat));
+    tasks.push(fetchResource(cfg, token, csi, site, 'incoming_call_detail', 'in', strat));
   }
   const settled = await Promise.allSettled(tasks);
   const rows = [], errors = [], perTask = [];
@@ -311,7 +356,7 @@ export async function fetchAllCalls(cfgOverride) {
     rows,
     meta: buildMeta(rows),
     errors: hint ? [...errors, hint] : errors,
-    diag: { rawSeen, kept: rows.length, dropped, perTask, csiCheck },
+    diag: { rawSeen, kept: rows.length, dropped, perTask, csiCheck, strategy: strat ? strat.label : 'baseline' },
   };
 }
 
