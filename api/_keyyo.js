@@ -214,6 +214,7 @@ function strategyMakers(cfg) {
     { label: 'since_until_unix', make: () => { const { since, until } = win(); return { since: u(since), until: u(until) }; } },
     { label: 'date_begin_end_unix', make: () => { const { since, until } = win(); return { date_begin: u(since), date_end: u(until) }; } },
     { label: 'count_1000', make: () => ({ count: '1000' }) },
+    { label: 'param_value_array', make: () => { const { since, until } = win(); return { 'param[0][name]': cfg.filterBegin, 'param[0][value]': u(since), 'param[1][name]': cfg.filterEnd, 'param[1][value]': u(until) }; } },
   ];
 }
 

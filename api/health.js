@@ -10,6 +10,7 @@ export default async function handler(req, res) {
       status: rows.length ? 'ok' : 'empty',
       calls: rows.length,
       rawSeen: diag.rawSeen,
+      strategy: diag.strategy,
       dropped: diag.dropped,
       sites: meta.sites,
       period: { min: meta.min, max: meta.max },
