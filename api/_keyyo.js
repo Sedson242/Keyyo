@@ -226,21 +226,23 @@ async function discoverStrategy(cfg, token) {
   if (!csi) { _disc = null; return null; }
   const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
   const path = cfg.resourcePath.replace('{csi}', encodeURIComponent(csi)).replace('{resource}', 'outgoing_call_detail');
+  // Essais EN PARALLELE (borne le temps total ~8s) pour ne pas provoquer de 504.
+  const results = await Promise.allSettled(strategyMakers(cfg).map(async cand => {
+    const url = new URL(`${cfg.base}/${path}`);
+    for (const [k, v] of Object.entries(cand.make())) url.searchParams.set(k, v);
+    if (cfg.localizedNumbers) url.searchParams.set('localized_numbers', '1');
+    const payload = await fetchJson(url.toString(), headers, { retries: 0, timeoutMs: 8000 });
+    const recs = extractRecords(payload);
+    if (!recs.length) return null;
+    let oldest = Infinity;
+    for (const r of recs) { const ts = parseTimestamp(pick(r, DATE_FIELDS)) || findAnyTimestamp(r); if (ts && ts.getTime() < oldest) oldest = ts.getTime(); }
+    return { label: cand.label, make: cand.make, count: recs.length, oldest };
+  }));
   let best = null;
-  for (const cand of strategyMakers(cfg)) {
-    try {
-      const url = new URL(`${cfg.base}/${path}`);
-      for (const [k, v] of Object.entries(cand.make())) url.searchParams.set(k, v);
-      if (cfg.localizedNumbers) url.searchParams.set('localized_numbers', '1');
-      const payload = await fetchJson(url.toString(), headers, { retries: 1, timeoutMs: 12000 });
-      const recs = extractRecords(payload);
-      if (!recs.length) continue;
-      let oldest = Infinity;
-      for (const r of recs) { const ts = parseTimestamp(pick(r, DATE_FIELDS)) || findAnyTimestamp(r); if (ts && ts.getTime() < oldest) oldest = ts.getTime(); }
-      const sc = { label: cand.label, make: cand.make, count: recs.length, oldest };
-      // On privilegie la couverture (record le plus ancien), puis le volume.
-      if (!best || sc.oldest < best.oldest - 864e5 || (Math.abs(sc.oldest - best.oldest) <= 864e5 && sc.count > best.count)) best = sc;
-    } catch (e) { /* candidat suivant */ }
+  for (const r of results) {
+    if (r.status !== 'fulfilled' || !r.value) continue;
+    const sc = r.value;
+    if (!best || sc.oldest < best.oldest - 864e5 || (Math.abs(sc.oldest - best.oldest) <= 864e5 && sc.count > best.count)) best = sc;
   }
   _disc = best || null;
   return _disc;
@@ -280,15 +282,15 @@ async function fetchJson(url, headers, { retries = 3, timeoutMs = 15000 } = {}) 
   throw lastErr;
 }
 
-async function fetchResource(cfg, token, csi, site, resource, direction, strat) {
+async function fetchResource(cfg, token, csi, site, resource, direction, strat, deadline) {
   const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
   let url = buildUrl(cfg, csi, resource, strat);
   const rows = [];
   let rawSeen = 0, dropped = 0, pages = 0, sampleRaw = null, sampleKeys = null;
   const ctx = { direction, site, tz: cfg.tz, dropped: (r) => { dropped++; if (!sampleRaw) { sampleRaw = r; sampleKeys = Object.keys(r || {}); } } };
 
-  for (let page = 0; page < cfg.maxPages && url; page++) {
-    const payload = await fetchJson(url, headers);
+  for (let page = 0; page < cfg.maxPages && url && (!deadline || Date.now() < deadline); page++) {
+    const payload = await fetchJson(url, headers, { retries: 1, timeoutMs: 9000 });
     const recs = extractRecords(payload);
     rawSeen += recs.length;
     if (!sampleKeys && recs[0]) sampleKeys = Object.keys(recs[0]);
@@ -320,12 +322,13 @@ export async function fetchAllCalls(cfgOverride) {
   let csiCheck = null;
   if (cfg.validateCsi) csiCheck = await validateCsis(cfg, token);
 
+  const deadline = Date.now() + 25000; // budget global (Vercel coupe à 30s) : on rend ce qu'on a
   const strat = await discoverStrategy(cfg, token);
 
   const tasks = [];
   for (const [csi, site] of Object.entries(cfg.services)) {
-    tasks.push(fetchResource(cfg, token, csi, site, 'outgoing_call_detail', 'out', strat));
-    tasks.push(fetchResource(cfg, token, csi, site, 'incoming_call_detail', 'in', strat));
+    tasks.push(fetchResource(cfg, token, csi, site, 'outgoing_call_detail', 'out', strat, deadline));
+    tasks.push(fetchResource(cfg, token, csi, site, 'incoming_call_detail', 'in', strat, deadline));
   }
   const settled = await Promise.allSettled(tasks);
   const rows = [], errors = [], perTask = [];
