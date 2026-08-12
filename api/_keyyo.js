@@ -25,7 +25,7 @@ function parseServices(raw) {
     if (i > 0) { const csi = pair.slice(0, i).trim(); const site = pair.slice(i + 1).trim(); if (csi && site) out[csi] = site; }
   }
   if (Object.keys(out).length) return out;
-  throw new Error('KEYYO_SERVICES illisible. Format simple: 33175433361=Tana,33253359565=Antsirabe (ou JSON). Recu: "' + s.slice(0, 40) + '"');
+  throw new Error('KEYYO_SERVICES illisible. Format simple: 33175433361=Tana,33253359565=Antsirabe, ,3375433361=Anodea (ou JSON). Recu: "' + s.slice(0, 40) + '"');
 }
 
 function readConfig() {
