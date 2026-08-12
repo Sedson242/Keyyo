@@ -38,6 +38,18 @@ Nouveau module `api/_store.js` (**Vercel Blob**, fichier `keyyo/history.json`) :
   (ex. `*/10 * * * *`).
 - Statut visible dans le pied de page : `base : N archivés (+x)`.
 
+### 5. Correctif v2.1 — historique 3 mois effectif
+Le filtrage de dates est désormais **conforme à la doc officielle Keyyo** :
+`date_start` / `date_end` au format `YYYY-MM-DD HH:MM` + pagination `limit`/`offset`
+(l'ancienne auto-découverte envoyait des filtres non reconnus → Keyyo renvoyait sa
+fenêtre par défaut = mois courant). Le 1er chargement couvre bien 92 jours.
+
+### 6. Nouvelle page « Journal (logs) »
+Menu latéral → **Journal (logs)** : chaque log Keyyo avec **Ligne (CSI)**,
+**Collaborateur (prénom)**, **Email rattaché**, appelant/appelé (noms résolus), sens,
+durée, état. Recherche multi-critères (numéro, nom, email, prénom, ligne, CSI) et
+**export CSV dédié** (`logs_keyyo.csv`, 14 colonnes dont Email — prêt pour Power BI).
+
 ## Déploiement (3 étapes)
 
 1. **Créer le Blob store** : Vercel → projet → **Storage → Create Database → Blob**
@@ -46,6 +58,8 @@ Nouveau module `api/_store.js` (**Vercel Blob**, fichier `keyyo/history.json`) :
 2. **Variables d'environnement** (Project → Settings → Environment Variables) :
    - `KEYYO_SERVICES` = `auto` (ou compléter le mapping avec la 3e ligne)
    - `KEYYO_HISTORY_DAYS` = `92` · `KEYYO_SYNC_DAYS` = `7` · `KEYYO_RETENTION_DAYS` = `0`
+   - supprimer si présentes : `KEYYO_AUTODISCOVER`, `KEYYO_SEND_DATE_FILTERS`, `KEYYO_DATE_FILTER_FORMAT` (obsolètes)
+   - si `KEYYO_FILTER_BEGIN/END` existent déjà sur Vercel : les passer à `date_start` / `date_end`
    - optionnel : `CRON_SECRET` (protège `/api/sync`)
 3. **Déployer** : `vercel --prod` (la dépendance `@vercel/blob` s'installe seule).
 

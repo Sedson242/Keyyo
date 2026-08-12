@@ -286,6 +286,7 @@ td.num{text-align:right;font-family:'IBM Plex Mono';font-variant-numeric:tabular
       <section class="page" data-page="missed" id="p-missed"></section>
       <section class="page" data-page="outgoing" id="p-outgoing"></section>
       <section class="page" data-page="contacts" id="p-contacts"></section>
+      <section class="page" data-page="logs" id="p-logs"></section>
       <section class="page" data-page="detail" id="p-detail"></section>
     </main>
   </div>
@@ -307,6 +308,7 @@ const NAV=[
   ['missed','Appels manqués','À rappeler en priorité — analyse détaillée','M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6M23 1l-6 6M17 1l6 6'],
   ['outgoing','Appels sortants','Activité émise par site','M12 5v14M19 12l-7 7-7-7'],
   ['contacts','Correspondants','Classement et fiches détaillées','M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'],
+  ['logs','Journal (logs)','Logs Keyyo — ligne, email et collaborateur par appel','M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8'],
   ['detail','Détail des appels','Journal complet et recherche','M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01']
 ];
 let RAW=[],META={},CONTACTS={},DIAG={};
@@ -404,7 +406,7 @@ rate:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
 dur:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>'};
 
 /* ===================== Pages ===================== */
-function render(){const p=state.page;if(p==='overview')renderOverview();else if(p==='incoming')renderIncoming();else if(p==='missed')renderMissed();else if(p==='outgoing')renderOutgoing();else if(p==='contacts')renderContacts();else if(p==='detail')renderDetail();renderNotifCenter();}
+function render(){const p=state.page;if(p==='overview')renderOverview();else if(p==='incoming')renderIncoming();else if(p==='missed')renderMissed();else if(p==='outgoing')renderOutgoing();else if(p==='contacts')renderContacts();else if(p==='logs')renderLogs();else if(p==='detail')renderDetail();renderNotifCenter();}
 
 function statBlock(rows){
   const inc=rows.filter(r=>r[C.NAT]===0),out=rows.filter(r=>r[C.NAT]===1);
@@ -606,6 +608,54 @@ function renderContacts(){
 }
 function fillContacts(arr){document.getElementById('cBody').innerHTML=arr.slice(0,200).map(([k,o])=>{const nm=nameOf(k);return `<tr onclick="openDrill('${k}')" style="cursor:pointer"><td><div style="display:flex;align-items:center;gap:10px"><div class="av" style="width:30px;height:30px;border-radius:8px">${nm?initials(nm):'#'}</div><div><b style="font-size:13px">${escH(nm||fmtNum(k))}</b>${nm?`<div style="font-size:11px;color:var(--muted)" class="mono">${fmtNum(k)}</div>`:''}</div></div></td><td class="num">${o.n}</td><td class="num">${o.in}</td><td class="num">${o.out}</td><td class="num">${o.miss?'<b style="color:var(--alert)">'+o.miss+'</b>':'0'}</td><td class="num">${hms(o.dur)}</td><td class="num">${frDate(o.last)}</td></tr>`;}).join('')||emptyRow(7);}
 function filterContacts(){const q=document.getElementById('cSearch').value.toLowerCase().trim();const a=window.__contacts.filter(([k])=>!q||fmtNum(k).includes(q)||normNum(k).includes(q)||(nameOf(k)||'').toLowerCase().includes(q));fillContacts(a);}
+
+/* ===================== Journal (logs Keyyo) ===================== */
+let logSearch='';
+function renderLogs(){
+  const nbL=Object.keys(LINES||{}).length,nbMail=Object.values(LINES||{}).filter(l=>l&&l.email).length;
+  document.getElementById('p-logs').innerHTML=`
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg><input id="lSearch" placeholder="Numéro, nom, email, prénom, ligne…" value="${escH(logSearch)}" oninput="logSearch=this.value;fillLogs()"></div>
+      <div class="seg"><button class="${state.dir==='all'?'on':''}" onclick="state.dir='all';render()">Tous</button><button class="${state.dir==='in'?'on':''}" onclick="state.dir='in';render()">Entrants</button><button class="${state.dir==='out'?'on':''}" onclick="state.dir='out';render()">Sortants</button></div>
+      <span style="font-size:12px;color:var(--muted)">${nbL} ligne(s) · ${nbMail} email(s) rattaché(s) — <span class="lnk" onclick="window.open('/api/lines','_blank')">vérifier /api/lines</span></span>
+      <button class="btn" style="margin-left:auto;background:var(--card);color:var(--text);border:1px solid var(--line)" onclick="exportLogsCSV()">Exporter CSV</button>
+    </div>
+    <div class="card" style="margin-top:14px"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Heure</th><th>Ligne (CSI)</th><th>Collaborateur</th><th>Email</th><th>Appelant</th><th>Appelé</th><th>Sens</th><th>Durée</th><th>État</th></tr></thead><tbody id="lBody"></tbody></table></div></div>
+    <p style="color:var(--muted);font-size:12px;margin-top:10px" id="lCount"></p>`;
+  fillLogs();
+}
+function logRows(){
+  let f=filtered();
+  if(logSearch.trim()){const q=logSearch.toLowerCase().trim();
+    f=f.filter(r=>{const l=lineOf(r[C.SITE])||{};
+      return fmtNum(r[C.CALLER]).toLowerCase().includes(q)||fmtNum(r[C.CALLED]).toLowerCase().includes(q)
+        ||(nameOf(r[C.CALLER])||'').toLowerCase().includes(q)||(nameOf(r[C.CALLED])||'').toLowerCase().includes(q)
+        ||String(r[C.SITE]).toLowerCase().includes(q)||String(l.csi||'').toLowerCase().includes(q)
+        ||String(l.email||'').toLowerCase().includes(q)||String(l.firstName||'').toLowerCase().includes(q);});}
+  return f;
+}
+function fillLogs(){
+  const f=logRows();
+  document.getElementById('lBody').innerHTML=f.slice(0,1000).map(r=>{const l=lineOf(r[C.SITE])||{};
+    return `<tr>
+      <td>${frDate(r[C.ISO])}</td><td class="num">${hhmm(r)}</td>
+      <td><b>${escH(r[C.SITE])}</b>${l.csi?`<div style="font-size:11px;color:var(--muted)" class="mono">${escH(l.csi)}</div>`:''}</td>
+      <td>${l.firstName?`<span class="tag in">${escH(l.firstName)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
+      <td style="color:var(--muted);font-size:12px">${escH(l.email||'—')}</td>
+      <td>${cellNum(r[C.CALLER])}</td><td>${cellNum(r[C.CALLED])}</td>
+      <td><span class="tag ${r[C.NAT]?'out':'in'}">${r[C.NAT]?'Sortant':'Entrant'}</span></td>
+      <td class="num">${mmss(r[C.DUR])}</td>
+      <td>${isMissed(r)?'<span class="tag miss">Manqué</span>':'<span class="tag ok">OK</span>'}</td></tr>`;}).join('')||emptyRow(10);
+  const c=document.getElementById('lCount');if(c)c.textContent=`${fmt(f.length)} log(s)`+(f.length>1000?' — 1 000 affichés (affinez la recherche ou exportez en CSV)':'');
+}
+function exportLogsCSV(){
+  const f=logRows();
+  const head=['Date','Heure','Ligne','CSI','Collaborateur','Email','Appelant','Appelant_nom','Appelé','Appelé_nom','Sens','Duree_s','Abouti','Manqué'];
+  const lines=[head.join(';')].concat(f.map(r=>{const l=lineOf(r[C.SITE])||{};
+    return [r[C.ISO],hhmm(r),r[C.SITE],l.csi||'',l.firstName||'',l.email||'',fmtNum(r[C.CALLER]),nameOf(r[C.CALLER])||'',fmtNum(r[C.CALLED]),nameOf(r[C.CALLED])||'',r[C.NAT]?'Sortant':'Entrant',r[C.DUR],r[C.OK]?'Oui':'Non',isMissed(r)?'Oui':'Non']
+      .map(x=>`"${String(x).replace(/"/g,'""')}"`).join(';');}));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='logs_keyyo.csv';a.click();
+}
 
 let detSearch='';
 function renderDetail(){

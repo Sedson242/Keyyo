@@ -25,7 +25,7 @@ function parseServices(raw) {
     if (i > 0) { const csi = pair.slice(0, i).trim(); const site = pair.slice(i + 1).trim(); if (csi && site) out[csi] = site; }
   }
   if (Object.keys(out).length) return out;
-  throw new Error('KEYYO_SERVICES illisible. Format simple: 33175433361=Tana,33253359565=Antsirabe, ,3375433361=Anodea (ou JSON). Recu: "' + s.slice(0, 40) + '"');
+  throw new Error('KEYYO_SERVICES illisible. Format simple: 33175433361=Tana,33253359565=Antsirabe (ou JSON). Recu: "' + s.slice(0, 40) + '"');
 }
 
 function readConfig() {
@@ -39,8 +39,9 @@ function readConfig() {
     services: parseServices(process.env.KEYYO_SERVICES || 'auto'),
     syncDays: parseInt(process.env.KEYYO_SYNC_DAYS || '7', 10),
     resourcePath: process.env.KEYYO_RESOURCE_PATH || 'services/{csi}/{resource}',
-    filterBegin: process.env.KEYYO_FILTER_BEGIN || 'date_begin',
+    filterBegin: process.env.KEYYO_FILTER_BEGIN || 'date_start',
     filterEnd: process.env.KEYYO_FILTER_END || 'date_end',
+    pageLimit: parseInt(process.env.KEYYO_PAGE_LIMIT || '500', 10),
     // Endpoint confirme OK sans filtre -> off par defaut. Mettre a 1 pour tester
     // un filtrage serveur (le format Keyyo attend probablement de l'unix).
     sendDateFilters: (process.env.KEYYO_SEND_DATE_FILTERS || '0') !== '0',
@@ -205,69 +206,26 @@ function extractRecords(payload) {
   return out;
 }
 
-// --- Strategies de filtrage des call_detail (auto-decouverte de la bonne) ---
-function strategyMakers(cfg) {
-  const u = x => String(Math.floor(x.getTime() / 1000));
-  const d = x => x.toISOString().slice(0, 10);
-  const win = () => ({ since: new Date(Date.now() - cfg.historyDays * 864e5), until: new Date() });
-  return [
-    { label: 'baseline', make: () => ({}) },
-    { label: 'filters_begin_unix', make: () => { const { since, until } = win(); return { [`filters[${cfg.filterBegin}]`]: u(since), [`filters[${cfg.filterEnd}]`]: u(until) }; } },
-    { label: 'filters_begin_iso', make: () => { const { since, until } = win(); return { [`filters[${cfg.filterBegin}]`]: d(since), [`filters[${cfg.filterEnd}]`]: d(until) }; } },
-    { label: 'filters_start_time_minmax', make: () => { const { since, until } = win(); return { 'filters[start_time][min]': u(since), 'filters[start_time][max]': u(until) }; } },
-    { label: 'since_until_unix', make: () => { const { since, until } = win(); return { since: u(since), until: u(until) }; } },
-    { label: 'date_begin_end_unix', make: () => { const { since, until } = win(); return { date_begin: u(since), date_end: u(until) }; } },
-    { label: 'count_1000', make: () => ({ count: '1000' }) },
-    { label: 'param_value_array', make: () => { const { since, until } = win(); return { 'param[0][name]': cfg.filterBegin, 'param[0][value]': u(since), 'param[1][name]': cfg.filterEnd, 'param[1][value]': u(until) }; } },
-  ];
+// --- Filtres de dates CONFORMES A LA DOC KEYYO ---
+// GET /services/:csi/{incoming,outgoing}_call_detail accepte :
+//   date_start / date_end : "YYYY-MM-DD HH:MM" (date_end EXCLUSIVE si HH:MM omis)
+//   limit / offset        : pagination
+// (source : api.keyyo.com/developers/docs/.../outgoing_call_detail)
+function fmtKeyyoDate(d, tz) {
+  const f = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  const p = Object.fromEntries(f.formatToParts(d).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
-let _discLabel; // label de la strategie retenue (cache process) : string | null
-// On ne met en cache QUE le label : le maker est reconstruit avec le cfg courant,
-// pour que la fenetre de dates (92 j au 1er chargement, KEYYO_SYNC_DAYS ensuite)
-// soit toujours celle demandee et non celle figee au 1er appel.
-async function discoverStrategy(cfg, token) {
-  if (_discLabel !== undefined) {
-    return _discLabel === null ? null : (strategyMakers(cfg).find(s => s.label === _discLabel) || null);
-  }
-  if (!cfg.autoDiscover) { _discLabel = null; return null; }
-  const csi = Object.keys(cfg.services)[0];
-  if (!csi) { _discLabel = null; return null; }
-  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
-  const path = cfg.resourcePath.replace('{csi}', encodeURIComponent(csi)).replace('{resource}', 'outgoing_call_detail');
-  // Essais EN PARALLELE (borne le temps total ~8s) pour ne pas provoquer de 504.
-  const results = await Promise.allSettled(strategyMakers(cfg).map(async cand => {
-    const url = new URL(`${cfg.base}/${path}`);
-    for (const [k, v] of Object.entries(cand.make())) url.searchParams.set(k, v);
-    if (cfg.localizedNumbers) url.searchParams.set('localized_numbers', '1');
-    const payload = await fetchJson(url.toString(), headers, { retries: 0, timeoutMs: 8000 });
-    const recs = extractRecords(payload);
-    if (!recs.length) return null;
-    let oldest = Infinity;
-    for (const r of recs) { const ts = parseTimestamp(pick(r, DATE_FIELDS)) || findAnyTimestamp(r); if (ts && ts.getTime() < oldest) oldest = ts.getTime(); }
-    return { label: cand.label, make: cand.make, count: recs.length, oldest };
-  }));
-  let best = null;
-  for (const r of results) {
-    if (r.status !== 'fulfilled' || !r.value) continue;
-    const sc = r.value;
-    if (!best || sc.oldest < best.oldest - 864e5 || (Math.abs(sc.oldest - best.oldest) <= 864e5 && sc.count > best.count)) best = sc;
-  }
-  _discLabel = best ? best.label : null;
-  return _discLabel === null ? null : (strategyMakers(cfg).find(s => s.label === _discLabel) || null);
-}
-
-function buildUrl(cfg, csi, resource, strat) {
+function buildUrl(cfg, csi, resource, offset) {
   const path = cfg.resourcePath.replace('{csi}', encodeURIComponent(csi)).replace('{resource}', resource);
   const url = new URL(`${cfg.base}/${path}`);
-  let params = {};
-  if (strat && strat.make) params = strat.make();
-  else if (cfg.sendDateFilters) {
-    const until = new Date(), since = new Date(Date.now() - cfg.historyDays * 864e5);
-    const fmt = (x) => cfg.dateFilterFormat === 'unix' ? String(Math.floor(x.getTime() / 1000)) : cfg.dateFilterFormat === 'datetime' ? x.toISOString().slice(0, 19).replace('T', ' ') : x.toISOString().slice(0, 10);
-    params = { [`filters[${cfg.filterBegin}]`]: fmt(since), [`filters[${cfg.filterEnd}]`]: fmt(until) };
-  }
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const since = new Date(Date.now() - cfg.historyDays * 864e5);
+  const until = new Date(Date.now() + 864e5); // +1 j : date_end est exclusive
+  url.searchParams.set(cfg.filterBegin, fmtKeyyoDate(since, cfg.tz));
+  url.searchParams.set(cfg.filterEnd, fmtKeyyoDate(until, cfg.tz));
+  url.searchParams.set('limit', String(cfg.pageLimit));
+  if (offset > 0) url.searchParams.set('offset', String(offset));
   if (cfg.localizedNumbers) url.searchParams.set('localized_numbers', '1');
   return url.toString();
 }
@@ -291,22 +249,25 @@ async function fetchJson(url, headers, { retries = 3, timeoutMs = 15000 } = {}) 
   throw lastErr;
 }
 
-async function fetchResource(cfg, token, csi, site, resource, direction, strat, deadline) {
+async function fetchResource(cfg, token, csi, site, resource, direction, deadline) {
   const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
-  let url = buildUrl(cfg, csi, resource, strat);
   const rows = [];
-  let rawSeen = 0, dropped = 0, pages = 0, sampleRaw = null, sampleKeys = null;
+  let rawSeen = 0, dropped = 0, pages = 0, sampleRaw = null, sampleKeys = null, offset = 0;
   const ctx = { direction, site, tz: cfg.tz, dropped: (r) => { dropped++; if (!sampleRaw) { sampleRaw = r; sampleKeys = Object.keys(r || {}); } } };
 
+  let url = buildUrl(cfg, csi, resource, 0);
   for (let page = 0; page < cfg.maxPages && url && (!deadline || Date.now() < deadline); page++) {
     const payload = await fetchJson(url, headers, { retries: 1, timeoutMs: 9000 });
     const recs = extractRecords(payload);
     rawSeen += recs.length;
     if (!sampleKeys && recs[0]) sampleKeys = Object.keys(recs[0]);
     for (const rec of recs) { const row = normalizeRecord(rec, ctx); if (row) rows.push(row); }
-    const next = payload?._links?.next?.href;
-    url = next ? (next.startsWith('http') ? next : new URL(next, cfg.base + '/').toString()) : null;
     pages++;
+    // Pagination : _links.next si fourni, sinon offset+=limit tant que la page est pleine.
+    const next = payload?._links?.next?.href;
+    if (next) url = next.startsWith('http') ? next : new URL(next, cfg.base + '/').toString();
+    else if (recs.length >= cfg.pageLimit) { offset += cfg.pageLimit; url = buildUrl(cfg, csi, resource, offset); }
+    else url = null;
   }
   return { rows, diag: { csi, site, resource, direction, rawSeen, kept: rows.length, dropped, pages, sampleKeys } };
 }
@@ -401,12 +362,11 @@ export async function fetchAllCalls(opts = {}) {
   if (cfg.validateCsi) csiCheck = await validateCsis(cfg, token);
 
   const deadline = Date.now() + 25000; // budget global (Vercel coupe à 30s) : on rend ce qu'on a
-  const strat = await discoverStrategy(cfg, token);
 
   const tasks = [];
   for (const [csi, site] of Object.entries(cfg.services)) {
-    tasks.push(fetchResource(cfg, token, csi, site, 'outgoing_call_detail', 'out', strat, deadline));
-    tasks.push(fetchResource(cfg, token, csi, site, 'incoming_call_detail', 'in', strat, deadline));
+    tasks.push(fetchResource(cfg, token, csi, site, 'outgoing_call_detail', 'out', deadline));
+    tasks.push(fetchResource(cfg, token, csi, site, 'incoming_call_detail', 'in', deadline));
   }
   const settled = await Promise.allSettled(tasks);
   const rows = [], errors = [], perTask = [];
@@ -439,7 +399,7 @@ export async function fetchAllCalls(opts = {}) {
     lines,
     meta: buildMeta(rows),
     errors: hint ? [...errors, hint] : errors,
-    diag: { rawSeen, kept: rows.length, dropped, perTask, csiCheck, strategy: strat ? strat.label : 'baseline', windowDays: cfg.historyDays, services: cfg.services },
+    diag: { rawSeen, kept: rows.length, dropped, perTask, csiCheck, strategy: 'date_start/date_end (doc Keyyo) + limit/offset', windowDays: cfg.historyDays, services: cfg.services },
   };
 }
 
