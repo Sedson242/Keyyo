@@ -35,7 +35,7 @@ function halRecords(payload) {
 let _g = { value: 0, exp: 0 };
 async function graphToken(c) {
   const now = Date.now(); if (_g.value && now < _g.exp - 60000) return _g.value;
-  const body = new URLSearchParams({ client_id: c.clientId, client_secret: c.clientSecret, grant_type: 'plecorre@bios-expertise.com', scope: 'https://graph.microsoft.com/.default' });
+  const body = new URLSearchParams({ client_id: c.clientId, client_secret: c.clientSecret, grant_type: 'client_credentials', scope: 'https://graph.microsoft.com/.default' });
   const res = await fetch(`${c.authority}/${c.tenant}/oauth2/v2.0/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   const t = await res.text(); let j = {}; try { j = JSON.parse(t); } catch (e) {}
   if (!res.ok || !j.access_token) throw new Error('Graph OAuth (' + res.status + ') : ' + (j.error_description || j.error || t.slice(0, 140)));

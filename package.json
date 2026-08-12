@@ -1,12 +1,15 @@
 {
   "name": "keyyo-vercel-reporting",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test:keyyo": "node --env-file=.env.local api/_keyyo.js --selftest",
     "dev": "vercel dev",
     "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@vercel/blob": "^0.27.0"
   },
   "engines": {
     "node": ">=18"

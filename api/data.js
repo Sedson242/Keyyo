@@ -1,22 +1,27 @@
 // Vercel Serverless Function -> /api/data
-// Interroge Keyyo a la demande ; cache au niveau du CDN Vercel.
-import { fetchAllCalls } from './_keyyo.js';
+// Lit la base d'archivage (Vercel Blob), synchronise les DERNIERS appels
+// depuis Keyyo (fenetre KEYYO_SYNC_DAYS), fusionne, persiste, et renvoie
+// TOUT l'historique au dashboard. Cache CDN 5 min (auto-refresh).
+// ?force=1 : bypass du cache CDN  |  ?full=1 : re-balayage complet (92 j)
+import { syncCalls } from './_store.js';
 
 export default async function handler(req, res) {
   const force = req.query && (req.query.force === '1' || req.query.force === 'true');
+  const full = req.query && (req.query.full === '1' || req.query.full === 'true');
   try {
-    const { rows, meta, errors, diag } = await fetchAllCalls();
+    const { rows, lines, meta, errors, diag, store } = await syncCalls({ full });
 
-    if (force || rows.length === 0) {
-      // ne pas mettre en cache un resultat vide : on veut re-essayer vite
-      res.setHeader('Cache-Control', 'no-store');
+    if (force || full || rows.length === 0) {
+      res.setHeader('Cache-Control', 'no-store'); // jamais de cache sur vide/force
     } else {
       res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
     }
     res.status(200).json({
       rows,
+      lines,
       meta,
       diag,
+      store,
       updatedAt: new Date().toISOString(),
       stale: errors.length > 0,
       empty: rows.length === 0,

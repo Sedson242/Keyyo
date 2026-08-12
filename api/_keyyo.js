@@ -13,8 +13,11 @@
 // =============================================================
 
 function parseServices(raw) {
-  if (!raw) return {};
+  // null => mode AUTO : les lignes sont decouvertes via GET /services (toutes les
+  // lignes du compte, donc les 3, sans rien coder en dur).
+  if (!raw) return null;
   const s = String(raw).trim();
+  if (!s || s.toLowerCase() === 'auto') return null;
   if (s.startsWith('{')) { try { const o = JSON.parse(s); if (o && typeof o === 'object') return o; } catch (e) {} }
   const out = {};
   for (const pair of s.split(/[,;\n]+/)) {
@@ -33,7 +36,8 @@ function readConfig() {
     clientSecret: process.env.KEYYO_CLIENT_SECRET || 'f7ef03477334f6fcda947896',
     refreshToken: process.env.KEYYO_REFRESH_TOKEN || '65d74d92cc9e688e614d2072f893464e78b75712',
     staticToken: process.env.KEYYO_TOKEN || '',
-    services: parseServices(process.env.KEYYO_SERVICES || '33175433361=Tana,33253359565=Antsirabe'),
+    services: parseServices(process.env.KEYYO_SERVICES || 'auto'),
+    syncDays: parseInt(process.env.KEYYO_SYNC_DAYS || '7', 10),
     resourcePath: process.env.KEYYO_RESOURCE_PATH || 'services/{csi}/{resource}',
     filterBegin: process.env.KEYYO_FILTER_BEGIN || 'date_begin',
     filterEnd: process.env.KEYYO_FILTER_END || 'date_end',
@@ -98,11 +102,11 @@ function safeTz(tz) {
 }
 
 function localParts(date, tz) {
-  const fmt = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  const fmt = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   const p = Object.fromEntries(fmt.formatToParts(date).map(x => [x.type, x.value]));
   const iso = `${p.year}-${p.month}-${p.day}`;
   const wdJs = new Date(`${iso}T12:00:00Z`).getUTCDay();
-  return { iso, hour: parseInt(p.hour, 10) % 24, min: parseInt(p.minute, 10) || 0, ym: iso.slice(0, 7), wd: (wdJs + 6) % 7 };
+  return { iso, hour: parseInt(p.hour, 10) % 24, min: parseInt(p.minute, 10) || 0, sec: parseInt(p.second, 10) || 0, ym: iso.slice(0, 7), wd: (wdJs + 6) % 7 };
 }
 
 // Horodatage : accepte unix (s ou ms) et chaines ISO / "YYYY-MM-DD HH:MM:SS".
@@ -168,8 +172,8 @@ function normalizeRecord(raw, ctx) {
   }
   dur = parseInt(dur, 10); if (isNaN(dur) || dur < 0) dur = 0;
   const nat = direction === 'out' ? 1 : 0;
-  const { iso, hour, min, ym, wd } = localParts(ts, tz);
-  return [iso, hour, caller, called, nat, dur, site, dur > 0 ? 1 : 0, nat === 1 ? called : caller, wd, ym, min];
+  const { iso, hour, min, sec, ym, wd } = localParts(ts, tz);
+  return [iso, hour, caller, called, nat, dur, site, dur > 0 ? 1 : 0, nat === 1 ? called : caller, wd, ym, min, sec];
 }
 
 // Extraction robuste : _embedded (a plat ou imbrique), enveloppes connues,
@@ -218,12 +222,17 @@ function strategyMakers(cfg) {
   ];
 }
 
-let _disc; // strategie retenue (cache process) : {label, make} | null
+let _discLabel; // label de la strategie retenue (cache process) : string | null
+// On ne met en cache QUE le label : le maker est reconstruit avec le cfg courant,
+// pour que la fenetre de dates (92 j au 1er chargement, KEYYO_SYNC_DAYS ensuite)
+// soit toujours celle demandee et non celle figee au 1er appel.
 async function discoverStrategy(cfg, token) {
-  if (_disc !== undefined) return _disc;
-  if (!cfg.autoDiscover) { _disc = null; return null; }
+  if (_discLabel !== undefined) {
+    return _discLabel === null ? null : (strategyMakers(cfg).find(s => s.label === _discLabel) || null);
+  }
+  if (!cfg.autoDiscover) { _discLabel = null; return null; }
   const csi = Object.keys(cfg.services)[0];
-  if (!csi) { _disc = null; return null; }
+  if (!csi) { _discLabel = null; return null; }
   const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
   const path = cfg.resourcePath.replace('{csi}', encodeURIComponent(csi)).replace('{resource}', 'outgoing_call_detail');
   // Essais EN PARALLELE (borne le temps total ~8s) pour ne pas provoquer de 504.
@@ -244,8 +253,8 @@ async function discoverStrategy(cfg, token) {
     const sc = r.value;
     if (!best || sc.oldest < best.oldest - 864e5 || (Math.abs(sc.oldest - best.oldest) <= 864e5 && sc.count > best.count)) best = sc;
   }
-  _disc = best || null;
-  return _disc;
+  _discLabel = best ? best.label : null;
+  return _discLabel === null ? null : (strategyMakers(cfg).find(s => s.label === _discLabel) || null);
 }
 
 function buildUrl(cfg, csi, resource, strat) {
@@ -302,6 +311,67 @@ async function fetchResource(cfg, token, csi, site, resource, direction, strat, 
   return { rows, diag: { csi, site, resource, direction, rawSeen, kept: rows.length, dropped, pages, sampleKeys } };
 }
 
+// ---------- Lignes : decouverte des services + email/prenom rattaches ----------
+const EMAIL_RE = /^[^\s@"<>]+@[^\s@"<>]+\.[a-z]{2,}$/i;
+
+// Cherche en profondeur la 1re valeur ressemblant a un email ; les cles evoquant
+// "mail" sont prioritaires (contact_email, email, e_mail, ...).
+function findEmailDeep(o, depth = 0) {
+  if (o == null || depth > 4) return null;
+  if (typeof o === 'string') { const s = o.trim(); return EMAIL_RE.test(s) ? s.toLowerCase() : null; }
+  if (typeof o !== 'object') return null;
+  for (const [k, v] of Object.entries(o)) if (/mail/i.test(k)) { const e = findEmailDeep(v, depth + 1); if (e) return e; }
+  for (const v of Object.values(o)) { const e = findEmailDeep(v, depth + 1); if (e) return e; }
+  return null;
+}
+
+// prenom.nom@domaine -> "Prenom" (segment avant le 1er point de la partie locale).
+export function firstNameFromEmail(email) {
+  if (!email) return null;
+  const local = String(email).split('@')[0];
+  const first = (local.split('.')[0] || '').replace(/[\d_]+$/, '').replace(/-+$/, '');
+  if (!first) return null;
+  return first.split('-').map(x => x ? x.charAt(0).toUpperCase() + x.slice(1).toLowerCase() : x).join('-');
+}
+
+// GET /services -> map { csi: nom } (toutes les lignes du compte).
+export async function discoverServices(cfg, token) {
+  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  const payload = await fetchJson(`${cfg.base}/services`, headers, { retries: 2, timeoutMs: 9000 });
+  const recs = extractRecords(payload);
+  const map = {};
+  for (const r of recs) {
+    if (!r || typeof r !== 'object') continue;
+    const csi = pick(r, ['csi', 'CSI', 'identifier', 'service_id', 'id', 'number'], null);
+    if (csi == null) continue;
+    const name = String(pick(r, ['name', 'label', 'display_name', 'service_name', 'description'], '')).trim();
+    map[String(csi)] = name || String(csi);
+  }
+  if (!Object.keys(map).length) throw new Error('GET /services : aucune ligne trouvee (verifier les droits du token)');
+  return map;
+}
+
+// Pour chaque CSI : GET /services/:csi -> email rattache + prenom deduit.
+// Resultat mis en cache 1 h (process). Cle = nom de SITE (celui porte par les rows).
+let _lines = { value: null, exp: 0 };
+export async function getLines(cfg, token) {
+  const now = Date.now();
+  if (_lines.value && now < _lines.exp) return _lines.value;
+  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+  const out = {};
+  await Promise.all(Object.entries(cfg.services).map(async ([csi, site]) => {
+    let email = null, serviceName = null, error = null;
+    try {
+      const svc = await fetchJson(`${cfg.base}/services/${encodeURIComponent(csi)}`, headers, { retries: 1, timeoutMs: 8000 });
+      email = findEmailDeep(svc);
+      serviceName = String(pick(svc, ['name', 'label', 'display_name', 'service_name'], '')).trim() || null;
+    } catch (e) { error = e.message; }
+    out[site] = { csi, site, email, firstName: firstNameFromEmail(email), serviceName, error };
+  }));
+  _lines.value = out; _lines.exp = now + 3600e3;
+  return out;
+}
+
 async function validateCsis(cfg, token) {
   try {
     const payload = await fetchJson(`${cfg.base}/services`, { Accept: 'application/json', Authorization: `Bearer ${token}` });
@@ -313,11 +383,19 @@ async function validateCsis(cfg, token) {
   } catch (e) { return { error: e.message }; }
 }
 
-export async function fetchAllCalls(cfgOverride) {
-  const cfg = cfgOverride || readConfig();
-  if (!Object.keys(cfg.services).length) throw new Error('KEYYO_SERVICES vide');
+export async function fetchAllCalls(opts = {}) {
+  const cfg = opts.cfg || readConfig();
+  if (opts.sinceDays) cfg.historyDays = opts.sinceDays;   // fenetre incrementale (synchro)
 
   const token = await getAccessToken(cfg);
+
+  // Mode AUTO : decouverte de TOUTES les lignes du compte (les 3) via /services.
+  if (!cfg.services) cfg.services = await discoverServices(cfg, token);
+  if (!Object.keys(cfg.services).length) throw new Error('KEYYO_SERVICES vide');
+
+  // Email + prenom rattaches a chaque ligne (n'echoue jamais le flux principal).
+  let lines = {};
+  try { lines = await getLines(cfg, token); } catch (e) {}
 
   let csiCheck = null;
   if (cfg.validateCsi) csiCheck = await validateCsis(cfg, token);
@@ -358,13 +436,14 @@ export async function fetchAllCalls(cfgOverride) {
   rows.sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : b[1] - a[1]));
   return {
     rows,
+    lines,
     meta: buildMeta(rows),
     errors: hint ? [...errors, hint] : errors,
-    diag: { rawSeen, kept: rows.length, dropped, perTask, csiCheck, strategy: strat ? strat.label : 'baseline' },
+    diag: { rawSeen, kept: rows.length, dropped, perTask, csiCheck, strategy: strat ? strat.label : 'baseline', windowDays: cfg.historyDays, services: cfg.services },
   };
 }
 
-function buildMeta(rows) {
+export function buildMeta(rows) {
   const isos = rows.map(r => r[0]);
   return {
     n: rows.length,
