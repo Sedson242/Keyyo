@@ -194,14 +194,31 @@ function noLinesNotice() {
  * @returns {string}
  */
 function filterNotice(selected) {
-  if (!selected) return '';
-  return notice({
-    tone: 'info',
-    title: 'Filtre de ligne actif.',
-    body: html`La colonne « Appels sur la période », l’histogramme et la répartition ne comptent
-      que la ligne <strong>${selected.label}</strong> — les autres lignes apparaissent donc à zéro.
-      <button class="link" type="button" data-line-clear="1">Afficher toutes les lignes</button>`,
-  });
+  if (selected) {
+    return notice({
+      tone: 'info',
+      title: 'Filtre de ligne actif.',
+      body: html`La colonne « Appels sur la période », l’histogramme et la répartition ne comptent
+        que la ligne <strong>${selected.label}</strong> — les autres lignes apparaissent donc à zéro.
+        <button class="link" type="button" data-line-clear="1">Afficher toutes les lignes</button>`,
+    });
+  }
+
+  // Le filtre de SENS fausse tout autant les compteurs de cette vue : une ligne
+  // qui n'emet que des sortants tombe a zero sous « entrants seulement ». Le
+  // dire, plutot que de laisser lire un parc a moitie eteint.
+  const dirs = { in: 'entrants', out: 'sortants', missed: 'manqués' };
+  if (dirs[state.dir]) {
+    return notice({
+      tone: 'info',
+      title: 'Filtre de sens actif.',
+      body: html`La colonne « Appels sur la période », l’histogramme et la répartition ne comptent
+        que les appels ${dirs[state.dir]} : une ligne peut donc apparaître à zéro alors qu’elle
+        travaille dans l’autre sens. Choisissez « Entrants et sortants » dans le bandeau du haut
+        pour voir le parc entier.`,
+    });
+  }
+  return '';
 }
 
 /**
@@ -213,7 +230,11 @@ function filterNotice(selected) {
  * @returns {string}
  */
 function silentNotice(lines, index, selected) {
-  if (selected) return '';
+  // `index` est construit sur `filtered()`, qui applique AUSSI le filtre de
+  // sens. Avec « entrants seulement », une ligne exclusivement sortante
+  // paraitrait muette alors qu'elle travaille : on se tait plutot que
+  // d'accuser a tort. Le filtre de ligne, lui, rendait deja l'alerte absurde.
+  if (selected || state.dir) return '';
 
   const names = [];
   for (let i = 0; i < lines.length; i++) {

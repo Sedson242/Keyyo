@@ -59,10 +59,24 @@ function integer(raw, fallback, min, max) {
   return v;
 }
 
-/** @param {unknown} raw @returns {boolean} */
-function truthy(raw) {
-  const s = String(raw == null ? '' : raw).trim().toLowerCase();
-  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+/**
+ * Fuseau impose par la plateforme, ou chaine vide.
+ *
+ * PIEGE : l'environnement d'execution de Vercel definit lui-meme `TZ` (a `UTC`,
+ * parfois au format POSIX `:UTC`). Lire `TZ` sans precaution ferait donc gagner
+ * la plateforme A TOUS LES COUPS, et le defaut `Europe/Paris` annonce par la
+ * documentation ne s'appliquerait jamais : toutes les heures affichees
+ * seraient decalees d'une ou deux heures, silencieusement.
+ *
+ * On ignore donc un `TZ` qui vaut exactement la valeur par defaut de la
+ * plateforme. Pour demander reellement UTC, on renseigne `KEYYO_TZ=UTC`, qui
+ * est prioritaire et n'est jamais ignore.
+ * @param {unknown} raw
+ * @returns {string}
+ */
+function platformTz(raw) {
+  const s = String(raw == null ? '' : raw).replace(/^:/, '').trim();
+  return s.toUpperCase() === 'UTC' ? '' : s;
 }
 
 /**
@@ -124,8 +138,11 @@ export function readConfig(env) {
     clientSecret,
     refreshToken,
     staticToken,
-    // TZ arrive parfois au format POSIX ':UTC' : safeTz nettoie et valide.
-    tz: safeTz(e.TZ || e.KEYYO_TZ),
+    // KEYYO_TZ d'abord : c'est le reglage du projet, jamais ecrase par la
+    // plateforme. `TZ` ne sert que de repli, et seulement s'il ne vaut pas la
+    // valeur imposee par Vercel (voir platformTz). Une chaine vide retombe sur
+    // DEFAULT_TZ dans safeTz, qui nettoie aussi le format POSIX ':UTC'.
+    tz: safeTz(text(e.KEYYO_TZ, '') || platformTz(e.TZ)),
     historyDays: integer(e.KEYYO_HISTORY_DAYS, DEFAULT_HISTORY_DAYS, 1, 800),
     syncDays: integer(e.KEYYO_SYNC_DAYS, 7, 1, 800),
     // 0 = aucune purge : l'archive garde tout ce qu'elle a vu passer.
@@ -135,7 +152,11 @@ export function readConfig(env) {
     budgetMs: integer(e.KEYYO_BUDGET_MS, 24000, 3000, 280000),
     lineEmails: parseLineEmails(e.KEYYO_LINE_EMAILS),
     cronSecret: text(e.CRON_SECRET, ''),
-    blobEnabled: !!text(e.BLOB_READ_WRITE_TOKEN, '') || truthy(e.KEYYO_FORCE_BLOB),
+    // Exactement le meme verdict que `archiveEnabled()` de _archive.js, qui
+    // decide du comportement reel. Il n'y a rien a « forcer » : le SDK
+    // @vercel/blob exige de toute facon ce jeton, et un drapeau qui dirait
+    // « archive active » sans jeton ne ferait que mentir a la page Diagnostic.
+    blobEnabled: !!text(e.BLOB_READ_WRITE_TOKEN, ''),
   };
 }
 

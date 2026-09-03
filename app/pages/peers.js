@@ -226,7 +226,12 @@ function decorate(peers, own) {
       // numero, et la sous-ligne dit de quel type de numero il s'agit.
       sub: peer.name ? formatNumber(peer.number) : kindLabel(peer.number),
       search: fold(peer.label) + ' ' + fold(peer.number),
-      digits: digitsOf(peer.number),
+      // DEUX formes de chiffres, et c'est necessaire : `peer.number` est en
+      // E.164 (`+33253359565` -> `33253359565`), alors qu'on cherche un numero
+      // tel qu'on le compose ou qu'on le lit sur une carte de visite
+      // (`0253359565`). Sans la forme nationale, taper « 0253 » ne trouverait
+      // rien — ce que la documentation de `applySearch` promet pourtant.
+      digits: digitsOf(peer.number) + ' ' + digitsOf(formatNumber(peer.number)),
     });
   }
   return out;

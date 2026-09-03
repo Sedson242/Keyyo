@@ -151,8 +151,19 @@ avec `source` ∈ `override` \| `directory_number` \| `directory_short_number` \
 
 ### `api/_config.js`
 ```js
+export const DEFAULT_BASE: string
+export const DEFAULT_TOKEN_URL: string
+export const DEFAULT_HISTORY_DAYS: number             // 92
 export function readConfig(env?): Config
 export function configSummary(cfg): object            // sans aucun secret
+
+// Helpers d'entrée/sortie HTTP, communs aux routes : lire une entrée
+// extérieure sans lui faire confiance relève de la même responsabilité.
+export function readParams(req): Record<string, string>
+export function flag(raw): boolean                    // `?force` sans valeur = actif
+export function sendJson(res, status, body, cacheControl?): void
+export function rejectNonGet(req, res, route): boolean
+export function errorMessage(err): string             // borné à 500 caractères
 ```
 `Config` : `{ base, tokenUrl, clientId, clientSecret, refreshToken, staticToken,
 tz, historyDays, syncDays, retentionDays, pageLimit, maxPages, budgetMs,
@@ -161,22 +172,33 @@ lineEmails, cronSecret, blobEnabled }`
 Variables lues : voir `.env.example`. `readConfig` **jette** une erreur claire si
 aucun moyen d'authentification n'est configuré.
 
+Le fuseau vient de `KEYYO_TZ`, et de `TZ` seulement en repli. La plateforme
+définit elle-même `TZ` (à `UTC`) dans l'environnement des fonctions : la lire
+sans précaution ferait gagner Vercel à tous les coups et le défaut
+`Europe/Paris` ne s'appliquerait jamais. Un `TZ` valant `UTC` est donc ignoré ;
+pour demander réellement UTC, on renseigne `KEYYO_TZ=UTC`.
+
 ### `api/_keyyo.js`
 ```js
 export async function getAccessToken(cfg): Promise<string>     // OAuth2 refresh_token, cache mémoire
 export async function keyyoGet(cfg, token, path, params?, opts?): Promise<any>
 export async function keyyoGetAll(cfg, token, path, params?, opts?): Promise<any[]>
                                      // suit _links.next puis limit/offset
-export async function fetchServices(cfg, token, type?): Promise<any[]>
-export async function fetchVoipLines(cfg, token): Promise<VoipLine[]>
-export async function fetchEmailAccounts(cfg, token): Promise<EmailAccount[]>
-export async function fetchDirectoryContacts(cfg, token): Promise<DirectoryContact[]>
+export async function fetchServices(cfg, token, type?, opts?): Promise<any[]>
+export async function fetchVoipLines(cfg, token, opts?): Promise<VoipLine[]>
+export async function fetchEmailAccounts(cfg, token, opts?): Promise<EmailAccount[]>
+export async function fetchDirectoryContacts(cfg, token, opts?): Promise<DirectoryContact[]>
 export async function fetchCallDetail(cfg, token, args): Promise<{rows, diag}>
                                      // args : { csi, direction, from, to, deadline, onDrop? }
 ```
+`opts : { deadline? }` — échéance absolue en millisecondes. **Toute route qui
+appelle Keyyo doit la passer** : sans elle, un annuaire volumineux pousse la
+fonction au-delà du `maxDuration` de `vercel.json` et la plateforme la coupe
+sans rien renvoyer.
 
 ### `api/_archive.js`
 ```js
+export const ARCHIVE_PATH: string                     // 'keyyo/history.json'
 export function archiveEnabled(): boolean
 export async function loadArchive(): Promise<{version, savedAt, rows, coverage}|null>
 export async function saveArchive(payload): Promise<boolean>
@@ -206,7 +228,13 @@ export async function collect(opts): Promise<CollectResult>
 | `GET /api/sync` | `{ ok, at, store, period, warnings }` — cible du cron |
 
 Paramètres : `?force=1` (contourne le cache CDN), `?full=1` (rebalayage complet),
-`?month=YYYY-MM` (remplissage d'un mois précis), `?debug=1` sur `/api/directory`.
+`?month=YYYY-MM` (remplissage d'un mois précis), `?debug=1` sur `/api/directory`,
+`?deep=1` sur `/api/health` (ajoute une sonde réelle de relevé d'appels, seul
+contrôle qui prouve que la chaîne complète fonctionne).
+
+`/api/health` répond **503 en portant quand même ses `checks`** quand un maillon
+casse. Un client qui jette le corps d'une réponse d'erreur perd exactement le
+diagnostic qu'il était venu chercher.
 
 ---
 
@@ -274,8 +302,11 @@ export function lineByCsi(csi): Line|null
 export function nameOf(number): string|null       // annuaire
 export function labelOf(number): string           // nom, sinon numéro formaté
 export function stats(rows): Stats
-export function byDay(rows): Array<{label, value, in, out, missed}>
-export function byMonth(rows): Array<{label, value, in, out, missed}>
+export function byDay(rows, range?): Array<{label, value, in, out, missed}>
+export function byMonth(rows, range?): Array<{label, value, in, out, missed}>
+        // range : { from?, to? } — plage forcée. Sans elle, la série couvre
+        // l'étendue réelle des lignes. Les deux séries sont CONTINUES : un jour
+        // ou un mois sans appel produit quand même un point à zéro.
 export function byHour(rows): number[]            // 24 entrées
 export function byWeekday(rows): number[]         // 7 entrées, 0 = lundi
 export function heatMatrix(rows): number[][]      // [7][24]
@@ -386,9 +417,13 @@ reste du site.
 Ouvrir **`/selftest.html`** sur le déploiement. La page charge `tests/run.js`,
 qui :
 
-1. importe **chaque** module et vérifie qu'il exporte ce que ce document
-   déclare (section 3 à 5). C'est ce contrôle qui attrape une erreur de
-   syntaxe, un import cassé ou un export disparu ;
+1. importe chaque module du **noyau partagé (section 3)** et du **front
+   (section 5)**, et vérifie qu'il exporte ce que ce document déclare. C'est ce
+   contrôle qui attrape une erreur de syntaxe, un import cassé ou un export
+   disparu. Les fonctions serverless de la **section 4 en sont exclues** : elles
+   s'exécutent dans Node, pas dans le navigateur, et importer `@vercel/blob`
+   depuis une page échouerait. C'est `/api/health` qui les vérifie, en
+   conditions réelles ;
 2. exécute les fonctions pures : numéros, dates, schéma d'appel, normalisation
    des CDR, identités, mise en forme française, échappement HTML, et les
    agrégations de `store.js` — dont `callbackAnalysis`, la règle métier

@@ -48,6 +48,19 @@ export function toE164(raw, cc = DEFAULT_CC) {
     x = '+' + x;
   }
 
+  // ZERO DE TRANSIT. La notation la plus repandue dans un carnet d'adresses,
+  // `+33 (0)2 53 35 95 65`, laisse un `0` derriere l'indicatif une fois la
+  // ponctuation retiree. Sans ce retrait, le meme poste donnerait
+  // `+330253359565` par cette voie et `+33253359565` par la voie nationale :
+  // deux cles pour un seul numero, et le rapprochement avec l'annuaire
+  // echouerait sur l'une des deux. Le retrait a lieu APRES la mise en forme
+  // internationale, pour couvrir aussi bien `+33 (0)...` que `0033 (0)...`.
+  //
+  // Le lookahead borne l'operation au cas ou il reste exactement un numero
+  // national significatif francais (neuf chiffres) : un numero etranger dont
+  // le NSN commence legitimement par 0 n'est pas touche.
+  x = x.replace(new RegExp('^\\+' + cc + '0(?=\\d{9}$)'), '+' + cc);
+
   const digits = x.slice(1);
   if (digits.length < 6 || digits.length > 15) return '';   // hors plage E.164
   return x;

@@ -321,14 +321,23 @@ export async function getDirectory(opts) {
 
 /**
  * Etat de la chaine : authentification, collecte, archive.
- * @param {{force?: boolean, timeoutMs?: number}} [opts]
+ *
+ * `deep` demande a /api/health une sonde REELLE de releve d'appels, en plus des
+ * controles de configuration : c'est ce que declenche le bouton « Contrôle
+ * approfondi » de la page Diagnostic. Le parametre est donc relaye, et la
+ * reponse sortie du cache — deux sondes identiques ne doivent pas se recouvrir.
+ * @param {{force?: boolean, deep?: boolean, timeoutMs?: number}} [opts]
  * @returns {Promise<any>} `{ status, calls, period, lines, checks, elapsedMs }`
  */
 export async function getHealth(opts) {
   const o = opts || {};
+  /** @type {Record<string, unknown>} */
+  const params = {};
+  if (o.force) params.force = '1';
+  if (o.deep) params.deep = '1';
   return request('/health', {
-    params: o.force ? { force: '1' } : undefined,
-    noCache: !!o.force,
+    params,
+    noCache: !!o.force || !!o.deep,
     timeoutMs: o.timeoutMs,
   });
 }

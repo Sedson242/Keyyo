@@ -609,7 +609,7 @@ function exportPending() {
 
   // BOM ecrit en sequence d'echappement : un U+FEFF litteral est invisible dans
   // le source et se ferait supprimer au premier reformatage du fichier.
-  const csv = '﻿' + lines.join('\r\n') + '\r\n';
+  const csv = '\uFEFF' + lines.join('\r\n') + '\r\n';
   const name = 'appels-a-rappeler-' + (state.from || 'debut') + '_' + (state.to || 'fin') + '.csv';
 
   let url = '';

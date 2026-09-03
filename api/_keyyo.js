@@ -423,7 +423,16 @@ export async function keyyoGetAll(cfg, token, path, params, opts) {
       truncated = !!link || hasMoreByCount;
       break;
     }
-    if (link && sameOrigin(link, cfg.base)) { url = buildUrl(cfg, link, null); continue; }
+    if (link && sameOrigin(link, cfg.base)) {
+      // `offset` doit avancer MEME quand on suit un lien HAL. Si Keyyo cesse de
+      // fournir `_links.next` en cours de route, la boucle retombe sur le mode
+      // limit/offset ci-dessous : avec un offset reste a zero, elle redemanderait
+      // les enregistrements deja lus, produisant des doublons et brulant le
+      // budget de pages sans jamais atteindre la fin.
+      offset += records.length;
+      url = buildUrl(cfg, link, null);
+      continue;
+    }
     if (!hasMoreByCount) break;                     // derniere page
 
     offset += records.length;

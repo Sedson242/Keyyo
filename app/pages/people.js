@@ -363,7 +363,7 @@ function personCard(p) {
         <span class="person-stat-label">Taux de réponse</span>
         <span class="person-stat-value">${p.in > 0 ? fmtPct(p.rate, 0) : '—'}</span>
       </div>
-      ${raw(meter(p.rate, rateTone(p.rate)))}
+      ${raw(meter(p.rate, rateTone(p)))}
     </div>
 
     <div class="person-source">
@@ -421,7 +421,7 @@ function comparisonTable(people) {
       html`${fmtInt(p.total)}`,
       html`<div class="row">
         <span class="nowrap">${p.in > 0 ? fmtPct(p.rate, 0) : '—'}</span>
-        ${raw(meter(p.rate, rateTone(p.rate)))}
+        ${raw(meter(p.rate, rateTone(p)))}
       </div>`,
       html`${fmtHms(p.seconds)}`,
       html`<div class="row">

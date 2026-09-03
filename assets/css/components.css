@@ -721,6 +721,12 @@
 }
 .modal-scrim.is-open { opacity: 1; pointer-events: auto; }
 
+/* `display: grid` ci-dessus l'emporte sur la regle `[hidden]` de la feuille du
+   navigateur : sans cette ligne, la fiche fermee reste dans le rendu — donc
+   atteignable au clavier et lue par les technologies d'assistance — malgre son
+   opacite nulle. Meme correctif que .popover[hidden] et .chart-tip[hidden]. */
+.modal-scrim[hidden] { display: none !important; }
+
 .modal {
   width: min(680px, 100%);
   max-height: min(86vh, 780px);

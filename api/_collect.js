@@ -274,8 +274,23 @@ export async function collect(opts) {
   const expectedMonths = monthSlices(isoDaysAgo(cfg.historyDays - 1, now, cfg.tz), today).map((s) => s.month);
   const missingMonths = expectedMonths.filter((ym) => !coverage[ym]);
 
+  // La couverture peut evoluer SANS qu'aucune ligne ne bouge : un mois collecte
+  // et vide n'ajoute rien a `rows` mais doit cesser d'etre declare manquant.
+  // Sans ce test, ce constat ne vivrait qu'en memoire de la fonction et serait
+  // reperdu a l'invocation suivante.
+  //
+  // On ne compare QUE la partie structurelle — les mois et leurs comptes, dont
+  // depend `missingMonths`. Surtout pas `syncedAt` : il vaut l'heure courante
+  // pour tout mois parcouru, donc il change a CHAQUE invocation, et le comparer
+  // reecrirait l'archive entiere a chaque chargement de page. La signature
+  // triee evite au passage toute dependance a l'ordre des cles.
+  const coverageKey = (c) => Object.keys(c || {}).sort()
+    .map((ym) => ym + ':' + (Number((c[ym] || {}).count) || 0))
+    .join('|');
+  const coverageChanged = coverageKey(coverage) !== coverageKey(prevCoverage);
+
   let persisted = false;
-  if (storeEnabled && (merged.added || merged.updated || !archive)) {
+  if (storeEnabled && (merged.added || merged.updated || coverageChanged || !archive)) {
     try {
       persisted = await saveArchive({ rows, coverage });
     } catch (err) {
@@ -431,13 +446,41 @@ function buildCoverage(rows, touched, prev, nowIso) {
 
   /** @type {Record<string, {count: number, syncedAt: string}>} */
   const coverage = {};
+
+  // On ne reprend de la couverture precedente QUE les mois collectes et VIDES.
+  //
+  // Eux seuls disparaitraient a tort : ils ne produisent aucune ligne, donc
+  // n'apparaissent pas dans `counts`, et une synchronisation incrementale ne
+  // les touche plus. Sans cette reprise, un mois legitimement sans appel
+  // (ligne creee plus tard, fermeture estivale) serait declare manquant et
+  // recollecte indefiniment pour ne rien trouver.
+  //
+  // Les autres ne sont volontairement PAS repris : un mois qui a des lignes
+  // est reconstruit ci-dessous a partir de `rows`, et un mois dont la
+  // retention a purge les lignes doit redevenir honnetement absent plutot que
+  // de conserver a jamais un compte que plus rien n'appuie.
+  if (prev) {
+    for (const ym of Object.keys(prev)) {
+      const p = prev[ym];
+      if (p && Number(p.count) === 0) {
+        coverage[ym] = { count: 0, syncedAt: String(p.syncedAt || '') };
+      }
+    }
+  }
+
   const months = Object.keys(counts).sort();
   for (const ym of months) {
     const before = prev && prev[ym] && prev[ym].syncedAt ? String(prev[ym].syncedAt) : '';
     coverage[ym] = { count: counts[ym], syncedAt: touched.has(ym) ? nowIso : (before || nowIso) };
   }
+
+  // Tout mois REELLEMENT parcouru porte l'horodatage de ce passage, meme s'il
+  // est ressorti vide. Sans cette mise a jour, la page Diagnostic annoncerait
+  // « il y a trois mois » pour un mois synchronise a l'instant, et inviterait a
+  // le recollecter pour rien.
   for (const ym of Array.from(touched).sort()) {
-    if (!coverage[ym]) coverage[ym] = { count: 0, syncedAt: nowIso };
+    if (coverage[ym]) coverage[ym].syncedAt = nowIso;
+    else coverage[ym] = { count: 0, syncedAt: nowIso };
   }
   return coverage;
 }

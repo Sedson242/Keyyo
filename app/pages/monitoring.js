@@ -357,7 +357,16 @@ function rankList(lines) {
     if (!person) continue;
     const first = person.firstName || person.displayName;
     if (!first) continue;
-    named.push({ csi: lines[i].csi, name: first, handled: lines[i].answered, rate: lines[i].answerRate });
+    // `incoming` est conserve pour distinguer « 0 % de reponse » d'un « aucun
+    // entrant a decrocher » : un poste exclusivement sortant afficherait sinon
+    // un taux de 0 % qui se lit comme un reproche.
+    named.push({
+      csi: lines[i].csi,
+      name: first,
+      handled: lines[i].answered,
+      rate: lines[i].answerRate,
+      incoming: lines[i].in,
+    });
   }
 
   if (!named.length) {
@@ -379,7 +388,7 @@ function rankList(lines) {
       rank: i + 1,
       label: top[i].name,
       sub: fmtInt(top[i].handled) + ' ' + pluralize(top[i].handled, 'appel traité', 'appels traités'),
-      metric: fmtPct(top[i].rate, 0),
+      metric: top[i].incoming ? fmtPct(top[i].rate, 0) : '—',
     }))}</div>`;
   }
   return html`<div class="rank-list">${raw(out)}</div>`;
@@ -588,12 +597,11 @@ function wire(root) {
     setFilter({ csi: csi });
   });
 
-  // Navigation interne : c'est le fragment d'URL qui porte la route.
-  on(root, 'click', '[data-goto]', (ev, el) => {
-    const route = el.getAttribute('data-goto');
-    if (!route) return;
-    location.hash = '#' + route;
-  });
+  // Pas de gestionnaire `[data-goto]` ici : app/main.js en pose un sur le
+  // document, qui passe par `router.go`. En doubler un a ce niveau ecrivait un
+  // fragment sans barre oblique (`#diagnostics` au lieu de `#/diagnostics`),
+  // ce que le routeur normalisait ensuite — d'ou une seconde entree
+  // d'historique et un rendu de plus a chaque clic.
 
   // Fiche correspondant : la page signale l'intention, main.js ouvre la modale.
   on(root, 'click', '[data-peer]', (ev, el) => {

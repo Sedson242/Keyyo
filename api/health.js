@@ -105,6 +105,14 @@ export default async function handler(req, res) {
     }, 'no-store');
   }
 
+  // Echeance commune a tous les appels sortants de cette route. Sans elle, un
+  // annuaire volumineux ou une sonde lente pousserait la fonction au-dela du
+  // `maxDuration` de 30 s declare dans vercel.json : la plateforme la couperait
+  // net, et la page Diagnostic n'afficherait RIEN — exactement au moment ou
+  // l'on cherche a comprendre pourquoi la collecte est lente. Meme borne que
+  // team.js et directory.js.
+  const deadline = Date.now() + Math.min(cfg.budgetMs, 20000);
+
   // -- 2. Authentification ----------------------------------------------------
   const token = await check('auth', 'Authentification Keyyo (OAuth2)', async () => {
     const t = await getAccessToken(cfg);
@@ -131,7 +139,7 @@ export default async function handler(req, res) {
 
   // -- 3. Lignes VoIP ---------------------------------------------------------
   const voipLines = await check('services', 'Lignes VoIP (GET /services)', async () => {
-    const lines = await fetchVoipLines(cfg, token);
+    const lines = await fetchVoipLines(cfg, token, { deadline });
     if (!lines.length) {
       return {
         level: 'error',
@@ -152,7 +160,7 @@ export default async function handler(req, res) {
 
   // -- 4. Annuaire (source d'identite principale) -----------------------------
   const contacts = await check('directory', 'Annuaire (GET /directory_contacts)', async () => {
-    const list = await fetchDirectoryContacts(cfg, token);
+    const list = await fetchDirectoryContacts(cfg, token, { deadline });
     const withEmail = list.filter((c) => c.email).length;
     if (!list.length) {
       return {
@@ -172,7 +180,7 @@ export default async function handler(req, res) {
 
   // -- 5. Comptes de messagerie (source d'identite secondaire) ----------------
   const mailboxes = await check('email_accounts', 'Comptes de messagerie (GET /services)', async () => {
-    const list = await fetchEmailAccounts(cfg, token);
+    const list = await fetchEmailAccounts(cfg, token, { deadline });
     const withEmail = list.filter((m) => m.email).length;
     return {
       level: 'ok',
@@ -257,8 +265,8 @@ export default async function handler(req, res) {
       const from = isoDaysAgo(PROBE_DAYS - 1, Date.now(), cfg.tz);
       const to = nextDay(todayIso(Date.now(), cfg.tz));   // date_end est exclusive
       const results = await Promise.all([
-        fetchCallDetail(cfg, token, { csi, direction: 'in', from, to }),
-        fetchCallDetail(cfg, token, { csi, direction: 'out', from, to }),
+        fetchCallDetail(cfg, token, { csi, direction: 'in', from, to, deadline }),
+        fetchCallDetail(cfg, token, { csi, direction: 'out', from, to, deadline }),
       ]);
       const rawSeen = results.reduce((a, r) => a + Number(r.diag.rawSeen || 0), 0);
       const kept = results.reduce((a, r) => a + Number(r.diag.kept || 0), 0);

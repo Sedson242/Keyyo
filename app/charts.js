@@ -91,19 +91,50 @@ function seriesColor(i) {
 }
 
 /**
- * Echappement pour valeur d'attribut. Complete esc() : la lookahead evite de
- * re-echapper les entites que esc() a deja produites.
+ * Echappement d'une valeur d'attribut relue COMME TEXTE (aria-label).
+ *
+ * Le parseur decode les references de caracteres de toute valeur d'attribut :
+ * echapper `&`, `"`, `<` et `>` suffit pour que la valeur relue soit
+ * exactement la chaine d'origine. On ne passe donc PAS par esc() avant :
+ * l'echappement serait defait par ce decodage, et un lecteur d'ecran
+ * annoncerait « &lt;img&gt; » au lieu du texte.
  */
-function attrEsc(s) {
+function attrEscText(s) {
   return String(s === null || s === undefined ? '' : s)
-    .replace(/&(?![a-zA-Z#0-9]+;)/g, '&amp;')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Echappement d'une valeur d'attribut REINJECTEE EN HTML : `data-tip`, relu par
+ * `attachChartTips` puis pose en innerHTML.
+ *
+ * PIEGE, corrige ici. Le parseur decode l'attribut UNE FOIS. Une chaine deja
+ * echappee par esc() y perd donc sa protection : `&lt;img onerror=...&gt;`
+ * redevient `<img onerror=...>` avant d'atteindre innerHTML, et un nom
+ * d'annuaire hostile s'execute. Il faut echapper l'esperluette SANS EXCEPTION,
+ * pour que le decodage du parseur rende exactement la chaine simplement
+ * echappee attendue. Les `<` du balisage que nous fabriquons nous-memes (le
+ * `<b>` de la valeur) traversent tels quels : ils sont licites dans une valeur
+ * d'attribut, et c'est bien eux que l'on veut voir vivre dans la bulle.
+ */
+function attrEscHtml(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;');
 }
 
-/** Attributs d'info-bulle : le balisage est fabrique ici, jamais recu de l'API. */
+/**
+ * Attributs d'info-bulle.
+ * `tipHtml` est du balisage fabrique ici, dont les parties variables sont deja
+ * passees par esc(). `plainLabel` est du TEXTE BRUT : il ne doit pas etre
+ * pre-echappe (voir attrEscText).
+ */
 function tipAttrs(tipHtml, plainLabel, focusable) {
-  var out = ' data-tip="' + attrEsc(tipHtml) + '"';
-  if (plainLabel) out += ' aria-label="' + attrEsc(esc(plainLabel)) + '"';
+  var out = ' data-tip="' + attrEscHtml(tipHtml) + '"';
+  if (plainLabel) out += ' aria-label="' + attrEscText(plainLabel) + '"';
   if (focusable) out += ' tabindex="0"';
   return out;
 }
@@ -248,7 +279,7 @@ export function barChart(opts) {
     var frac = i / (ticks - 1);
     var ty = baseY - plotH * frac;
     svg += '<text class="axis-value" x="' + r2(padL - 7) + '" y="' + r2(ty + 3.5) +
-      '" text-anchor="end">' + esc(fv(fmt, top * frac)) + '</text>';
+      '" text-anchor="end">' + esc(fv(fmt, axisTop * frac)) + '</text>';
   }
 
   var barFill = useGradient ? 'url(#' + gradId + ')' : flatColor;
@@ -267,7 +298,7 @@ export function barChart(opts) {
 
     // Une valeur strictement positive reste visible meme tres petite, sinon
     // « 1 appel » disparaitrait purement et simplement du graphique.
-    var bh = v > 0 ? Math.max(3, Math.min(plotH, (v / top) * plotH)) : 0;
+    var bh = v > 0 ? Math.max(3, Math.min(plotH, (v / axisTop) * plotH)) : 0;
     if (bh > 0) {
       svg += '<rect x="' + r2(bx) + '" y="' + r2(baseY - bh) +
         '" width="' + r2(barW) + '" height="' + r2(bh) +
@@ -705,8 +736,8 @@ export function heatmap(opts) {
   }
 
   var html = '<div class="heat" role="img" aria-label="' +
-    attrEsc(esc('Carte d\'affluence par jour et par heure. Maximum ' + fv(fmt, max) +
-      ' pour une case, ' + fv(fmt, total) + ' au total.')) + '">';
+    attrEscText('Carte d\'affluence par jour et par heure. Maximum ' + fv(fmt, max) +
+      ' pour une case, ' + fv(fmt, total) + ' au total.') + '">';
 
   for (r = 0; r < 7; r++) {
     html += '<div class="heat-row"><span class="heat-label">' + esc(String(labels[r])) + '</span>';
@@ -716,7 +747,7 @@ export function heatmap(opts) {
       var hourLab = (c < 10 ? '0' + c : String(c)) + ' h';
       var tip = esc(String(labels[r])) + ' ' + esc(hourLab) + ' · <b>' + esc(fv(fmt, value)) + '</b>';
       html += '<span class="heat-cell"' + heatStyle(t) +
-        ' data-tip="' + attrEsc(tip) + '"></span>';
+        ' data-tip="' + attrEscHtml(tip) + '"></span>';
     }
     html += '</div>';
   }
@@ -867,8 +898,11 @@ export function attachChartTips(root) {
     if (!ctx) return;
     var content = el.getAttribute('data-tip');
     if (!content) return;
-    // `content` est produit par ce module (libelles deja echappes), jamais recu
-    // brut de l'API : c'est ce qui autorise innerHTML pour le <b> de la bulle.
+    // `content` arrive de `data-tip`, que le parseur a deja decode une fois.
+    // C'est pour survivre a ce decodage que la valeur est ecrite DOUBLEMENT
+    // echappee par attrEscHtml : ce qu'on lit ici est donc la chaine simplement
+    // echappee, ou seul le <b> fabrique par ce module est du balisage vivant.
+    // C'est cela, et cela seul, qui autorise innerHTML.
     if (active !== el) ctx.tip.innerHTML = content;
     ctx.tip.hidden = false;
     active = el;

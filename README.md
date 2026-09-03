@@ -81,7 +81,7 @@ défaut utilisables :
 | `KEYYO_CLIENT_SECRET` | secret client |
 | `KEYYO_REFRESH_TOKEN` | refresh token, suivi automatiquement s'il est rotatif |
 | `KEYYO_ACCESS_TOKEN` | repli : jeton déjà obtenu, expire en ~1 h, dépannage seulement |
-| `TZ` | fuseau d'affichage, `Europe/Paris` par défaut |
+| `KEYYO_TZ` | fuseau d'affichage, `Europe/Paris` par défaut. À préférer à `TZ`, que Vercel définit lui-même |
 | `KEYYO_HISTORY_DAYS` | profondeur visée au premier remplissage, 92 jours |
 | `KEYYO_SYNC_DAYS` | fenêtre redemandée à chaque synchronisation, 7 jours |
 | `KEYYO_RETENTION_DAYS` | purge de l'archive, `0` = jamais |

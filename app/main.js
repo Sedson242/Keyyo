@@ -179,7 +179,13 @@ function renderNow() {
   // Les alertes travaillent sur TOUT l'historique connu : un manque n'est pas
   // moins nouveau parce que l'ecran regarde une autre periode. `check` se
   // protege lui-meme des appels repetes sur le meme tableau.
-  alerts.check(getRows());
+  //
+  // MAIS PAS AVANT LA PREMIERE COLLECTE. `alerts.check` retient, a son premier
+  // appel, tous les manques qu'il voit, et n'annonce rien : c'est ce qui evite
+  // une rafale de notifications sur trois mois d'historique. Lui passer le
+  // tableau vide du rendu de chargement consommerait cet apprentissage a vide,
+  // et la vraie collecte, arrivant ensuite, serait entierement annoncee.
+  if (st.kind !== 'loading' && st.kind !== 'error') alerts.check(getRows());
 
   // Une fiche ouverte pendant une collecte de fond doit refleter les nouveaux
   // appels du correspondant, sans se refermer sous les yeux de l'utilisateur.
@@ -324,7 +330,7 @@ function paintLineSelect() {
   if (!select) return;
 
   const lines = getLines();
-  const key = lines.map((l) => String(l.csi) + ' ' + String(l.label)).join('');
+  const key = lines.map((l) => String(l.csi) + '\u0000' + String(l.label)).join('\u0001');
 
   if (key !== _lineOptionsKey) {
     _lineOptionsKey = key;
@@ -660,9 +666,21 @@ function closeDrill() {
     }, DRILL_CLOSE_MS);
   }
 
+  // Le bouton qui avait ouvert la fiche vit dans le DOM d'une page, que le
+  // sondage de fond remplace toutes les 60 s : il a donc de bonnes chances
+  // d'avoir disparu. Sans repli, le focus retomberait sur <body> et la
+  // navigation au clavier repartirait du haut du document.
   const back = _drillReturnFocus;
   _drillReturnFocus = null;
-  if (back && typeof back.focus === 'function' && document.contains(back)) back.focus();
+  const alive = back && typeof back.focus === 'function'
+    && document.contains(back) && back.offsetParent !== null;
+  const target = alive ? back : qs('#page-' + router.current());
+  if (target && typeof target.focus === 'function') {
+    // Une section n'est pas focalisable par defaut : on la rend cible de
+    // programme seulement, sans l'inserer dans l'ordre de tabulation.
+    if (target !== back) target.setAttribute('tabindex', '-1');
+    target.focus();
+  }
 }
 
 // -----------------------------------------------------------------------------

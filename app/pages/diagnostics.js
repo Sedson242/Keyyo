@@ -161,12 +161,16 @@ function wire(root) {
 /**
  * Interroge /api/health.
  *
- * `deep` demande la sonde reelle de releve d'appels. IMPORTANT : la fonction
- * `getHealth` du noyau ne relaie pas encore ce parametre (elle n'accepte que
- * `force`). L'option est transmise pour le jour ou elle le fera, et la page
- * VERIFIE dans la reponse qu'une sonde approfondie a bien eu lieu — a defaut
- * elle le signale, plutot que de laisser croire a un controle qui n'a pas eu
- * lieu.
+ * `deep` demande la sonde reelle de releve d'appels, que `getHealth` relaie en
+ * `?deep=1`. La page VERIFIE malgre tout dans la reponse qu'une sonde
+ * approfondie a bien eu lieu, et le signale sinon : mieux vaut dire qu'on n'a
+ * pas pu verifier que laisser croire a un controle qui n'a pas eu lieu.
+ *
+ * UN ECHEC N'EST PAS UN SILENCE. /api/health repond 503 EN PORTANT son
+ * diagnostic : jeton refuse, aucune ligne detectee, releves tous ecartes —
+ * c'est-a-dire exactement les situations pour lesquelles cette page existe.
+ * `app/api.js` range cette charge utile dans `err.body` ; la jeter afficherait
+ * « contrôles indisponibles » au moment precis ou la reponse dit quoi reparer.
  *
  * @param {boolean} deep
  * @param {boolean} force  Vrai pour un clic explicite : on contourne le cache.
@@ -190,6 +194,15 @@ function probe(deep, force) {
       }
     })
     .catch((err) => {
+      // Une reponse d'erreur qui porte quand meme ses controles est la reponse
+      // la plus utile que cette page puisse recevoir : on la garde et on
+      // l'affiche. Le bandeau « Verdict daté » dira que la tentative a echoue.
+      const body = err && err.body;
+      if (body && typeof body === 'object' && Array.isArray(body.checks)) {
+        _health = body;
+        _healthAt = new Date().toISOString();
+        _healthDeep = !!deep;
+      }
       _healthError = messageOf(err);
       console.warn('[diagnostics] /api/health a echoue :', err);
     })

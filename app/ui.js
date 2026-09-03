@@ -23,9 +23,15 @@
 //       construit avec html`...`.
 //
 //  Accessibilite : tout ce qui est cliquable est un <button type="button">,
-//  toute icone decorative est enfermee dans un porteur `aria-hidden="true"`
-//  (l'enveloppe plutot que le <svg>, car `icon()` ne prend qu'une classe), et
-//  les tableaux portent un <thead> dont les <th> ont `scope="col"`.
+//  toute icone decorative est masquee aux technologies d'assistance, et les
+//  tableaux portent un <thead> dont les <th> ont `scope="col"`.
+//
+//  Sur le masquage des icones : `icon()` de dom.js pose deja `aria-hidden` et
+//  `focusable` sur le <svg> lui-meme. L'enveloppe <span> de `decorIcon` ne sert
+//  donc qu'a porter une CLASSE quand la brique en a besoin. Elle est a proscrire
+//  dans une boite flexible dont la feuille de style vise le <svg> directement :
+//  le <span> devient alors l'element flexible a sa place et se laisse comprimer
+//  par le texte voisin. C'est pourquoi `notice` rend `icon()` sans enveloppe.
 //
 //  Note de balisage : certaines briques cliquables (kpi, rankRow) contiennent
 //  des blocs empiles. Les classes CSS correspondantes supposent des elements de
@@ -546,8 +552,14 @@ export function notice(opts) {
   const role = tone === 'error' ? 'alert' : 'status';
   const title = has(o.title) ? html`<span class="notice-title">${txt(o.title)}</span> ` : '';
 
+  // Le <svg> est rendu DIRECTEMENT, sans enveloppe : `.notice` est une boite
+  // flexible et sa regle `.notice svg { flex: 0 0 auto; width: 16px }` vise le
+  // svg lui-meme. Interpose, un <span> devient l'element flexible a la place du
+  // svg, se laisse comprimer par le texte voisin et reduit l'icone a quelques
+  // pixels. `icon()` pose deja `aria-hidden` et `focusable` : l'enveloppe
+  // n'apportait rien.
   return html`<div class="${raw(cls)}" role="${raw(role)}">
-    ${raw(decorIcon(name))}
+    ${raw(icon(name))}
     <div>${raw(title)}${raw(frag(o.body))}</div>
   </div>`;
 }

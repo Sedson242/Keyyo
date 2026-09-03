@@ -244,6 +244,18 @@ if (need(phone, 'shared/phone.js', 'shared/phone.js')) suite('shared/phone.js', 
     eq(toE164('0033253359565'), expected, 'prefixe 00');
     eq(toE164('33253359565'), expected, 'sans prefixe');
     eq(toE164('02.53.35.95.65'), expected, 'points');
+    // Zero de transit : la notation la plus repandue dans un carnet d'adresses.
+    // Sans son retrait, le meme poste produirait deux cles differentes et le
+    // rapprochement avec l'annuaire echouerait sur l'une des deux.
+    eq(toE164('+33 (0)2 53 35 95 65'), expected, 'zero de transit entre parentheses');
+    eq(toE164('0033 (0)2 53 35 95 65'), expected, 'zero de transit derriere 00');
+  });
+
+  test('le retrait du zero de transit ne touche pas les numeros etrangers', () => {
+    // Le NSN italien commence legitimement par 0 : l'indicatif n'etant pas +33,
+    // la regle ne s'applique pas.
+    eq(toE164('+39 02 1234 5678'), '+390212345678');
+    eq(toE164('+44 20 7123 4567'), '+442071234567');
   });
 
   test('toE164 est idempotente', () => {
@@ -374,6 +386,22 @@ if (need(time, 'shared/time.js', 'shared/time.js')) suite('shared/time.js', () =
     eq(nextDay('2026-02-28'), '2026-03-01', '2026 n’est pas bissextile');
     eq(nextDay('2024-02-28'), '2024-02-29', '2024 est bissextile');
     eq(nextDay('2026-12-31'), '2027-01-01');
+  });
+
+  // Non-regression. Un decalage calcule en millisecondes puis relu en heure
+  // murale rate sa cible les jours de bascule d'heure, qui font 23 h ou 25 h :
+  // pres de minuit, l'erreur devient un jour entier.
+  test('isoDaysAgo reste juste au passage a l’heure d’hiver', () => {
+    const { isoDaysAgo, todayIso } = time;
+    // 25 octobre 2026, 22:30 UTC = 23:30 a Paris, apres la bascule du jour meme.
+    const nuitDeBascule = Date.UTC(2026, 9, 25, 22, 30);
+    eq(todayIso(nuitDeBascule, 'Europe/Paris'), '2026-10-25', 'point de depart');
+    eq(isoDaysAgo(1, nuitDeBascule, 'Europe/Paris'), '2026-10-24', 'la veille, pas le jour meme');
+    eq(isoDaysAgo(0, nuitDeBascule, 'Europe/Paris'), '2026-10-25');
+    eq(isoDaysAgo(-1, nuitDeBascule, 'Europe/Paris'), '2026-10-26', 'un decalage negatif avance');
+    // Bascule de printemps : le 29 mars 2026, la nuit ne fait que 23 h.
+    const nuitDePrintemps = Date.UTC(2026, 2, 29, 0, 30);
+    eq(isoDaysAgo(1, nuitDePrintemps, 'Europe/Paris'), '2026-03-28');
   });
 
   test('daysBetween compte les jours et ne descend jamais sous zero', () => {
@@ -1122,12 +1150,19 @@ if (need(charts, 'app/charts.js', 'app/charts.js')) suite('app/charts.js', () =>
     ok(typeof donutChart({ slices: [] }) === 'string');
   });
 
-  test('heatmap accepte une grille 7 x 24, meme entierement nulle', () => {
-    const empty = Array.from({ length: 7 }, () => new Array(24).fill(0));
-    has(heatmap({ matrix: empty }), '<svg');
-    const one = Array.from({ length: 7 }, () => new Array(24).fill(0));
-    one[2][14] = 9;
-    has(heatmap({ matrix: one }), '<svg');
+  // heatmap est la SEULE des cinq a ne pas rendre de SVG : 168 rectangles
+  // couteraient plus cher qu'une grille CSS. On verifie donc ses classes.
+  test('heatmap rend une grille CSS 7 x 24, et un etat vide quand tout est a zero', () => {
+    const vide = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    has(heatmap({ matrix: vide }), 'empty-title', 'aucune activite : etat vide annonce');
+
+    const une = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    une[2][14] = 9;
+    const out = heatmap({ matrix: une });
+    has(out, 'class="heat"');
+    has(out, 'heat-cell');
+    // 7 x 24 cases, ni une de plus ni une de moins.
+    eq((out.match(/heat-cell/g) || []).length, 168, 'la grille est complete');
     ok(typeof heatmap({}) === 'string');
   });
 
@@ -1142,6 +1177,32 @@ if (need(charts, 'app/charts.js', 'app/charts.js')) suite('app/charts.js', () =>
     const out = barChart({ data: [{ label: '<script>alert(1)</script>', value: 1 }] });
     lacks(out, '<script>', 'un libelle ne peut pas injecter de balise');
   });
+
+  // Non-regression. Un histogramme peut rendre un SVG parfaitement valide et
+  // pourtant ne tracer AUCUNE barre : c'est arrive, la hauteur etant calculee
+  // a partir d'un identifiant non declare, donc a partir de NaN. Verifier la
+  // presence de <svg> ne suffit pas, il faut verifier qu'il y a du dessin.
+  test('barChart trace reellement des barres et gradue son axe', () => {
+    const out = barChart({ data: [{ label: 'a', value: 10 }, { label: 'b', value: 4 }] });
+    has(out, 'style="fill:', 'au moins une barre est peinte');
+
+    const marques = out.match(/class="axis-value"[^>]*>([^<]*)</g) || [];
+    const valeurs = marques.map((s) => s.slice(s.lastIndexOf('>') + 1, -1));
+    eq(valeurs.length, 5, 'cinq graduations sur l’axe des ordonnees');
+    ok(valeurs.some((v) => v !== '0'), 'l’axe n’est pas entierement a zero, obtenu ' + JSON.stringify(valeurs));
+  });
+
+  // Non-regression. `data-tip` est relu par attachChartTips puis pose en
+  // innerHTML. Le parseur ayant deja decode l'attribut une fois, la valeur doit
+  // y etre DOUBLEMENT echappee : un simple `&lt;` s'y decoderait en `<` et
+  // rouvrirait la balise au moment de l'injection.
+  test('les info-bulles survivent au decodage de l’attribut sans redevenir du balisage', () => {
+    const out = barChart({ data: [{ label: '<img src=x onerror=alert(1)>', value: 5 }] });
+    const m = out.match(/data-tip="([^"]*)"/);
+    ok(m, 'une info-bulle est bien posee');
+    lacks(m[1], '&lt;img', 'une entite simple se decoderait en balise vivante');
+    has(m[1], '&amp;lt;img', 'l’esperluette est echappee, donc le decodage rend du texte');
+  });
 });
 
 // -----------------------------------------------------------------------------
@@ -1151,6 +1212,7 @@ if (need(charts, 'app/charts.js', 'app/charts.js')) suite('app/charts.js', () =>
 if (need(ui, 'app/ui.js', 'app/ui.js')) suite('app/ui.js', () => {
   const { card, sectionHead, kpi, statbar, table, tag, avatar, avatarStack, meter, split, rankRow, empty, notice, skeleton, toolbar } = ui;
   const rawOf = dom.raw;
+  const htmlOf = dom.html;
 
   test('card, sectionHead et toolbar rendent leur contenu', () => {
     has(card({ title: 'Titre', body: rawOf('<p>corps</p>') }), 'Titre');
@@ -1201,6 +1263,10 @@ if (need(ui, 'app/ui.js', 'app/ui.js')) suite('app/ui.js', () => {
 
   test('AUCUNE brique ne laisse passer du balisage non echappe', () => {
     const evil = '<img src=x onerror=alert(1)>';
+    // Les cellules de `table` sont, PAR CONTRAT, du HTML deja sur : les pages
+    // les construisent avec le gabarit html``. On la sollicite donc comme elles
+    // le font, et c'est le libelle de colonne — lui echappe — qui porte
+    // l'attaque. Le contrat inverse est verifie par le test suivant.
     const outputs = [
       card({ title: evil, body: rawOf('sur') }),
       sectionHead(evil, evil),
@@ -1210,12 +1276,26 @@ if (need(ui, 'app/ui.js', 'app/ui.js')) suite('app/ui.js', () => {
       notice({ tone: 'warn', title: evil, body: rawOf('sur') }),
       rankRow({ rank: 1, label: evil, sub: evil, metric: evil }),
       split({ label: evil, value: evil, pct: 10 }),
-      table({ columns: [{ key: 'a', label: evil }], rows: [[evil]] }),
+      table({ columns: [{ key: 'a', label: evil }], rows: [[htmlOf`${evil}`]] }),
     ];
     for (let i = 0; i < outputs.length; i++) {
+      // La charge utile ne doit jamais reapparaitre telle quelle...
+      lacks(outputs[i], evil, 'sortie ' + i);
       lacks(outputs[i], '<img', 'sortie ' + i);
-      lacks(outputs[i], 'onerror=', 'sortie ' + i);
+      // ...et sa forme echappee doit, elle, etre bien presente : sans cela le
+      // test passerait aussi sur une brique qui se contenterait de tout jeter.
+      // (On ne cherche PAS « onerror= » : esc() n'echappe pas le signe egal,
+      // et n'a aucune raison de le faire — c'est `<` qui desamorce la balise.)
+      has(outputs[i], '&lt;img', 'sortie ' + i);
     }
+  });
+
+  test('les cellules de table sont du HTML deja sur, comme le contrat l’annonce', () => {
+    const out = table({
+      columns: [{ key: 'a', label: 'Colonne' }],
+      rows: [[rawOf('<b>gras</b>')]],
+    });
+    has(out, '<b>gras</b>', 'une cellule marquee sure traverse sans etre echappee');
   });
 });
 

@@ -111,9 +111,27 @@ export function toKeyyoDate(date, tz = DEFAULT_TZ) {
   return `${p.date} ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
 }
 
-/** @returns {string} `YYYY-MM-DD` a partir d'un decalage en jours par rapport a `now`. */
+/**
+ * `YYYY-MM-DD` a partir d'un decalage en JOURS CALENDAIRES par rapport a `now`.
+ * Un `days` negatif avance dans le futur.
+ *
+ * ARITHMETIQUE CALENDAIRE, PAS EN MILLISECONDES. Soustraire `days * 864e5`
+ * puis relire la date murale melange deux echelles : les jours de bascule
+ * d'heure font 23 h ou 25 h, et le calcul rate alors sa cible d'une heure —
+ * donc d'un jour entier quand `now` tombe pres de minuit. On lit donc la date
+ * murale UNE FOIS, puis on recule de jours entiers a l'ancrage midi UTC, ou
+ * aucun changement d'heure ne peut faire basculer la date. Meme technique que
+ * `nextDay`.
+ * @param {number} days
+ * @param {number} [now]
+ * @param {string} [tz]
+ * @returns {string}
+ */
 export function isoDaysAgo(days, now = Date.now(), tz = DEFAULT_TZ) {
-  return localParts(new Date(now - days * 864e5), tz).date;
+  const base = localParts(new Date(now), tz).date;
+  const d = new Date(`${base}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - Math.round(Number(days) || 0));
+  return d.toISOString().slice(0, 10);
 }
 
 /** @returns {string} `YYYY-MM-DD` du jour, dans le fuseau donne. */

@@ -528,6 +528,19 @@ function refreshTable(root) {
 function captureFocus() {
   const el = /** @type {any} */ (document.activeElement);
   if (!el || el.id !== SEARCH_ID) return null;
+
+  // Le texte tape est adopte TOUT DE SUITE, et la temporisation en attente est
+  // annulee. Sans cela, un rendu complet (sondage de fond, changement de
+  // filtre) survenant pendant les ~200 ms d'attente reconstruirait le champ a
+  // partir de `_search`, donc de la frappe PRECEDENTE : les derniers
+  // caracteres disparaitraient sous les doigts, et la temporisation, en
+  // s'achevant, refiltrerait ensuite sur un texte que le champ n'affiche plus.
+  const value = String(el.value == null ? '' : el.value);
+  if (value !== _search) {
+    if (_searchTimer) { clearTimeout(_searchTimer); _searchTimer = 0; }
+    _search = value;
+  }
+
   try {
     return { start: el.selectionStart, end: el.selectionEnd };
   } catch (err) {
@@ -784,7 +797,7 @@ function exportCsv() {
   const lines = [CSV_COLUMNS.map(csvField).join(';')];
   for (let i = 0; i < rows.length; i++) lines.push(csvRow(rows[i]));
 
-  const blob = new Blob(['﻿' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
 
   const link = document.createElement('a');
@@ -831,12 +844,20 @@ function csvRow(row) {
  * Champ CSV : toujours entre guillemets, guillemets internes doubles. Tout
  * encadrer met a l'abri du point-virgule et du retour a la ligne qu'un nom
  * d'annuaire peut contenir.
+ *
+ * Les guillemets NE PROTEGENT PAS d'une injection de formule : un tableur
+ * evalue une cellule commencant par `=`, `+`, `-` ou `@` meme entre
+ * guillemets. Un numero en E.164 commence justement par `+`, et un nom
+ * d'annuaire est une donnee exterieure. L'apostrophe de tete neutralise
+ * l'evaluation sans changer ce que la cellule affiche ni ce qu'on en recopie.
+ * Meme regle que `csvCell` de app/pages/missed.js.
  * @param {unknown} v
  * @returns {string}
  */
 function csvField(v) {
   const s = v == null ? '' : String(v);
-  return '"' + s.replace(/"/g, '""') + '"';
+  const guarded = /^[=+\-@]/.test(s) ? "'" + s : s;
+  return '"' + guarded.replace(/"/g, '""') + '"';
 }
 
 /**
