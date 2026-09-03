@@ -25,7 +25,7 @@
 import { getCalls, getTeam, getDirectory } from './api.js';
 import { F, isMissed, isIncoming, isOutgoing } from '../shared/schema.js';
 import { toE164, formatNumber } from '../shared/phone.js';
-import { lineLabel, initialsOf } from '../shared/identity.js';
+import { lineLabel, initialsOf, formatCsi } from '../shared/identity.js';
 import { todayIso, isoDaysAgo, nextDay, daysBetween, monthSlices } from '../shared/time.js';
 
 /** Perimetre de donnees vise par l'outil, en jours (trois mois). */
@@ -770,7 +770,7 @@ export function byLine(rows) {
       const line = lineByCsi(csi);
       e = {
         csi,
-        label: line ? line.label : formatNumber(csi),
+        label: line ? line.label : formatCsi(csi),
         person: line ? line.person || null : null,
         total: 0, in: 0, out: 0, missed: 0, answered: 0, answerRate: 0, seconds: 0,
         _incAnswered: 0,

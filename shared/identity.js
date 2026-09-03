@@ -18,7 +18,42 @@
 //  forcer a la main (`KEYYO_LINE_EMAILS`).
 // =============================================================================
 
-import { toE164 } from './phone.js';
+import { toE164, formatNumber } from './phone.js';
+
+/**
+ * Un CSI a-t-il la forme d'un numero de telephone ?
+ *
+ * Un CSI (Common Service Identifier) n'en est PAS toujours un : Keyyo lui donne
+ * la forme de ce qu'il identifie. Un numero pour une ligne (`33253359565`), une
+ * adresse pour un compte de messagerie (`pmarley@keyyomail.com`), et
+ * l'identifiant du terminal pour un poste Keyyo Phone (`rqepz@kphone`) — c'est
+ * la colonne « Identifiant » de la console d'administration.
+ *
+ * Le test exige un premier caractere numerique et refuse toute lettre. Sans
+ * cette severite, `x37jb@kphone` serait pris pour le numero court « 37 » : ses
+ * chiffres survivent au nettoyage de `toE164`, et l'identifiant disparaitrait
+ * de l'ecran, remplace par un nombre qui ne veut rien dire.
+ * @param {unknown} csi
+ * @returns {boolean}
+ */
+export function isPhoneCsi(csi) {
+  return /^[+\d][\d\s.\-()]*$/.test(String(csi == null ? '' : csi).trim());
+}
+
+/**
+ * Libelle d'affichage d'un CSI : le numero mis en forme quand c'en est un,
+ * l'identifiant tel quel sinon. C'est ce qui permet d'afficher `rqepz@kphone`
+ * a cote du nom du collaborateur, comme le fait la console Keyyo.
+ * @param {unknown} csi
+ * @returns {string} `—` si le CSI est vide.
+ */
+export function formatCsi(csi) {
+  const s = String(csi == null ? '' : csi).trim();
+  if (!s) return '—';
+  if (!isPhoneCsi(s)) return s;
+  const pretty = formatNumber(s);
+  return pretty === '—' ? s : pretty;
+}
 
 // -----------------------------------------------------------------------------
 //  Noms et emails
@@ -247,8 +282,16 @@ export function resolveLineIdentities(input) {
   const mailboxes = input.emailAccounts || [];
   const overrides = input.overrides || {};
 
-  // Index numero -> contact, pour un rapprochement exact et peu couteux.
-  /** @type {Map<string, DirectoryContact>} */
+  // Index numero -> contacts. TOUS les contacts sont conserves, pas seulement
+  // le premier.
+  //
+  // POURQUOI C'EST CAPITAL : une ligne Keyyo est partagee par toute une equipe.
+  // Sur un compte reel, la console affiche 7 « contacts associes » sur une
+  // ligne et 24 sur une autre, chacun avec son propre terminal Keyyo Phone.
+  // Ne retenir que le premier revenait a etiqueter les appels de 24 personnes
+  // au nom d'une seule — un chiffre faux et parfaitement credible, le pire cas
+  // que ce projet cherche a eviter.
+  /** @type {Map<string, DirectoryContact[]>} */
   const byNumber = new Map();
   /** @type {Map<string, DirectoryContact>} */
   const bySpeed = new Map();
@@ -258,7 +301,9 @@ export function resolveLineIdentities(input) {
   for (const c of contacts) {
     for (const n of c.numbers || []) {
       const k = toE164(n);
-      if (k && k !== 'anonymous' && !byNumber.has(k)) byNumber.set(k, c);
+      if (!k || k === 'anonymous') continue;
+      const list = byNumber.get(k);
+      if (list) { if (list.indexOf(c) < 0) list.push(c); } else byNumber.set(k, [c]);
     }
     for (const n of c.speedNumbers || []) {
       const k = String(n || '').replace(/\D/g, '');
@@ -280,6 +325,14 @@ export function resolveLineIdentities(input) {
   return lines.map((line) => {
     /** @type {Person[]} */
     const candidates = [];
+    /**
+     * Personnes que l'annuaire rattache a cette ligne. Une ligne Keyyo est
+     * partagee : chacune de ces personnes a son propre terminal Keyyo Phone
+     * (`c8um2@kphone`), mais un CallDetailRecord ne nomme aucun terminal. On
+     * peut donc dire QUI partage la ligne, jamais qui a pris un appel donne.
+     * @type {DirectoryContact[]}
+     */
+    const team = [];
     const lineNumbers = [line.csi, line.formattedCsi, line.presentedNumber]
       .map((n) => toE164(n)).filter((n) => n && n !== 'anonymous');
 
@@ -295,16 +348,51 @@ export function resolveLineIdentities(input) {
       }));
     }
 
-    // -- Regle 2 : un contact d'annuaire porte le numero de la ligne. ---------
-    for (const num of lineNumbers) {
-      const hit = byNumber.get(num);
-      if (hit) {
-        candidates.push(personFrom(hit, {
-          source: 'directory_number',
-          confidence: 0.95,
-          evidence: `contact d'annuaire « ${nameOf(hit)} » porte le numero ${num}`,
+    // -- Regle 2 : LE NOM DU TERMINAL. Source principale. --------------------
+    //
+    // C'est le libelle que la console d'administration Keyyo affiche dans la
+    // colonne « Nom », en face de chaque terminal Keyyo Phone : sur un compte
+    // reel il porte le NOM DE LA PERSONNE (« Sonia Rakoto »), et non un
+    // intitule de poste.
+    //
+    // Pourquoi passer par lui plutot que par le numero de la ligne : l'API
+    // Manager 1.0 n'expose NI l'inventaire des terminaux, NI leur identifiant
+    // `xxxxx@kphone` — il n'existe aucun type de service ni aucun endpoint
+    // pour cela, et `sip_records` ne rend que l'IP, l'agent utilisateur et
+    // l'adresse MAC. Un CallDetailRecord, lui, ne nomme aucun terminal ni
+    // aucun utilisateur. Ce champ `name` est donc le seul point de contact
+    // documente entre un appel et la personne qui l'a pris.
+    //
+    // Le nom est rapproche D'ABORD des comptes de messagerie — les adresses
+    // connectees a l'application — puis, a defaut seulement, de l'annuaire.
+    const deviceName = clean(line.name);
+    if (deviceName && looksLikePerson(deviceName)) {
+      /** @type {{src: any, sim: number, kind: 'directory'|'mailbox'}|null} */
+      let best = null;
+      for (const m of mailboxes) {
+        const label = nameOf(m) || nameFromEmail(m.email).local;
+        const sim = nameSimilarity(deviceName, label);
+        if (sim >= NAME_MATCH_THRESHOLD && (!best || sim > best.sim)) best = { src: m, sim, kind: 'mailbox' };
+      }
+      if (!best) {
+        for (const c of contacts) {
+          const sim = nameSimilarity(deviceName, nameOf(c));
+          if (sim >= NAME_MATCH_THRESHOLD && (!best || sim > best.sim)) best = { src: c, sim, kind: 'directory' };
+        }
+      }
+      if (best) {
+        candidates.push(personFrom(best.src, {
+          source: best.kind === 'mailbox' ? 'email_account_name' : 'directory_name',
+          // PLAFONNE SOUS LES REGLES DE NUMERO. Une ressemblance de nom reste
+          // une supposition ; une egalite de numero est un fait. Verifie sur un
+          // compte reel : les lignes y sont nommees d'apres un SITE (« BIOS
+          // TNR »), pas d'apres une personne, et un nom identique a 100 % entre
+          // une ligne et une boite « BIOS TNR » ne designe personne. Laisser ce
+          // score passer devant l'annuaire remplacait une identite exacte, avec
+          // son adresse, par un libelle de site sans adresse.
+          confidence: Number((0.8 * best.sim).toFixed(3)),
+          evidence: `terminal « ${deviceName} » rapproche de « ${nameOf(best.src)} » (${Math.round(best.sim * 100)} %)`,
         }));
-        break;
       }
     }
 
@@ -321,47 +409,106 @@ export function resolveLineIdentities(input) {
       }
     }
 
-    // -- Regles 4 et 5 : rapprochement par le nom de la ligne. ---------------
-    if (clean(line.name)) {
-      /** @type {{src: any, sim: number, kind: 'directory'|'mailbox'}|null} */
-      let best = null;
-      for (const c of contacts) {
-        const sim = nameSimilarity(line.name, nameOf(c));
-        if (sim >= NAME_MATCH_THRESHOLD && (!best || sim > best.sim)) best = { src: c, sim, kind: 'directory' };
-      }
-      for (const m of mailboxes) {
-        const label = nameOf(m) || nameFromEmail(m.email).local;
-        const sim = nameSimilarity(line.name, label);
-        if (sim >= NAME_MATCH_THRESHOLD && (!best || sim > best.sim)) best = { src: m, sim, kind: 'mailbox' };
-      }
-      if (best) {
-        candidates.push(personFrom(best.src, {
-          source: best.kind === 'directory' ? 'directory_name' : 'email_account_name',
-          confidence: Number((0.7 * best.sim).toFixed(3)),
-          evidence: `nom de ligne « ${line.name} » proche de « ${nameOf(best.src)} » (${Math.round(best.sim * 100)} %)`,
+    // -- Regle 4 : un contact d'annuaire porte le numero de la LIGNE. --------
+    //
+    // C'est une EGALITE de numero, pas une ressemblance : sur un compte reel,
+    // c'est la seule regle qui resout les lignes, et elle les resout toutes,
+    // avec une vraie adresse. Elle reste donc la plus forte apres le reglage
+    // manuel.
+    //
+    // Sa limite est ailleurs, et elle est reelle : elle designe le titulaire
+    // declare de la LIGNE. Quand plusieurs terminaux partagent une meme ligne,
+    // tous les appels lui sont attribues. Ce n'est pas une erreur de
+    // rapprochement, c'est une limite de la source — un CallDetailRecord ne
+    // nomme aucun terminal. La page Diagnostic doit le dire plutot que ce
+    // module l'affaiblir.
+    for (const num of lineNumbers) {
+      const hits = byNumber.get(num);
+      if (!hits || !hits.length) continue;
+
+      // L'EQUIPE de la ligne : tous ceux que l'annuaire y rattache.
+      for (const c of hits) if (team.indexOf(c) < 0) team.push(c);
+
+      if (hits.length === 1) {
+        candidates.push(personFrom(hits[0], {
+          source: 'directory_number',
+          confidence: 0.95,
+          evidence: `seul contact d'annuaire sur le numero ${num} de la ligne : « ${nameOf(hits[0])} »`,
         }));
       }
+      // PLUSIEURS CONTACTS : on ne choisit PAS. Designer l'un d'eux serait
+      // arbitraire — c'est l'ordre de l'annuaire qui trancherait — et
+      // attribuerait a une personne les appels de toute son equipe. La ligne
+      // reste sans titulaire, et `team` dit qui la partage.
+      break;
     }
 
-    // -- Regle 6 : le nom de la ligne EST un prenom, sans email connu. -------
-    if (!candidates.length) {
-      const tokens = nameTokens(line.name);
-      if (tokens.length && tokens.length <= 3 && !/ligne|poste|standard|accueil|fax|groupe|sda/i.test(String(line.name))) {
-        candidates.push({
-          email: null,
-          firstName: capitalizeName(tokens[0]),
-          lastName: tokens[1] ? capitalizeName(tokens.slice(1).join(' ')) : null,
-          displayName: capitalizeName(tokens.join(' ')),
-          source: 'line_name',
-          confidence: 0.35,
-          evidence: `aucun email rattache : prenom lu sur le nom de ligne « ${line.name} »`,
-        });
-      }
+    // -- Regle 5 : DERNIER RECOURS. Le nom lu tel quel, sans aucune source. --
+    //
+    // Ne se declenche QUE si rien d'autre n'a abouti. La garde est essentielle :
+    // sans elle, une ligne nommee d'apres un site (« BIOS ABE ») fabriquerait un
+    // collaborateur nomme « Bios Abe » et evincerait l'identite exacte que
+    // l'annuaire fournit. Un nom de service ressemble beaucoup a un nom de
+    // personne — deux jetons, pas de mot-cle — et aucun test de forme ne les
+    // separe de maniere fiable.
+    if (!candidates.length && deviceName && looksLikePerson(deviceName)) {
+      const tokens = nameTokens(deviceName);
+      candidates.push({
+        email: null,
+        firstName: capitalizeName(tokens[0]),
+        lastName: tokens[1] ? capitalizeName(tokens.slice(1).join(' ')) : null,
+        displayName: capitalizeName(tokens.join(' ')),
+        source: 'line_name',
+        confidence: 0.5,
+        evidence: `aucune adresse rattachee : nom lu sur le terminal « ${deviceName} »`,
+      });
     }
 
-    candidates.sort((a, b) => b.confidence - a.confidence);
-    return { ...line, person: candidates[0] || null, candidates };
+    // UNE ADRESSE L'EMPORTE TOUJOURS SUR L'ABSENCE D'ADRESSE, avant meme de
+    // comparer les scores. C'est la regle qui protege le mieux ce module, parce
+    // qu'elle ne depend d'aucun reglage de confiance : un rapprochement qui
+    // aboutit a une personne joignable vaut mieux qu'un libelle qui n'identifie
+    // personne, quel que soit le score que les regles lui ont donne. Verifie sur
+    // un compte reel, ou une boite nommee comme la ligne (« BIOS ABE », sans
+    // adresse) sortait a 100 % de ressemblance et evincait le contact d'annuaire
+    // et sa vraie adresse.
+    candidates.sort((a, b) => {
+      const ea = a && a.email ? 1 : 0;
+      const eb = b && b.email ? 1 : 0;
+      if (ea !== eb) return eb - ea;
+      return b.confidence - a.confidence;
+    });
+    return {
+      ...line,
+      person: candidates[0] || null,
+      candidates,
+      // Equipe de la ligne, en libelles prets a afficher, ordre de l'annuaire.
+      team: team.map((c) => ({ name: nameOf(c), email: isEmail(c.email) ? String(c.email).toLowerCase() : null })),
+      shared: team.length > 1,
+    };
   });
+}
+
+/**
+ * Mots qui designent un service, jamais une personne. Un terminal nomme
+ * « Accueil » ou « Poste 101 » ne doit pas fabriquer un collaborateur.
+ */
+const GENERIC_DEVICE_NAME = /ligne|poste|standard|accueil|fax|groupe|sda/i;
+
+/**
+ * Le nom d'un terminal designe-t-il une personne ?
+ *
+ * Deux conditions : de un a trois jetons significatifs (« Sonia Rakoto »,
+ * « Sandy Rarivo-PC » passent ; une phrase entiere non), et aucun mot de
+ * service. Le meme test sert a la regle principale et au repli, pour qu'ils ne
+ * puissent pas diverger.
+ * @param {unknown} name
+ * @returns {boolean}
+ */
+function looksLikePerson(name) {
+  const tokens = nameTokens(name);
+  if (!tokens.length || tokens.length > 3) return false;
+  return !GENERIC_DEVICE_NAME.test(String(name == null ? '' : name));
 }
 
 /** Libelle « Prenom Nom » d'un contact ou d'un compte mail. */

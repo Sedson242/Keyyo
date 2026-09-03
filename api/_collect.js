@@ -141,7 +141,20 @@ export async function collect(opts) {
     emailAccounts,
     overrides: cfg.lineEmails,
   });
-  const unresolvedCount = lines.filter((l) => !l.person || !l.person.email).length;
+  // Deux situations tres differentes, qu'il ne faut pas confondre dans un
+  // meme message : une ligne PARTAGEE par une equipe n'est pas une ligne mal
+  // configuree, et aucun reglage ne la resoudra.
+  const sharedLines = lines.filter((l) => l.shared);
+  const unresolvedCount = lines.filter((l) => !l.shared && (!l.person || !l.person.email)).length;
+
+  if (sharedLines.length) {
+    const people = sharedLines.reduce((n, l) => n + (l.team ? l.team.length : 0), 0);
+    warnings.push(
+      sharedLines.length + ' ligne(s) sont partagées par ' + people + ' personnes au total. '
+      + "L'API Keyyo n'indique pas quel poste a pris un appel : l'activité de ces lignes "
+      + 'ne peut donc pas être répartie par collaborateur.',
+    );
+  }
   if (voipLines.length && unresolvedCount) {
     warnings.push(
       unresolvedCount + ' ligne(s) sur ' + lines.length + " sans adresse e-mail rattachée : "

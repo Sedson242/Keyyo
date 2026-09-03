@@ -832,8 +832,8 @@ function sourceLabel(source) {
   if (s === 'directory_number') return 'Annuaire (numéro)';
   if (s === 'directory_short_number') return 'Annuaire (numéro abrégé)';
   if (s === 'directory_name') return 'Annuaire (nom approché)';
-  if (s === 'email_account_name') return 'Compte e-mail (nom approché)';
-  if (s === 'line_name') return 'Nom de la ligne';
+  if (s === 'email_account_name') return 'Compte e-mail (nom du terminal)';
+  if (s === 'line_name') return 'Nom du terminal';
   return s || 'inconnue';
 }
 

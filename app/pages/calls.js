@@ -47,6 +47,7 @@ import {
 import { state, filtered, stats, status, lineByCsi, nameOf, labelOf } from '../store.js';
 import { F } from '../../shared/schema.js';
 import { formatNumber, toE164 } from '../../shared/phone.js';
+import { formatCsi } from '../../shared/identity.js';
 
 // -----------------------------------------------------------------------------
 //  Reglages
@@ -379,7 +380,7 @@ function cellsOf(row) {
     peerCell(row[F.caller]),
     peerCell(row[F.callee]),
     tag(incoming ? 'Entrant' : 'Sortant', incoming ? 'in' : 'out'),
-    html`<span class="tnum nowrap">${formatNumber(csi)}</span>`,
+    html`<span class="tnum nowrap">${formatCsi(csi)}</span>`,
     html`<div class="truncate">${line ? line.label : '—'}</div>`,
     html`<span class="tnum">${fmtDurationShort(Number(row[F.seconds]) || 0)}</span>`,
     stateCell(incoming, isAnswered),

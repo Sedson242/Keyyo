@@ -23,10 +23,51 @@ reconstruit donc l'association en croisant trois sources documentées :
 |---|---|---|
 | Lignes | `GET /services?type=UCaaSVoIPAccount` | `csi`, `formatted_csi`, `name`, `short_number`, `presented_number` |
 | Annuaire | `GET /directory_contacts` | `email`, `first_name`, `name`, et les numéros de la personne |
-| Boîtes mail | `GET /services?type=EmailAccount` | `email`, `first_name`, `last_name` |
+| Boîtes mail | `GET /services?type=EmailAccount` | `first_name`, `last_name`, `name`, et **le CSI, qui EST l'adresse** |
 
-Seul l'annuaire porte à la fois un **email** et des **numéros** : c'est lui qui fait
-le pont, et c'est pourquoi les règles les plus fiables s'appuient dessus.
+> Un `EmailAccount` ne porte **aucun champ `email`** : d'après la documentation
+> officielle, ses champs sont `csi`, `formatted_csi`, `name`, `offer_id`,
+> `offer_name`, `commitment_start_date`, `status`, `blocking_status`, `options`,
+> `first_name`, `last_name` et `quota`. Pour ce type de service, le CSI est
+> l'adresse elle-même (`pmarley@keyyomail.com`), là où un service de téléphonie
+> a un numéro pour CSI. C'est pourquoi `fetchEmailAccounts` retient la première
+> valeur qui ressemble à une adresse parmi `email`, `formatted_csi`, `csi` et
+> `name`.
+
+## 1 bis. Ce que l'API n'expose pas — et qui explique tout le reste
+
+La console d'administration Keyyo montre un inventaire de **terminaux** : une
+ligne par téléphone, avec un identifiant du type `rqepz@kphone`, un modèle
+(« Keyyo Phone »), un état de connexion, et surtout un **Nom** qui est celui de
+la personne.
+
+**Rien de cet inventaire n'est accessible par l'API Manager 1.0.** Vérifié dans
+la documentation officielle :
+
+- il n'existe **aucun type de service** pour un terminal. Les huit types sont
+  `UCaaSVoIPAccount`, `NumberTranslation`, `EmailAccount`, `DSLAccess`,
+  `FaxTransfer`, `ACDService`, `MobileAccount` et `VirtualFaxAccount` ;
+- **aucun endpoint** ne liste les terminaux. `GET /services/:csi/sip_records`,
+  le seul qui s'en approche, ne rend qu'une IP privée, une IP publique, un agent
+  utilisateur et une adresse MAC — ni identifiant `@kphone`, ni nom ;
+- un `UCaaSVoIPAccount` ne porte **ni adresse e-mail, ni lien vers un compte de
+  messagerie** ;
+- surtout, un `CallDetailRecord` ne nomme **aucun terminal ni aucun
+  utilisateur**. Ses champs sont l'identifiant d'appel, l'horodatage, les
+  numéros, la quantité, le coût, l'unité, le roaming et le numéro de
+  translation.
+
+**Conséquence directe :** un appel ne peut être rattaché qu'au CSI du service
+qui l'a porté, et le seul point de contact documenté entre ce service et une
+personne est le champ `name` — celui-là même que la console affiche en face du
+terminal. C'est pourquoi la règle 2 ci-dessous s'appuie sur lui, et pourquoi le
+numéro de la ligne a été rétrogradé.
+
+---
+
+Seul l'annuaire porte à la fois un **email** et des **numéros** ; les comptes de
+messagerie, eux, portent l'adresse dans leur CSI et le nom de la personne dans
+`first_name` / `last_name`. Ce sont les deux seules sources d'adresse.
 
 ---
 
@@ -40,33 +81,49 @@ affiche les autres, ce qui permet de vérifier un rapprochement douteux.
 | # | `source` | Confiance | Déclencheur |
 |---|---|---:|---|
 | 1 | `override` | 1.00 | `KEYYO_LINE_EMAILS` associe explicitement ce CSI à une adresse |
-| 2 | `directory_number` | 0.95 | Un contact d'annuaire porte le numéro de la ligne |
+| 2 | `email_account_name` | 0.90 × similarité | **Le nom du terminal** correspond à un compte de messagerie |
+| 2 bis | `directory_name` | 0.90 × similarité | Le nom du terminal correspond à un contact d'annuaire |
 | 3 | `directory_short_number` | 0.85 | Le numéro abrégé d'un contact est le poste de la ligne |
-| 4 | `directory_name` | 0.70 × similarité | Le nom de la ligne ressemble au nom d'un contact |
-| 5 | `email_account_name` | 0.70 × similarité | Le nom de la ligne ressemble au nom d'une boîte mail |
-| 6 | `line_name` | 0.35 | Le nom de la ligne **est** un prénom, sans email rattaché |
+| 4 | `directory_number` | 0.55 | Un contact d'annuaire porte le numéro **de la ligne** |
+| 5 | `line_name` | 0.50 | Le nom du terminal **est** une personne, sans adresse rattachée |
 
 **Règle 1 — le réglage manuel est souverain.** Il l'emporte sur toute déduction, y
 compris sur un rapprochement par numéro exact. C'est le recours quand
 l'automatisme se trompe, pas seulement quand il échoue.
 
-**Règles 2 et 3 — l'identité par le numéro.** Ce sont les seules qui reposent sur une
-égalité, pas sur une ressemblance. La comparaison se fait en E.164 via
-`shared/phone.js#toE164`, donc `02 53 35 95 61`, `+33253359561` et `0033253359561`
-trouvent le même contact. La règle 2 essaie le CSI, le CSI formaté puis le numéro
-présenté, et s'arrête au premier contact trouvé.
+**Règle 2 — le nom du terminal, source principale.** C'est le libellé que la
+console d'administration Keyyo affiche dans la colonne **Nom**, en face de chaque
+terminal Keyyo Phone : sur un compte réel il porte le nom de la personne
+(`Sonia Rakoto`), pas un intitulé de poste. Ce nom est rapproché **d'abord des
+comptes de messagerie** — les adresses connectées à l'application — puis, à
+défaut seulement, de l'annuaire.
 
-**Règles 4 et 5 — l'identité par le nom.** `nameSimilarity` compare les jetons des
-deux libellés, accents et ponctuation retirés, particules (`de`, `du`, `van`…)
-ignorées. Le score doit atteindre `NAME_MATCH_THRESHOLD` (0,6) pour être retenu, et
-la confiance finale reste plafonnée à 0,7 : une ressemblance de nom n'est jamais
-une preuve. Le meilleur score gagne, l'annuaire passant avant les boîtes mail.
+`nameSimilarity` compare les jetons des deux libellés, accents et ponctuation
+retirés, particules (`de`, `du`, `van`…) ignorées. Le score doit atteindre
+`NAME_MATCH_THRESHOLD` (0,6). Un nom **exact** sort donc à 0,90 et l'emporte sur
+toutes les règles fondées sur un numéro ; une ressemblance faible sort près du
+seuil et perd, à juste titre, contre une égalité de numéro.
 
-**Règle 6 — le dernier recours.** Si rien n'a fonctionné et que le nom de la ligne
-ressemble à un prénom (un à trois jetons, sans `ligne`, `poste`, `standard`,
-`accueil`, `fax`, `groupe` ni `sda`), il est lu comme tel. Aucun email n'est
-associé, et la confiance de 0,35 dit clairement qu'il s'agit d'une lecture, pas
-d'un rapprochement.
+**Règle 3 — le numéro abrégé.** Égalité exacte entre le poste de la ligne et le
+numéro abrégé d'un contact d'annuaire, qui lui porte l'adresse.
+
+**Règle 4 — le numéro de la ligne, volontairement rétrogradé.** Ce rapprochement
+identifie **une ligne, pas la personne qui s'en sert** : plusieurs terminaux
+peuvent partager une ligne, et un numéro direct peut changer de titulaire sans
+que l'annuaire suive. Il reste utile en repli quand le terminal ne porte pas de
+nom exploitable, mais il ne l'emporte plus sur le nom du terminal. La comparaison
+se fait en E.164 via `shared/phone.js#toE164`, donc `02 53 35 95 61`,
+`+33253359561` et `0033253359561` trouvent le même contact.
+
+**Règle 5 — le nom seul.** Aucune source ne porte l'adresse, mais le nom du
+terminal reste la meilleure désignation disponible, et c'est exactement celle que
+l'administration Keyyo affiche. Aucune adresse n'est inventée, et la confiance de
+0,50 dit qu'il s'agit d'une lecture, pas d'un rapprochement.
+
+Les règles 2 et 5 partagent le même garde-fou : le nom doit compter de un à trois
+jetons significatifs et ne contenir aucun mot de service (`ligne`, `poste`,
+`standard`, `accueil`, `fax`, `groupe`, `sda`). Un terminal nommé « Accueil » ne
+fabrique donc jamais de collaborateur.
 
 Une ligne qui ne déclenche aucune règle garde `person: null`. Elle reste affichée
 et sélectionnable, sous son nom de ligne ou son numéro : **rien n'est deviné en

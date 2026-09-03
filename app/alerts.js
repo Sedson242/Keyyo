@@ -30,7 +30,7 @@ import { fmtDate, fmtTime } from './format.js';
 import { avatar, empty, tag } from './ui.js';
 import { labelOf, lineByCsi } from './store.js';
 import { F, isMissed, rowKey } from '../shared/schema.js';
-import { formatNumber } from '../shared/phone.js';
+import { formatCsi } from '../shared/identity.js';
 
 // -----------------------------------------------------------------------------
 //  Constantes
@@ -397,7 +397,7 @@ function closePopover() {
 function lineLabelOf(csi) {
   const line = lineByCsi(csi);
   if (line && line.label) return String(line.label);
-  return formatNumber(csi);
+  return formatCsi(csi);
 }
 
 /**

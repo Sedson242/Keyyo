@@ -29,7 +29,7 @@ import { sectionHead, card, notice, empty, skeleton, table, tag, avatar, meter, 
 import { barChart, attachChartTips } from '../charts.js';
 import { state, status, getRows, getLines, byLine, stats, setFilter } from '../store.js';
 import { F } from '../../shared/schema.js';
-import { formatNumber } from '../../shared/phone.js';
+import { formatCsi } from '../../shared/identity.js';
 
 // -----------------------------------------------------------------------------
 //  Traduction des sources de rapprochement
@@ -45,8 +45,8 @@ const SOURCE_LABELS = {
   directory_number: "numéro de l'annuaire Keyyo",
   directory_short_number: 'numéro abrégé',
   directory_name: "nom de l'annuaire",
-  email_account_name: 'compte mail Keyyo',
-  line_name: 'nom de la ligne, sans email',
+  email_account_name: 'compte de messagerie Keyyo',
+  line_name: 'nom du terminal, sans adresse',
 };
 
 /** En dessous de ce seuil, le rapprochement est trop faible pour etre tu. */
@@ -177,10 +177,10 @@ function buildPeople() {
       line,
       person,
       csi: String(line.csi || ''),
-      number: line.formattedCsi ? String(line.formattedCsi) : formatNumber(line.csi),
+      number: line.formattedCsi ? String(line.formattedCsi) : formatCsi(line.csi),
       name: personName(person),
       mail: personMail(person),
-      label: person && person.displayName ? String(person.displayName) : String(line.label || formatNumber(line.csi)),
+      label: person && person.displayName ? String(person.displayName) : String(line.label || formatCsi(line.csi)),
       total: entry.total,
       in: entry.in,
       out: entry.out,

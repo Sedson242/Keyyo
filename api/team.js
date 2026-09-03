@@ -15,13 +15,29 @@
 // =============================================================================
 
 import { readConfig, readParams, flag, sendJson, rejectNonGet, errorMessage } from './_config.js';
-import { getAccessToken, fetchVoipLines, fetchDirectoryContacts, fetchEmailAccounts } from './_keyyo.js';
+import {
+  getAccessToken, fetchServices, fetchVoipLines, fetchDirectoryContacts, fetchEmailAccounts,
+} from './_keyyo.js';
 import { resolveLineIdentities, lineLabel } from '../shared/identity.js';
 
 const CACHE_FRESH = 's-maxage=300, stale-while-revalidate=600';
 
 /** Domaine de repli quand aucune adresse connue ne permet de le deduire. */
 const FALLBACK_DOMAIN = 'exemple.fr';
+
+/**
+ * Types de service tentes par `?inventory=1`.
+ *
+ * Les deux premiers sont cites par la documentation dans les rubriques
+ * « Applicable types » de /sip_records et /incoming_call_detail, mais
+ * n'apparaissent PAS dans la liste des huit types de GET /services : ce sont
+ * les meilleurs candidats pour designer un terminal. Les suivants sont des
+ * noms plausibles, essayes parce qu'un refus coute une requete et repond
+ * definitivement.
+ */
+const PROBE_TYPES = [
+  'SIPAccount', 'TelephonyService', 'KeyyoPhone', 'Phone', 'Device', 'Terminal', 'Softphone',
+];
 
 /**
  * @param {any} req
@@ -37,6 +53,70 @@ export default async function handler(req, res) {
     const cfg = readConfig();
     const deadline = Date.now() + Math.min(cfg.budgetMs, 20000);
     const token = await getAccessToken(cfg);
+
+    // -- ?inventory=1 : l'INVENTAIRE BRUT des services de ce compte. ---------
+    //
+    // Toutes les autres routes filtrent par type (`UCaaSVoIPAccount`,
+    // `EmailAccount`) : personne n'a donc jamais regarde ce que ce compte
+    // contient VRAIMENT. Or la console d'administration montre 56 terminaux
+    // Keyyo Phone identifies par `c8um2@kphone`, introuvables dans les huit
+    // types documentes.
+    //
+    // Cette sonde repond a la question empiriquement : elle demande d'abord
+    // TOUS les services sans aucun filtre, puis reessaie avec les types que la
+    // documentation mentionne au detour d'une page sans les lister
+    // (`SIPAccount` pour /sip_records, `TelephonyService` pour
+    // /incoming_call_detail), et enfin quelques noms plausibles. Chaque
+    // service est rendu avec son `_resource_type`, son CSI et son nom.
+    if (flag(params.inventory)) {
+      const all = await settle(() => fetchServices(cfg, token, '', { deadline }));
+
+      /** @type {Record<string, any[]>} */
+      const byType = {};
+      if (all.ok) {
+        for (const s of all.value) {
+          if (!s || typeof s !== 'object') continue;
+          const type = String(s._resource_type || 'inconnu');
+          if (!byType[type]) byType[type] = [];
+          byType[type].push({
+            csi: String(s.csi == null ? '' : s.csi),
+            formattedCsi: String(s.formatted_csi == null ? '' : s.formatted_csi),
+            name: String(s.name == null ? '' : s.name),
+            offerName: String(s.offer_name == null ? '' : s.offer_name),
+            status: String(s.status == null ? '' : s.status),
+            firstName: String(s.first_name == null ? '' : s.first_name),
+            lastName: String(s.last_name == null ? '' : s.last_name),
+            shortNumber: String(s.short_number == null ? '' : s.short_number),
+          });
+        }
+      }
+
+      // Types non documentes, tentes un par un. Un refus est une reponse : il
+      // dit que la piste est fermee, ce qui vaut mieux que de le supposer.
+      const probes = {};
+      for (const type of PROBE_TYPES) {
+        const r = await settle(() => fetchServices(cfg, token, type, { deadline }));
+        probes[type] = r.ok
+          ? { ok: true, count: r.value.length, sample: r.value.slice(0, 3).map((s) => ({
+            resourceType: String((s && s._resource_type) || ''),
+            csi: String((s && s.csi) || ''),
+            name: String((s && s.name) || ''),
+          })) }
+          : { ok: false, error: r.message };
+      }
+
+      return sendJson(res, 200, {
+        inventory: {
+          ok: all.ok,
+          error: all.ok ? '' : all.message,
+          total: all.ok ? all.value.length : 0,
+          types: Object.keys(byType).sort().map((t) => ({ type: t, count: byType[t].length })),
+          services: byType,
+        },
+        probes,
+        updatedAt: new Date().toISOString(),
+      }, 'no-store');
+    }
 
     const voipLines = await fetchVoipLines(cfg, token, { deadline });
 
@@ -77,6 +157,10 @@ export default async function handler(req, res) {
       label: lineLabel(line),
       person: line.person || null,
       candidates: line.candidates || [],
+      // Equipe partageant la ligne. Une ligne Keyyo est partagee par plusieurs
+      // terminaux Keyyo Phone, et aucun releve d'appel ne dit lequel a repondu.
+      team: line.team || [],
+      shared: !!line.shared,
     }));
 
     const unresolved = lines

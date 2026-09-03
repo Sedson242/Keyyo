@@ -156,7 +156,7 @@ const CONTRACT = [
   ['../shared/time.js', ['DEFAULT_TZ', 'safeTz', 'parseTimestamp', 'isPlausibleDate', 'localParts', 'toKeyyoDate', 'isoDaysAgo', 'todayIso', 'monthSlices', 'nextDay', 'daysBetween']],
   ['../shared/schema.js', ['SCHEMA_VERSION', 'FIELDS', 'F', 'ROW_LENGTH', 'isMissed', 'isIncoming', 'isOutgoing', 'rowKey', 'toObject', 'fromObject', 'isValidRow']],
   ['../shared/cdr.js', ['normalizeCdr', 'extractRecords', 'nextLink']],
-  ['../shared/identity.js', ['capitalizeName', 'normalizeName', 'nameTokens', 'isEmail', 'nameFromEmail', 'firstNameFromEmail', 'nameSimilarity', 'NAME_MATCH_THRESHOLD', 'resolveLineIdentities', 'lineLabel', 'initialsOf', 'parseLineEmails']],
+  ['../shared/identity.js', ['capitalizeName', 'normalizeName', 'nameTokens', 'isEmail', 'nameFromEmail', 'firstNameFromEmail', 'nameSimilarity', 'NAME_MATCH_THRESHOLD', 'resolveLineIdentities', 'lineLabel', 'initialsOf', 'parseLineEmails', 'isPhoneCsi', 'formatCsi']],
 
   ['../app/format.js', ['fmtInt', 'fmtPct', 'fmtDuration', 'fmtDurationShort', 'fmtHms', 'fmtDate', 'fmtDateLong', 'fmtDayShort', 'fmtTime', 'fmtMonth', 'fmtClock', 'fmtRelative', 'WEEKDAYS', 'pluralize']],
   ['../app/dom.js', ['esc', 'h', 'html', 'raw', 'mount', 'qs', 'qsa', 'on', 'icon']],
@@ -652,6 +652,31 @@ if (need(identity, 'shared/identity.js', 'shared/identity.js')) suite('shared/id
     ok(NAME_MATCH_THRESHOLD > 0 && NAME_MATCH_THRESHOLD < 1, 'le seuil est une proportion');
   });
 
+  // Un CSI n'est pas toujours un numero : Keyyo lui donne la forme de ce qu'il
+  // identifie. La console d'administration l'affiche dans sa colonne
+  // « Identifiant », et l'outil doit en faire autant.
+  test('formatCsi distingue un numero d’un identifiant de terminal', () => {
+    const { isPhoneCsi, formatCsi } = identity;
+
+    eq(isPhoneCsi('33253359565'), true);
+    eq(isPhoneCsi('+33 2 53 35 95 65'), true);
+    eq(isPhoneCsi('101'), true);
+    eq(isPhoneCsi('rqepz@kphone'), false, 'identifiant de terminal Keyyo Phone');
+    eq(isPhoneCsi('x37jb@kphone'), false, 'des chiffres au milieu n’en font pas un numero');
+    eq(isPhoneCsi('pmarley@keyyomail.com'), false, 'CSI d’un compte de messagerie');
+    eq(isPhoneCsi(''), false);
+
+    eq(formatCsi('33253359565'), '02 53 35 95 65', 'un numero reste mis en forme');
+    eq(formatCsi('101'), '101');
+    // Le piege : `x37jb@kphone` contient « 3 » et « 7 ». Passe a formatNumber,
+    // il ressortirait en poste court « 37 » et l'identifiant disparaitrait.
+    eq(formatCsi('x37jb@kphone'), 'x37jb@kphone');
+    eq(formatCsi('rqepz@kphone'), 'rqepz@kphone');
+    eq(formatCsi('pmarley@keyyomail.com'), 'pmarley@keyyomail.com');
+    eq(formatCsi(''), '—');
+    eq(formatCsi(null), '—');
+  });
+
   test('initialsOf donne une pastille lisible en toute circonstance', () => {
     eq(initialsOf('Marie Dupont'), 'MD');
     eq(initialsOf('Accueil'), 'A');
@@ -689,6 +714,137 @@ if (need(identity, 'shared/identity.js', 'shared/identity.js')) suite('shared/id
     eqDeep(parseLineEmails(null), {});
   });
 
+  // La console d'administration Keyyo affiche, en face de chaque terminal
+  // Keyyo Phone, le NOM DE LA PERSONNE. C'est desormais la source principale :
+  // l'API n'expose ni l'inventaire des terminaux ni leur identifiant
+  // `xxxxx@kphone`, et un relevé d'appel ne nomme aucun terminal.
+  // NON-REGRESSION, tiree d'un compte reel. Les lignes y sont nommees d'apres
+  // un SITE (« BIOS ABE », « BIOS TNR »), et il existe des boites de messagerie
+  // portant EXACTEMENT le meme libelle, sans adresse exploitable. Un nom
+  // identique a 100 % ne designe donc personne. Faire passer cette ressemblance
+  // devant l'annuaire remplacait « Jessica Henin », avec son adresse, par
+  // « BIOS ABE » sans adresse.
+  test('un nom de site identique a 100 % n’evince pas l’identite de l’annuaire', () => {
+    const out = resolveLineIdentities({
+      voipLines: [
+        { csi: '33253359565', formattedCsi: '+33253359565', name: 'BIOS ABE', shortNumber: '9565' },
+      ],
+      // Boite nommee comme la ligne, sans adresse : le piege.
+      emailAccounts: [{ csi: 'BIOS ABE', name: 'BIOS ABE' }],
+      directoryContacts: [
+        { email: 'jessica.henin@bios-expertise.com', firstName: 'Jessica', lastName: 'Henin', numbers: ['+33253359565'], speedNumbers: [] },
+      ],
+      overrides: {},
+    });
+
+    eq(out[0].person.source, 'directory_number', 'l’egalite de numero l’emporte sur la ressemblance de nom');
+    eq(out[0].person.email, 'jessica.henin@bios-expertise.com');
+    eq(out[0].person.firstName, 'Jessica');
+    eq(lineLabel(out[0]), 'Jessica');
+    // Et surtout : aucun collaborateur « Bios Abe » n'a ete invente.
+    ok(!out[0].candidates.some((c) => c.source === 'line_name'),
+      'le dernier recours ne se declenche pas quand une identite existe deja');
+  });
+
+  // LE CAS REEL DE CE COMPTE : trois lignes, cinquante-six personnes. Chacune a
+  // son terminal Keyyo Phone (`c8um2@kphone`), mais un relevé d'appel ne nomme
+  // aucun terminal. Designer un titulaire serait attribuer a une personne les
+  // appels de toute son equipe.
+  test('une ligne partagee n’a pas de titulaire, elle a une equipe', () => {
+    const equipe = [
+      { email: 'stephane.sedson@bios-expertise.com', firstName: 'Stéphane', lastName: 'Sedson', numbers: ['+33253359565'], speedNumbers: [] },
+      { email: 'marcel.razafi@bios-expertise.com', firstName: 'Marcel', lastName: 'Razafi', numbers: ['+33253359565'], speedNumbers: [] },
+      { email: 'jessica.henin@bios-expertise.com', firstName: 'Jessica', lastName: 'Henin', numbers: ['+33253359565'], speedNumbers: [] },
+    ];
+    const out = resolveLineIdentities({
+      voipLines: [{ csi: '33253359565', formattedCsi: '+33253359565', name: 'BIOS ABE', shortNumber: '9565' }],
+      directoryContacts: equipe,
+      emailAccounts: [],
+      overrides: {},
+    });
+
+    eq(out[0].shared, true, 'la ligne est reconnue comme partagee');
+    eq(out[0].team.length, 3, 'les trois personnes sont conservees');
+    eq(out[0].person, null, 'aucun titulaire n’est designe arbitrairement');
+    eq(lineLabel(out[0]), 'BIOS ABE', 'la ligne s’affiche sous son propre nom');
+    // Le premier de la liste ne doit surtout pas devenir « le » collaborateur.
+    ok(!out[0].candidates.some((c) => c.source === 'directory_number'),
+      'aucun candidat par numero quand plusieurs personnes partagent le numero');
+    eq(out[0].team[0].email, 'stephane.sedson@bios-expertise.com');
+  });
+
+  test('une ligne a titulaire unique reste attribuee', () => {
+    const out = resolveLineIdentities({
+      voipLines: [{ csi: '33253359570', formattedCsi: '+33253359570', name: 'BIOS SUD', shortNumber: '9570' }],
+      directoryContacts: [
+        { email: 'seule.personne@exemple.fr', firstName: 'Seule', lastName: 'Personne', numbers: ['+33253359570'], speedNumbers: [] },
+      ],
+      emailAccounts: [],
+      overrides: {},
+    });
+    eq(out[0].shared, false);
+    eq(out[0].person.source, 'directory_number');
+    eq(out[0].person.email, 'seule.personne@exemple.fr');
+  });
+
+  test('une identite avec adresse l’emporte sur une identite sans adresse', () => {
+    const out = resolveLineIdentities({
+      voipLines: [{ csi: '33253359566', formattedCsi: '+33253359566', name: 'Atelier Nord', shortNumber: '9566' }],
+      // Ressemblance parfaite, mais aucune adresse derriere.
+      emailAccounts: [{ csi: 'Atelier Nord', name: 'Atelier Nord' }],
+      // Ressemblance nulle, mais une vraie personne joignable sur le poste.
+      directoryContacts: [
+        { email: 'marc.leroy@exemple.fr', firstName: 'Marc', lastName: 'Leroy', numbers: [], speedNumbers: ['9566'] },
+      ],
+      overrides: {},
+    });
+    eq(out[0].person.email, 'marc.leroy@exemple.fr', 'une personne joignable passe devant un libelle sans adresse');
+    eq(out[0].person.source, 'directory_short_number');
+  });
+
+  test('sans annuaire, le nom du terminal va chercher l’adresse du compte de messagerie', () => {
+    const out = resolveLineIdentities({
+      voipLines: [{ csi: '33253359561', formattedCsi: '+33253359561', name: 'Sonia Rakoto', shortNumber: '101' }],
+      emailAccounts: [
+        { csi: 'sonia.rakoto@exemple.fr', email: 'sonia.rakoto@exemple.fr', firstName: 'Sonia', lastName: 'Rakoto' },
+      ],
+      directoryContacts: [],
+      overrides: {},
+    });
+    eq(out[0].person.source, 'email_account_name');
+    eq(out[0].person.email, 'sonia.rakoto@exemple.fr');
+    eq(out[0].person.firstName, 'Sonia');
+  });
+
+  test('un terminal nomme comme un service ne fabrique aucune personne', () => {
+    const out = resolveLineIdentities({
+      voipLines: [
+        { csi: '33253359560', formattedCsi: '02 53 35 95 60', name: 'Accueil', shortNumber: '100' },
+        { csi: '33253359569', formattedCsi: '02 53 35 95 69', name: 'Poste 101', shortNumber: '109' },
+        { csi: '33253359568', formattedCsi: '02 53 35 95 68', name: 'Ligne fax', shortNumber: '108' },
+      ],
+      emailAccounts: [],
+      directoryContacts: [],
+      overrides: {},
+    });
+    for (const line of out) {
+      ok(!line.person, 'aucune personne inventee pour « ' + line.name + ' »');
+    }
+  });
+
+  test('sans aucune source d’adresse, le nom du terminal reste affiche', () => {
+    const out = resolveLineIdentities({
+      voipLines: [{ csi: '33253359562', formattedCsi: '02 53 35 95 62', name: 'Sandy Rarivo-PC', shortNumber: '102' }],
+      emailAccounts: [],
+      directoryContacts: [],
+      overrides: {},
+    });
+    eq(out[0].person.source, 'line_name');
+    eq(out[0].person.email, null, 'aucune adresse n’est inventee');
+    eq(out[0].person.firstName, 'Sandy');
+    eq(lineLabel(out[0]), 'Sandy');
+  });
+
   test('resolveLineIdentities rapproche une ligne de son contact d’annuaire', () => {
     const out = resolveLineIdentities({
       voipLines: [
@@ -704,8 +860,11 @@ if (need(identity, 'shared/identity.js', 'shared/identity.js')) suite('shared/id
 
     eq(out.length, 2, 'toutes les lignes sont rendues, resolues ou non');
     const resolved = out.find((l) => l.csi === '33253359561');
-    ok(resolved.person, 'la ligne portant le numero du contact est resolue');
+    ok(resolved.person, 'la ligne est resolue');
+    // Un seul contact sur ce numero : la ligne a bien un titulaire, et
+    // l'egalite de numero est la regle la plus forte apres le reglage manuel.
     eq(resolved.person.source, 'directory_number');
+    eq(resolved.shared, false, 'une seule personne : la ligne n’est pas partagee');
     eq(resolved.person.firstName, 'Marie');
     ok(resolved.person.evidence && resolved.person.evidence.length > 0, 'le rapprochement porte son indice');
     ok(resolved.person.confidence > 0.5, 'confiance elevee sur un numero exact');

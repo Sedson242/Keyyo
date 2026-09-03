@@ -39,7 +39,7 @@ import {
 import { notice, tag, empty } from './ui.js';
 import { F, isMissed, isIncoming } from '../shared/schema.js';
 import { toE164, formatNumber, numberKind } from '../shared/phone.js';
-import { initialsOf } from '../shared/identity.js';
+import { initialsOf, formatCsi } from '../shared/identity.js';
 
 import * as pageMonitoring from './pages/monitoring.js';
 import * as pageCalls from './pages/calls.js';
@@ -559,7 +559,7 @@ function drillBody(rows) {
     const label = missed ? 'Manqué' : (isIncoming(row) ? 'Entrant' : 'Sortant');
     const tone = missed ? 'missed' : (isIncoming(row) ? 'in' : 'out');
     const line = lineByCsi(row[F.csi]);
-    const lineLabel = line ? String(line.label) : formatNumber(row[F.csi]);
+    const lineLabel = line ? String(line.label) : formatCsi(row[F.csi]);
 
     history += html`<div class="drill-row">
       <span class="faint">${fmtDate(row[F.date])}</span>

@@ -31,7 +31,8 @@ import { fmtInt, fmtDate, fmtMonth, fmtRelative, pluralize } from '../format.js'
 import { card, sectionHead, kpi, table, tag, avatar, split, empty, notice, skeleton } from '../ui.js';
 import { barChart, attachChartTips } from '../charts.js';
 import { state, status, getLines, getRows, filtered, byLine, byMonth, stats, setFilter, lineByCsi } from '../store.js';
-import { formatNumber, toE164 } from '../../shared/phone.js';
+import { toE164 } from '../../shared/phone.js';
+import { formatCsi, isPhoneCsi } from '../../shared/identity.js';
 
 // -----------------------------------------------------------------------------
 //  Constantes de la vue
@@ -131,7 +132,7 @@ function selectedLine() {
   if (hit) return hit;
   // Filtre pose sur une ligne absente du parc : on l'annonce quand meme, sinon
   // les compteurs paraitraient anormalement bas sans raison visible.
-  return { csi: String(state.csi), label: formatNumber(state.csi) };
+  return { csi: String(state.csi), label: formatCsi(state.csi) };
 }
 
 /** @returns {string} periode affichee, en clair. */
@@ -322,9 +323,12 @@ function kpiRow(lines, index) {
  * @returns {string}
  */
 function numberCell(value) {
-  const shown = formatNumber(value);
-  const key = toE164(value);
-  if (!key || key === 'anonymous') return html`<span class="nowrap">${shown}</span>`;
+  // Un CSI n'est pas toujours un numero : un poste Keyyo Phone s'identifie par
+  // `rqepz@kphone`. On l'affiche alors tel quel, et sans lien — il n'y a pas de
+  // fiche correspondant a ouvrir pour un identifiant de terminal.
+  const shown = formatCsi(value);
+  const key = isPhoneCsi(value) ? toE164(value) : '';
+  if (!key || key === 'anonymous') return html`<span class="nowrap mono">${shown}</span>`;
   return html`<button class="link nowrap" type="button" data-drill="${key}"
     title="Ouvrir la fiche de ce numéro">${shown}</button>`;
 }

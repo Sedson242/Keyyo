@@ -139,6 +139,8 @@ export function resolveLineIdentities(input): Array<VoipLine & {person, candidat
 export function lineLabel(line): string
 export function initialsOf(label): string
 export function parseLineEmails(raw): Record<string, string>
+export function isPhoneCsi(csi): boolean       // un CSI a-t-il la forme d'un numéro ?
+export function formatCsi(csi): string         // '02 53 35 95 65' | 'rqepz@kphone' | '—'
 ```
 
 `person` : `{ email, firstName, lastName, displayName, source, confidence, evidence }`
