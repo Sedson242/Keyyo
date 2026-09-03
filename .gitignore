@@ -1,4 +1,28 @@
+# Dependances
 node_modules/
+
+# Vercel
+.vercel/
+
+# Variables d'environnement : JAMAIS dans git.
+# Seul .env.example, qui ne contient que des placeholders, est suivi.
 .env
 .env.local
-.vercel
+.env.*.local
+.env.development
+.env.production
+
+# Systeme
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Journaux et fichiers temporaires
+*.log
+npm-debug.log*
+.cache/
+tmp/
+
+# Editeurs
+.idea/
+*.swp

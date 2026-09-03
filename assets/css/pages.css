@@ -1,0 +1,274 @@
+/* =============================================================================
+   pages.css — Dispositions propres a chaque vue.
+
+   La vue Monitoring reprend trame pour trame la maquette de reference :
+
+     +--------------------------------------+  +---------------------+
+     | bandeau 3 compteurs                  |  |  carte sombre       |
+     +--------------------------------------+  |  a rappeler         |
+     | grande carte : taux de reponse       |  +---------------------+
+     |   + classement imbrique              |  |  repartition        |
+     +--------------------------------------+  +---------------------+
+     | tableau collaborateurs                                        |
+     +---------------------------------------------------------------+
+   ============================================================================= */
+
+/* =============================================================================
+   Vue Monitoring
+   ============================================================================= */
+
+.dash {
+  display: grid;
+  grid-template-columns: minmax(0, 1.62fr) minmax(300px, 0.9fr);
+  gap: var(--gap-5);
+  align-items: start;
+}
+
+.dash-left { display: grid; gap: var(--gap-5); min-width: 0; }
+.dash-right { display: grid; gap: var(--gap-5); min-width: 0; }
+
+/* Grande carte du taux de reponse : graphique a gauche, classement a droite. */
+.rate-card { display: grid; gap: var(--gap-5); }
+
+.rate-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.72fr);
+  gap: var(--gap-5);
+  align-items: stretch;
+}
+
+.rate-figure { display: grid; gap: var(--gap-4); min-width: 0; align-content: start; }
+
+/* Le classement imbrique dans la carte, comme « Top Performance ». */
+.rate-rank { display: grid; gap: var(--gap-3); align-content: start; }
+.rate-rank-title { font: var(--t-h3); color: var(--ink); }
+
+/* Le tableau collaborateurs occupe toute la largeur, sous les deux colonnes. */
+.dash-wide { grid-column: 1 / -1; min-width: 0; }
+
+@media (max-width: 1280px) {
+  .rate-body { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 1080px) {
+  .dash { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* =============================================================================
+   Vues avec graphiques cote a cote
+   ============================================================================= */
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--gap-5);
+  align-items: start;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--gap-5);
+  align-items: start;
+}
+
+/* Deux tiers / un tiers, pour « graphique + liste ». */
+.grid-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: var(--gap-5);
+  align-items: start;
+}
+@media (max-width: 1080px) {
+  .grid-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* =============================================================================
+   Barre de periode (presets + plage libre + filtre de ligne)
+   ============================================================================= */
+
+.periodbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: var(--gap-5);
+  border-radius: var(--r-lg);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--sh-xs);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.periodbar-range { display: flex; align-items: center; gap: 7px; font: var(--t-sm); color: var(--ink-muted); }
+.periodbar-range input {
+  padding: 6px 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  font: var(--t-sm);
+  color: var(--ink);
+}
+.periodbar-info { font: var(--t-micro); color: var(--ink-muted); }
+
+/* =============================================================================
+   Vue Manqués : deux colonnes « a rappeler » / « rappelés »
+   ============================================================================= */
+
+.callback-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--gap-5);
+  align-items: start;
+}
+
+.callback-list { display: grid; gap: 2px; max-height: 460px; overflow-y: auto; }
+
+.callback-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+  padding: 10px 8px;
+  border-radius: var(--r-md);
+  width: 100%;
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease);
+}
+.callback-row:hover { background: var(--surface-sunken); }
+.callback-row + .callback-row { border-top: 1px solid var(--line); }
+.callback-name { font: var(--t-body-md); font-weight: 600; color: var(--ink); }
+.callback-meta { margin-top: 2px; font: var(--t-micro); color: var(--ink-muted); }
+.callback-count {
+  font: var(--t-body-md);
+  font-weight: 700;
+  color: var(--missed);
+  font-variant-numeric: tabular-nums;
+}
+.callback-col--done .callback-count { color: var(--answered); }
+
+/* =============================================================================
+   Vue Collaborateurs : cartes par personne
+   ============================================================================= */
+
+.people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(276px, 1fr));
+  gap: var(--gap-4);
+}
+
+.person {
+  display: grid;
+  gap: var(--gap-4);
+  padding: 18px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-sm);
+  border: 1px solid var(--line);
+}
+.person-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.person-name { font: var(--t-h3); color: var(--ink); }
+.person-mail {
+  font: var(--t-micro);
+  color: var(--ink-muted);
+  word-break: break-all;
+}
+.person-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.person-stat { text-align: center; padding: 9px 4px; border-radius: var(--r-sm); background: var(--surface-sunken); }
+.person-stat-value { font: var(--t-num-md); color: var(--ink); font-variant-numeric: tabular-nums; }
+.person-stat-label { margin-top: 1px; font: var(--t-micro); color: var(--ink-muted); }
+
+/* Origine du rapprochement email -> prenom. */
+.person-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--t-micro);
+  color: var(--ink-faint);
+}
+.person-source .tag { font-size: 9px; padding: 2px 7px; }
+
+/* =============================================================================
+   Vue Diagnostic
+   ============================================================================= */
+
+.diag { display: grid; gap: var(--gap-5); }
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--gap-3);
+}
+.diag-cell { padding: 13px 15px; border-radius: var(--r-lg); background: var(--surface-sunken); }
+.diag-cell-label { font: var(--t-micro); color: var(--ink-muted); }
+.diag-cell-value {
+  margin-top: 3px;
+  font: var(--t-num-md);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.diag-pre {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--r-lg);
+  background: var(--surface-dark);
+  color: #e8dfd8;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+/* Bloc a copier-coller dans les variables d'environnement. */
+.diag-copy {
+  display: grid;
+  gap: 8px;
+  padding: 13px 15px;
+  border-radius: var(--r-lg);
+  border: 1px dashed var(--line-strong);
+  background: var(--surface-sunken);
+}
+.diag-copy code {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink);
+  word-break: break-all;
+  line-height: 1.7;
+}
+
+/* =============================================================================
+   Fiche correspondant (modale)
+   ============================================================================= */
+
+.drill-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+  margin-bottom: var(--gap-5);
+}
+.drill-stat { padding: 11px; border-radius: var(--r-md); background: var(--surface-sunken); text-align: center; }
+.drill-stat-value { font: var(--t-num-md); color: var(--ink); font-variant-numeric: tabular-nums; }
+.drill-stat-label { margin-top: 1px; font: var(--t-micro); color: var(--ink-muted); }
+
+.drill-history { display: grid; gap: 1px; max-height: 300px; overflow-y: auto; }
+.drill-row {
+  display: grid;
+  grid-template-columns: 74px 52px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 4px;
+  font: var(--t-sm);
+  border-bottom: 1px solid var(--line);
+}
+.drill-row:last-child { border-bottom: 0; }
+
+@media (max-width: 560px) {
+  .drill-row { grid-template-columns: 66px minmax(0, 1fr) auto; }
+  .drill-row .drill-hide-sm { display: none; }
+}

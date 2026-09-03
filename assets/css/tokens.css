@@ -1,0 +1,181 @@
+/* =============================================================================
+   tokens.css — Jetons de design. SOURCE UNIQUE de toutes les valeurs visuelles.
+
+   Palette relevee sur la maquette de reference : fond degrade peche/creme,
+   cartes blanches a grand rayon, une carte sombre en accent, barres en
+   degrade orange -> corail.
+
+   Regle : aucune couleur, aucun rayon, aucune ombre en dur ailleurs dans le
+   CSS. Tout passe par une variable definie ici.
+
+   Typographie : pile systeme uniquement, aucune police chargee depuis un CDN
+   tiers (pas de dependance externe, pas de FOUT, et pas de transfert de
+   donnees vers un tiers — utile pour une entreprise francaise soumise au RGPD).
+   ============================================================================= */
+
+:root {
+  /* ---------------------------------------------------------------------------
+     1. Fond de page : le degrade chaud de la maquette
+     --------------------------------------------------------------------------- */
+  --bg-peach-deep: #e9ab86;   /* floraison peche, en haut a gauche */
+  --bg-peach: #f4d6c1;
+  --bg-cream: #faeee4;
+  --bg-shell: #fdfaf7;        /* creme presque blanc, bas de page */
+
+  /* ---------------------------------------------------------------------------
+     2. Surfaces
+     --------------------------------------------------------------------------- */
+  --surface: #ffffff;
+  --surface-sunken: #fdf7f2;  /* pistes de barres, en-tetes de tableau */
+  --surface-tint: #fbeee5;    /* pastilles d'icone chaudes */
+  --surface-tint-2: #f7e6da;
+  --surface-dark: #1a1614;    /* la carte sombre en accent */
+  --surface-dark-2: #241e1a;
+  --surface-glass: rgba(255, 255, 255, 0.42);   /* barre laterale sur le degrade */
+  --surface-glass-strong: rgba(255, 255, 255, 0.72);
+
+  /* ---------------------------------------------------------------------------
+     3. Encre
+     --------------------------------------------------------------------------- */
+  --ink: #2a2018;             /* titres, chiffres */
+  --ink-soft: #574a41;        /* texte courant */
+  --ink-muted: #9a8b80;       /* libelles, axes */
+  --ink-faint: #bdaea3;       /* separateurs textuels, etats vides */
+  --ink-on-dark: #ffffff;
+  --ink-on-dark-muted: #9d918a;
+
+  /* ---------------------------------------------------------------------------
+     4. Couleurs semantiques du metier
+     Un outil de supervision d'appels a quatre etats a distinguer d'un coup
+     d'oeil. On conserve le marine et le vert de la charte Keyyo pour les
+     appels, dans une palette peche qui vient de la maquette.
+     --------------------------------------------------------------------------- */
+  --in: #e2764f;              /* ENTRANT — corail, l'accent de la maquette */
+  --in-strong: #c85f3c;
+  --in-soft: #fbe6db;
+  --out: #14146e;             /* SORTANT — marine de la charte Keyyo */
+  --out-strong: #0d0d4d;
+  --out-soft: #e4e4f2;
+  --missed: #cf3b35;          /* MANQUE — rouge d'alerte */
+  --missed-soft: #fce4e2;
+  --answered: #0e8a45;        /* DECROCHE — vert charte, assombri pour le contraste */
+  --answered-fill: #00c55a;   /* la teinte de charte, reservee aux remplissages */
+  --answered-soft: #e0f5e9;
+
+  /* Degrades de barres, reproduits de la maquette (bas -> haut) */
+  --grad-bar: linear-gradient(180deg, #ea7285 0%, #ef9b6d 60%, #f2b184 100%);
+  --grad-bar-svg-top: #ea7285;
+  --grad-bar-svg-bottom: #f2b184;
+  --grad-accent: linear-gradient(135deg, #f0a96c 0%, #e2764f 100%);
+  --grad-logo: linear-gradient(135deg, #f5b06d 0%, #e0713f 100%);
+
+  /* ---------------------------------------------------------------------------
+     5. Bordures
+     --------------------------------------------------------------------------- */
+  --line: #f0e4da;            /* separateur sur blanc */
+  --line-strong: #e6d5c8;
+  --line-dark: rgba(255, 255, 255, 0.09);   /* separateur dans la carte sombre */
+  --focus: #e2764f;
+
+  /* ---------------------------------------------------------------------------
+     6. Rayons — la maquette est tres arrondie
+     --------------------------------------------------------------------------- */
+  --r-xs: 8px;
+  --r-sm: 10px;
+  --r-md: 14px;               /* pilules de navigation, boutons */
+  --r-lg: 18px;               /* cartes imbriquees */
+  --r-xl: 22px;               /* cartes principales */
+  --r-2xl: 28px;
+  --r-pill: 999px;
+
+  /* ---------------------------------------------------------------------------
+     7. Ombres — tres douces, teintees chaud (jamais du noir pur)
+     --------------------------------------------------------------------------- */
+  --sh-xs: 0 1px 2px rgba(90, 55, 30, 0.04);
+  --sh-sm: 0 1px 2px rgba(90, 55, 30, 0.04), 0 2px 6px -2px rgba(120, 70, 40, 0.06);
+  --sh-md: 0 1px 2px rgba(90, 55, 30, 0.04), 0 8px 24px -10px rgba(120, 70, 40, 0.12);
+  --sh-lg: 0 2px 4px rgba(90, 55, 30, 0.04), 0 18px 40px -16px rgba(120, 70, 40, 0.18);
+  --sh-pop: 0 24px 60px -18px rgba(80, 45, 25, 0.30);
+  --sh-dark: 0 18px 44px -18px rgba(26, 22, 20, 0.45);
+
+  /* ---------------------------------------------------------------------------
+     8. Typographie
+     --------------------------------------------------------------------------- */
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text',
+          'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont,
+          'Segoe UI Variable Display', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono',
+          'Roboto Mono', Menlo, Consolas, monospace;
+
+  --t-display: 700 clamp(30px, 3.4vw, 44px) / 1.05 var(--font-display);
+  --t-h1: 700 22px / 1.2 var(--font-display);
+  --t-h2: 600 17px / 1.3 var(--font);
+  --t-h3: 600 14px / 1.35 var(--font);
+  --t-num-xl: 700 clamp(32px, 3vw, 44px) / 1 var(--font-display);
+  --t-num-lg: 700 21px / 1.1 var(--font-display);
+  --t-num-md: 600 16px / 1.2 var(--font);
+  --t-body: 400 13px / 1.5 var(--font);
+  --t-body-md: 500 13px / 1.45 var(--font);
+  --t-sm: 400 12px / 1.45 var(--font);
+  --t-label: 500 11px / 1.3 var(--font);
+  --t-micro: 500 10px / 1.2 var(--font);
+
+  --track-tight: -0.022em;   /* titres et grands chiffres */
+  --track-label: 0.02em;     /* petits libelles en majuscules */
+
+  /* ---------------------------------------------------------------------------
+     9. Trame et espacement
+     --------------------------------------------------------------------------- */
+  --sidebar-w: 232px;
+  --gap-2: 8px;
+  --gap-3: 12px;
+  --gap-4: 16px;
+  --gap-5: 20px;
+  --gap-6: 24px;
+  --gap-8: 32px;
+  --pad-card: 22px;
+  --page-max: 1560px;
+
+  /* ---------------------------------------------------------------------------
+     10. Mouvement — discret ; respecte prefers-reduced-motion (voir base.css)
+     --------------------------------------------------------------------------- */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 380ms;
+
+  --z-sticky: 20;
+  --z-nav: 60;
+  --z-pop: 80;
+  --z-modal: 100;
+  --z-toast: 120;
+}
+
+/* =============================================================================
+   Palette des series de graphiques : ordre fixe, pour que la meme categorie
+   garde la meme couleur d'une vue a l'autre.
+   ============================================================================= */
+:root {
+  --series-1: #e2764f;
+  --series-2: #14146e;
+  --series-3: #e9a961;
+  --series-4: #4a8f8b;
+  --series-5: #b8607e;
+  --series-6: #7a6bb5;
+  --series-7: #cf3b35;
+  --series-8: #6f7f52;
+}
+
+/* =============================================================================
+   Contraste renforce : on remplace les teintes les plus claires par des
+   valeurs qui passent le contraste AA, sans changer la structure.
+   ============================================================================= */
+@media (prefers-contrast: more) {
+  :root {
+    --ink-muted: #6b5c51;
+    --ink-faint: #8a7a6e;
+    --line: #ddcabb;
+    --line-strong: #c9b3a2;
+  }
+}

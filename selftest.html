@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<title>Autotest — Supervision Keyyo</title>
+
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+
+<!--
+  Page de verification du noyau. Elle n'appelle NI l'API Keyyo, NI l'archive :
+  elle ne fait qu'importer les modules et executer des fonctions pures. On peut
+  donc l'ouvrir sur la production sans consommer de quota ni declencher de
+  collecte.
+
+  Les modules ES exigent une origine HTTP : ouvrir ce fichier par un
+  double-clic (file://) donne une page vide, c'est une regle du navigateur et
+  non un defaut de la page. Passer par l'URL du deploiement.
+
+  Le style est ici en ligne, et volontairement independant du reste : si une
+  feuille de l'application casse, le rapport doit rester lisible.
+-->
+<style>
+  body {
+    margin: 0;
+    padding: 28px 20px 64px;
+    background: var(--bg, #faf8f5);
+    color: var(--ink, #2a2018);
+    font: 14px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 20px; color: var(--ink-muted, #6b6058); max-width: 62ch; }
+  .lede a { color: inherit; }
+
+  .summary {
+    padding: 12px 15px;
+    border-radius: 12px;
+    font-weight: 600;
+    margin-bottom: 22px;
+    background: #eee;
+    color: #333;
+  }
+  .summary.ok   { background: #e6f4ea; color: #14532d; }
+  .summary.bad  { background: #fdeaea; color: #7f1d1d; }
+  .summary.skip { background: #fdf3e3; color: #78350f; }
+
+  .g { margin-bottom: 18px; }
+  .g h2 {
+    display: flex; align-items: baseline; gap: 9px;
+    margin: 0 0 7px; font-size: 14px; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--ink-muted, #6b6058);
+  }
+  .g .count { font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 400; }
+  .g-bad h2 { color: #7f1d1d; }
+
+  .g ul { list-style: none; margin: 0; padding: 0; border-radius: 12px; overflow: hidden; background: #fff; }
+  .g li {
+    display: grid; grid-template-columns: 62px minmax(0, 1fr);
+    gap: 10px; align-items: baseline;
+    padding: 7px 13px; border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+  .g li:last-child { border-bottom: 0; }
+  .g li.bad { background: #fff7f7; }
+  .g li.skip { background: #fffaf1; }
+
+  .m { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 0; }
+  .m.ok { color: #15803d; }
+  .m.bad { color: #b91c1c; }
+  .m.skip { color: #a16207; }
+  .n { min-width: 0; }
+
+  pre {
+    grid-column: 2;
+    margin: 5px 0 2px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #fdeaea;
+    color: #7f1d1d;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  li.skip pre { background: #fdf3e3; color: #78350f; }
+
+  .running { color: var(--ink-muted, #6b6058); }
+  noscript div { padding: 14px; border-radius: 12px; background: #fdeaea; color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Autotest du noyau</h1>
+  <p class="lede">
+    Vérifie que chaque module se charge et respecte le contrat de
+    <code>docs/ARCHITECTURE.md</code>, puis exécute les fonctions pures :
+    numéros, dates, schéma d’appel, normalisation des CDR, identités, mise en
+    forme française, échappement HTML et agrégations du store. Aucune requête
+    vers l’API Keyyo n’est émise. Retour à la
+    <a href="index.html">console de supervision</a>.
+  </p>
+
+  <div class="summary" id="summary">Exécution en cours…</div>
+  <div id="results"><p class="running">Chargement des modules…</p></div>
+
+  <noscript>
+    <div>
+      JavaScript est requis : cette page exécute le code de l’application pour
+      le vérifier.
+    </div>
+  </noscript>
+
+</div>
+
+<script type="module" src="tests/run.js"></script>
+</body>
+</html>

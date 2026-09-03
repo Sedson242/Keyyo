@@ -1,430 +1,703 @@
-// =============================================================
-//  _keyyo.js  -  Connecteur Manager API Keyyo (OAuth2 refresh).
+// =============================================================================
+//  api/_keyyo.js — Client HTTP de l'API Keyyo Manager 1.0.
 //
-//  Sortie : { rows, meta, errors, diag } au format STRICT du dashboard :
-//   [ ISO, HOUR, CALLER, CALLED, NAT, DUR, SITE, OK, CORR, WD, YM ]
+//  Verite terrain (verifiee sur le compte reel) :
+//    - base            https://api.keyyo.com/manager/1.0
+//    - auth            en-tete « Authorization: Bearer <token> »
+//    - jeton           POST /oauth2/token.php, grant_type=refresh_token
+//    - reponses        HAL : la charge utile est sous _embedded.<TypeName>
+//    - pagination      _links.next.href, sinon limit/offset
+//    - call_detail     date_start / date_end au format « YYYY-MM-DD HH:MM »,
+//                      date_end EXCLUSIVE
 //
-//  v2 (hardening) :
-//   - normalizeRecord ne jette plus silencieusement : repli sur tout
-//     champ ressemblant a un horodatage plausible.
-//   - extractRecords plus robuste (recherche profonde dans _embedded).
-//   - diag : compte des enregistrements BRUTS vus vs lignes GARDEES,
-//     par service/sens -> permet de savoir POURQUOI on a 0 appel.
-// =============================================================
+//  Aucun jeton n'est jamais journalise ni renvoye : les messages d'erreur ne
+//  citent que le chemin appele et la raison donnee par Keyyo.
+// =============================================================================
 
-function parseServices(raw) {
-  // null => mode AUTO : les lignes sont decouvertes via GET /services (toutes les
-  // lignes du compte, donc les 3, sans rien coder en dur).
-  if (!raw) return null;
-  const s = String(raw).trim();
-  if (!s || s.toLowerCase() === 'auto') return null;
-  if (s.startsWith('{')) { try { const o = JSON.parse(s); if (o && typeof o === 'object') return o; } catch (e) {} }
-  const out = {};
-  for (const pair of s.split(/[,;\n]+/)) {
-    const i = pair.search(/[=:]/);
-    if (i > 0) { const csi = pair.slice(0, i).trim(); const site = pair.slice(i + 1).trim(); if (csi && site) out[csi] = site; }
+import { extractRecords, nextLink, normalizeCdr } from '../shared/cdr.js';
+import { F } from '../shared/schema.js';
+import { toKeyyoDate, parseTimestamp } from '../shared/time.js';
+import { isEmail } from '../shared/identity.js';
+
+/** Delai maximal d'une requete unitaire, en millisecondes. */
+const DEFAULT_TIMEOUT_MS = 15000;
+
+/** Marge conservee avant l'echeance : inutile de lancer un appel qui n'aboutira pas. */
+const DEADLINE_MARGIN_MS = 600;
+
+// -----------------------------------------------------------------------------
+//  Jeton d'acces
+// -----------------------------------------------------------------------------
+
+/**
+ * Cache memoire du processus. Une fonction serverless sert plusieurs requetes :
+ * sans ce cache, chaque appel bruleerait un refresh_token — or il est ROTATIF.
+ * @type {Map<string, {seed: string, refreshToken: string, accessToken: string, expiresAt: number, pending: Promise<string>|null}>}
+ */
+const tokenCache = new Map();
+
+/**
+ * Obtient un jeton d'acces valide.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @returns {Promise<string>}
+ */
+export async function getAccessToken(cfg) {
+  if (cfg.staticToken && !cfg.refreshToken) return cfg.staticToken;
+
+  if (!cfg.clientId || !cfg.clientSecret || !cfg.refreshToken) {
+    if (cfg.staticToken) return cfg.staticToken;
+    throw new Error(
+      "Rafraichissement impossible : KEYYO_CLIENT_ID, KEYYO_CLIENT_SECRET et KEYYO_REFRESH_TOKEN doivent etre renseignes tous les trois.",
+    );
   }
-  if (Object.keys(out).length) return out;
-  throw new Error('KEYYO_SERVICES illisible. Format simple: 33175433361=Tana,33253359565=Antsirabe, 33180843912=Anodea (ou JSON). Recu: "' + s.slice(0, 40) + '"');
-}
 
-function readConfig() {
-  return {
-    base: (process.env.KEYYO_API_BASE || 'https://api.keyyo.com/manager/1.0').replace(/\/+$/, ''),
-    tokenUrl: process.env.KEYYO_TOKEN_URL || 'https://api.keyyo.com/oauth2/token.php',
-    clientId: process.env.KEYYO_CLIENT_ID || '6a2407d6d65c9',
-    clientSecret: process.env.KEYYO_CLIENT_SECRET || 'f7ef03477334f6fcda947896',
-    refreshToken: process.env.KEYYO_REFRESH_TOKEN || '65d74d92cc9e688e614d2072f893464e78b75712',
-    staticToken: process.env.KEYYO_TOKEN || '',
-    services: parseServices(process.env.KEYYO_SERVICES || 'auto'),
-    syncDays: parseInt(process.env.KEYYO_SYNC_DAYS || '7', 10),
-    resourcePath: process.env.KEYYO_RESOURCE_PATH || 'services/{csi}/{resource}',
-    filterBegin: process.env.KEYYO_FILTER_BEGIN || 'date_start',
-    filterEnd: process.env.KEYYO_FILTER_END || 'date_end',
-    pageLimit: parseInt(process.env.KEYYO_PAGE_LIMIT || '500', 10),
-    // Endpoint confirme OK sans filtre -> off par defaut. Mettre a 1 pour tester
-    // un filtrage serveur (le format Keyyo attend probablement de l'unix).
-    sendDateFilters: (process.env.KEYYO_SEND_DATE_FILTERS || '0') !== '0',
-    autoDiscover: (process.env.KEYYO_AUTODISCOVER || '1') !== '0',
-    // 'date' (YYYY-MM-DD) | 'datetime' (YYYY-MM-DD HH:MM:SS) | 'unix'
-    dateFilterFormat: process.env.KEYYO_DATE_FILTER_FORMAT || 'unix',
-    historyDays: parseInt(process.env.KEYYO_HISTORY_DAYS || '120', 10),
-    localizedNumbers: (process.env.KEYYO_LOCALIZED_NUMBERS || '1') === '1',
-    tz: safeTz(process.env.TZ),
-    maxPages: parseInt(process.env.KEYYO_MAX_PAGES || '50', 10),
-    // valide les CSI contre /services au demarrage (ralentit un peu, tres instructif)
-    validateCsi: (process.env.KEYYO_VALIDATE_CSI || '0') === '1',
-  };
-}
-
-// ---------- OAuth2 : access_token via refresh_token (cache memoire) ----------
-let _tok = { value: null, exp: 0, rotated: null };
-
-async function getAccessToken(cfg) {
-  if (cfg.refreshToken) {
-    const now = Date.now();
-    if (_tok.value && now < _tok.exp - 60000) return _tok.value;
-    const body = new URLSearchParams({
-      client_id: cfg.clientId,
-      client_secret: cfg.clientSecret,
-      grant_type: 'refresh_token',
-      refresh_token: _tok.rotated || cfg.refreshToken,
-    });
-    const res = await fetch(cfg.tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body,
-    });
-    const text = await res.text();
-    let j = {}; try { j = JSON.parse(text); } catch (e) {}
-    if (!res.ok || !j.access_token) {
-      throw new Error('OAuth refresh echoue (' + res.status + ') : ' + (j.error_description || j.error || text.slice(0, 160)));
-    }
-    _tok.value = j.access_token;
-    _tok.exp = now + ((j.expires_in ? j.expires_in : 3600) * 1000);
-    if (j.refresh_token && j.refresh_token !== cfg.refreshToken) _tok.rotated = j.refresh_token;
-    return _tok.value;
+  const key = cfg.tokenUrl + '|' + cfg.clientId;
+  let entry = tokenCache.get(key);
+  // Si la variable d'environnement a change (redeploiement), on repart de zero
+  // plutot que de reutiliser un jeton rotatif perime en memoire.
+  if (!entry || entry.seed !== cfg.refreshToken) {
+    entry = { seed: cfg.refreshToken, refreshToken: cfg.refreshToken, accessToken: '', expiresAt: 0, pending: null };
+    tokenCache.set(key, entry);
   }
-  if (cfg.staticToken) return cfg.staticToken;
-  throw new Error('Auth manquante : definir KEYYO_REFRESH_TOKEN (+ CLIENT_ID/SECRET) ou KEYYO_TOKEN');
+
+  // 60 s de marge : un jeton qui expire pendant la collecte ferait echouer des
+  // requetes deja lancees.
+  if (entry.accessToken && entry.expiresAt > Date.now() + 60000) return entry.accessToken;
+
+  // Deduplique les rafraichissements concurrents : plusieurs lignes sont
+  // interrogees en parallele, elles ne doivent pas consommer N refresh_token.
+  if (entry.pending) return entry.pending;
+  const current = entry;
+  current.pending = refreshAccessToken(cfg, current)
+    .then((tok) => { current.pending = null; return tok; })
+    .catch((err) => { current.pending = null; throw err; });
+  return current.pending;
 }
 
-// ---------- Helpers ----------
-// Certains environnements exposent TZ au format POSIX ":UTC" (deux-points en
-// tete) que Intl.DateTimeFormat refuse. On nettoie et on valide, avec repli.
-function safeTz(tz) {
-  let z = String(tz == null ? '' : tz).replace(/^:/, '').trim();
-  if (!z) z = 'Europe/Paris';
-  try { new Intl.DateTimeFormat('fr-FR', { timeZone: z }); return z; }
-  catch (e) {
-    try { new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }); return 'Europe/Paris'; }
-    catch (e2) { return 'UTC'; }
-  }
-}
+/**
+ * Echange le refresh_token contre un access_token.
+ *
+ * Le refresh_token peut etre rotatif : quand la reponse en renvoie un nouveau,
+ * il remplace l'ancien pour les rafraichissements suivants DE CE PROCESSUS.
+ * Limite assumee : une instance froide repart de KEYYO_REFRESH_TOKEN. Si Keyyo
+ * invalide reellement l'ancien jeton a la premiere rotation, il faut mettre la
+ * variable d'environnement a jour — c'est ce que dit le message d'erreur.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @param {{refreshToken: string, accessToken: string, expiresAt: number}} entry
+ * @returns {Promise<string>}
+ */
+async function refreshAccessToken(cfg, entry) {
+  const body = new URLSearchParams();
+  body.set('grant_type', 'refresh_token');
+  body.set('client_id', cfg.clientId);
+  body.set('client_secret', cfg.clientSecret);
+  body.set('refresh_token', entry.refreshToken);
 
-function localParts(date, tz) {
-  const fmt = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  const p = Object.fromEntries(fmt.formatToParts(date).map(x => [x.type, x.value]));
-  const iso = `${p.year}-${p.month}-${p.day}`;
-  const wdJs = new Date(`${iso}T12:00:00Z`).getUTCDay();
-  return { iso, hour: parseInt(p.hour, 10) % 24, min: parseInt(p.minute, 10) || 0, sec: parseInt(p.second, 10) || 0, ym: iso.slice(0, 7), wd: (wdJs + 6) % 7 };
-}
-
-// Horodatage : accepte unix (s ou ms) et chaines ISO / "YYYY-MM-DD HH:MM:SS".
-function parseTimestamp(raw) {
-  if (raw == null || raw === '') return null;
-  if (typeof raw === 'number' || /^\d{9,}$/.test(String(raw).trim())) {
-    const n = Number(raw); if (!isFinite(n)) return null;
-    const d = new Date(n > 1e12 ? n : n * 1000);
-    return isNaN(d.getTime()) ? null : d;
-  }
-  const d = new Date(String(raw).trim().replace(' ', 'T'));
-  return isNaN(d.getTime()) ? null : d;
-}
-
-// Un horodatage "plausible" = entre 2000 et maintenant+2j.
-function plausibleDate(d) {
-  if (!d || isNaN(d.getTime())) return false;
-  const y = d.getUTCFullYear();
-  return y >= 2000 && d.getTime() <= Date.now() + 2 * 864e5;
-}
-
-function pick(o, names, dflt) { for (const n of names) if (o && o[n] != null && o[n] !== '') return o[n]; return dflt; }
-
-// Repli : si aucun champ nomme ne donne de date, on scanne TOUTES les valeurs
-// de l'enregistrement a la recherche d'un horodatage plausible. Empeche le
-// rejet silencieux de toutes les lignes si Keyyo nomme le champ autrement.
-function findAnyTimestamp(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  let best = null;
-  for (const [k, v] of Object.entries(raw)) {
-    if (v == null) continue;
-    if (typeof v === 'object') continue;
-    // indices : la cle evoque une date/heure -> priorite
-    const looksDateKey = /date|time|heure|start|begin|debut|setup|connect|stamp|ts\b/i.test(k);
-    const d = parseTimestamp(v);
-    if (plausibleDate(d)) {
-      if (looksDateKey) return d;       // match fort, on s'arrete
-      if (!best) best = d;              // sinon on retient un candidat
-    }
-  }
-  return best;
-}
-
-// Keyyo Manager API (CallDetailRecord) : start_time = unix string,
-// quantity = durée en secondes, caller souvent null en entrant -> actual_caller.
-const DATE_FIELDS = ['start_time', 'date', 'datetime', 'date_start', 'start_date', 'start', 'call_start', 'begin_date', 'date_begin', 'setup_date', 'connect_date', 'answer_date', 'timestamp', 'ts', 'call_date', 'time', 'heure', 'heure_appel'];
-const CALLER_FIELDS = ['caller', 'actual_caller', 'caller_presentation', 'calling_number', 'calling', 'from', 'src', 'source', 'origin', 'a_number', 'caller_number', 'caller_raw', 'actual_caller_raw', 'caller_presentation_raw'];
-const CALLED_FIELDS = ['callee', 'called_number', 'called', 'to', 'dst', 'destination', 'b_number', 'called_party', 'callee_raw'];
-const DUR_FIELDS = ['quantity', 'quantity_billed', 'duration', 'billsec', 'billed_duration', 'real_duration', 'len', 'call_duration', 'duree', 'talk_duration'];
-
-function normalizeRecord(raw, ctx) {
-  const { direction, site, tz } = ctx;
-  let ts = parseTimestamp(pick(raw, DATE_FIELDS));
-  if (!plausibleDate(ts)) ts = findAnyTimestamp(raw);   // <-- repli anti rejet total
-  if (!plausibleDate(ts)) { ctx.dropped && ctx.dropped(raw); return null; }
-
-  const caller = String(pick(raw, CALLER_FIELDS, '')).trim();
-  const called = String(pick(raw, CALLED_FIELDS, '')).trim();
-  let dur = pick(raw, DUR_FIELDS, null);
-  if (dur == null) {
-    const c = parseTimestamp(pick(raw, ['connect_date', 'answer_date'])), r = parseTimestamp(pick(raw, ['release_date', 'end_date', 'hangup_date']));
-    dur = (c && r) ? Math.max(0, Math.round((r - c) / 1000)) : 0;
-  }
-  dur = parseInt(dur, 10); if (isNaN(dur) || dur < 0) dur = 0;
-  const nat = direction === 'out' ? 1 : 0;
-  const { iso, hour, min, sec, ym, wd } = localParts(ts, tz);
-  return [iso, hour, caller, called, nat, dur, site, dur > 0 ? 1 : 0, nat === 1 ? called : caller, wd, ym, min, sec];
-}
-
-// Extraction robuste : _embedded (a plat ou imbrique), enveloppes connues,
-// sinon recherche du premier tableau d'objets dans la reponse.
-function extractRecords(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (!payload || typeof payload !== 'object') return [];
-
-  const out = [];
-  if (payload._embedded && typeof payload._embedded === 'object') {
-    for (const g of Object.values(payload._embedded)) {
-      if (Array.isArray(g)) out.push(...g);
-      else if (g && typeof g === 'object') {
-        // _embedded.<groupe>.<liste>
-        let nested = false;
-        for (const v of Object.values(g)) if (Array.isArray(v)) { out.push(...v); nested = true; }
-        if (!nested) out.push(g);
-      }
-    }
-    if (out.length) return out;
-  }
-  for (const k of ['call_detail', 'call_details', 'calls', 'data', 'result', 'results', 'items', 'records', 'list']) {
-    if (Array.isArray(payload[k])) return payload[k];
-  }
-  // dernier recours : premier tableau d'objets trouve
-  for (const v of Object.values(payload)) {
-    if (Array.isArray(v) && v.length && typeof v[0] === 'object') return v;
-  }
-  return out;
-}
-
-// --- Filtres de dates CONFORMES A LA DOC KEYYO ---
-// GET /services/:csi/{incoming,outgoing}_call_detail accepte :
-//   date_start / date_end : "YYYY-MM-DD HH:MM" (date_end EXCLUSIVE si HH:MM omis)
-//   limit / offset        : pagination
-// (source : api.keyyo.com/developers/docs/.../outgoing_call_detail)
-function fmtKeyyoDate(d, tz) {
-  const f = new Intl.DateTimeFormat('fr-FR', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-  const p = Object.fromEntries(f.formatToParts(d).map(x => [x.type, x.value]));
-  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
-}
-
-function buildUrl(cfg, csi, resource, offset) {
-  const path = cfg.resourcePath.replace('{csi}', encodeURIComponent(csi)).replace('{resource}', resource);
-  const url = new URL(`${cfg.base}/${path}`);
-  const since = new Date(Date.now() - cfg.historyDays * 864e5);
-  const until = new Date(Date.now() + 864e5); // +1 j : date_end est exclusive
-  url.searchParams.set(cfg.filterBegin, fmtKeyyoDate(since, cfg.tz));
-  url.searchParams.set(cfg.filterEnd, fmtKeyyoDate(until, cfg.tz));
-  url.searchParams.set('limit', String(cfg.pageLimit));
-  if (offset > 0) url.searchParams.set('offset', String(offset));
-  if (cfg.localizedNumbers) url.searchParams.set('localized_numbers', '1');
-  return url.toString();
-}
-
-async function fetchJson(url, headers, { retries = 3, timeoutMs = 15000 } = {}) {
-  let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { headers, signal: ctrl.signal }); clearTimeout(t);
-      const text = await res.text();
-      if (!res.ok) {
-        const reason = res.headers.get('x-status-reason') || text.slice(0, 200);
-        if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status} ${reason}`);
-        throw Object.assign(new Error(`HTTP ${res.status} ${reason}`), { fatal: true });
-      }
-      if (!text) return {};
-      try { return JSON.parse(text); } catch { throw Object.assign(new Error('Reponse non-JSON de Keyyo (debut: ' + text.slice(0, 80) + ')'), { fatal: true }); }
-    } catch (e) { clearTimeout(t); lastErr = e; if (e.fatal) throw e; if (attempt < retries) await new Promise(r => setTimeout(r, 500 * 2 ** attempt)); }
-  }
-  throw lastErr;
-}
-
-async function fetchResource(cfg, token, csi, site, resource, direction, deadline) {
-  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
-  const rows = [];
-  let rawSeen = 0, dropped = 0, pages = 0, sampleRaw = null, sampleKeys = null, offset = 0;
-  const ctx = { direction, site, tz: cfg.tz, dropped: (r) => { dropped++; if (!sampleRaw) { sampleRaw = r; sampleKeys = Object.keys(r || {}); } } };
-
-  let url = buildUrl(cfg, csi, resource, 0);
-  for (let page = 0; page < cfg.maxPages && url && (!deadline || Date.now() < deadline); page++) {
-    const payload = await fetchJson(url, headers, { retries: 1, timeoutMs: 9000 });
-    const recs = extractRecords(payload);
-    rawSeen += recs.length;
-    if (!sampleKeys && recs[0]) sampleKeys = Object.keys(recs[0]);
-    for (const rec of recs) { const row = normalizeRecord(rec, ctx); if (row) rows.push(row); }
-    pages++;
-    // Pagination : _links.next si fourni, sinon offset+=limit tant que la page est pleine.
-    const next = payload?._links?.next?.href;
-    if (next) url = next.startsWith('http') ? next : new URL(next, cfg.base + '/').toString();
-    else if (recs.length >= cfg.pageLimit) { offset += cfg.pageLimit; url = buildUrl(cfg, csi, resource, offset); }
-    else url = null;
-  }
-  return { rows, diag: { csi, site, resource, direction, rawSeen, kept: rows.length, dropped, pages, sampleKeys } };
-}
-
-// ---------- Lignes : decouverte des services + email/prenom rattaches ----------
-const EMAIL_RE = /^[^\s@"<>]+@[^\s@"<>]+\.[a-z]{2,}$/i;
-
-// Cherche en profondeur la 1re valeur ressemblant a un email ; les cles evoquant
-// "mail" sont prioritaires (contact_email, email, e_mail, ...).
-function findEmailDeep(o, depth = 0) {
-  if (o == null || depth > 4) return null;
-  if (typeof o === 'string') { const s = o.trim(); return EMAIL_RE.test(s) ? s.toLowerCase() : null; }
-  if (typeof o !== 'object') return null;
-  for (const [k, v] of Object.entries(o)) if (/mail/i.test(k)) { const e = findEmailDeep(v, depth + 1); if (e) return e; }
-  for (const v of Object.values(o)) { const e = findEmailDeep(v, depth + 1); if (e) return e; }
-  return null;
-}
-
-// prenom.nom@domaine -> "Prenom" (segment avant le 1er point de la partie locale).
-export function firstNameFromEmail(email) {
-  if (!email) return null;
-  const local = String(email).split('@')[0];
-  const first = (local.split('.')[0] || '').replace(/[\d_]+$/, '').replace(/-+$/, '');
-  if (!first) return null;
-  return first.split('-').map(x => x ? x.charAt(0).toUpperCase() + x.slice(1).toLowerCase() : x).join('-');
-}
-
-// GET /services -> map { csi: nom } (toutes les lignes du compte).
-export async function discoverServices(cfg, token) {
-  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
-  const payload = await fetchJson(`${cfg.base}/services`, headers, { retries: 2, timeoutMs: 9000 });
-  const recs = extractRecords(payload);
-  const map = {};
-  for (const r of recs) {
-    if (!r || typeof r !== 'object') continue;
-    const csi = pick(r, ['csi', 'CSI', 'identifier', 'service_id', 'id', 'number'], null);
-    if (csi == null) continue;
-    const name = String(pick(r, ['name', 'label', 'display_name', 'service_name', 'description'], '')).trim();
-    map[String(csi)] = name || String(csi);
-  }
-  if (!Object.keys(map).length) throw new Error('GET /services : aucune ligne trouvee (verifier les droits du token)');
-  return map;
-}
-
-// Pour chaque CSI : GET /services/:csi -> email rattache + prenom deduit.
-// Resultat mis en cache 1 h (process). Cle = nom de SITE (celui porte par les rows).
-let _lines = { value: null, exp: 0 };
-export async function getLines(cfg, token) {
-  const now = Date.now();
-  if (_lines.value && now < _lines.exp) return _lines.value;
-  const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
-  const out = {};
-  await Promise.all(Object.entries(cfg.services).map(async ([csi, site]) => {
-    let email = null, serviceName = null, error = null;
-    try {
-      const svc = await fetchJson(`${cfg.base}/services/${encodeURIComponent(csi)}`, headers, { retries: 1, timeoutMs: 8000 });
-      email = findEmailDeep(svc);
-      serviceName = String(pick(svc, ['name', 'label', 'display_name', 'service_name'], '')).trim() || null;
-    } catch (e) { error = e.message; }
-    out[site] = { csi, site, email, firstName: firstNameFromEmail(email), serviceName, error };
-  }));
-  _lines.value = out; _lines.exp = now + 3600e3;
-  return out;
-}
-
-async function validateCsis(cfg, token) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT_MS);
+  let res = null;
+  let text = '';
   try {
-    const payload = await fetchJson(`${cfg.base}/services`, { Accept: 'application/json', Authorization: `Bearer ${token}` });
-    const recs = extractRecords(payload);
-    const known = new Set();
-    for (const r of recs) for (const v of Object.values(r || {})) if (v != null) known.add(String(v));
-    const unknown = Object.keys(cfg.services).filter(csi => !known.has(String(csi)));
-    return { servicesSeen: recs.length, unknownCsi: unknown };
-  } catch (e) { return { error: e.message }; }
+    res = await fetch(cfg.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: body.toString(),
+      signal: ctrl.signal,
+    });
+    text = await res.text();
+  } catch (err) {
+    const aborted = err && /** @type {any} */ (err).name === 'AbortError';
+    throw new Error(
+      "Serveur de jetons Keyyo injoignable (" + cfg.tokenUrl + ') : '
+      + (aborted ? 'delai de ' + DEFAULT_TIMEOUT_MS + ' ms depasse' : shortText(err))
+      + ". Verifier la connectivite sortante de la fonction et la valeur de KEYYO_TOKEN_URL.",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  /** @type {any} */
+  let data = null;
+  try { data = JSON.parse(text); } catch { data = null; }
+
+  if (!res.ok || !data || !data.access_token) {
+    const reason = data && (data.error_description || data.error)
+      ? String(data.error_description || data.error)
+      : 'HTTP ' + res.status + (text ? ' — ' + shortText(text) : '');
+    throw new Error(
+      'Keyyo refuse le rafraichissement du jeton (' + reason + '). '
+      + 'Verifier KEYYO_CLIENT_ID et KEYYO_CLIENT_SECRET, puis surtout KEYYO_REFRESH_TOKEN : '
+      + "ce jeton est rotatif, un jeton deja consomme est definitivement invalide et doit etre regenere, "
+      + 'avec le scope full_access_read_only.',
+    );
+  }
+
+  entry.accessToken = String(data.access_token);
+  const ttl = Number(data.expires_in);
+  entry.expiresAt = Date.now() + (Number.isFinite(ttl) && ttl > 60 ? ttl * 1000 : 3600000);
+  if (data.refresh_token && String(data.refresh_token) !== entry.refreshToken) {
+    entry.refreshToken = String(data.refresh_token);
+  }
+  return entry.accessToken;
 }
 
-export async function fetchAllCalls(opts = {}) {
-  const cfg = opts.cfg || readConfig();
-  if (opts.sinceDays) cfg.historyDays = opts.sinceDays;   // fenetre incrementale (synchro)
+// -----------------------------------------------------------------------------
+//  Requetes
+// -----------------------------------------------------------------------------
 
-  const token = await getAccessToken(cfg);
+/**
+ * Construit une URL absolue. Accepte un chemin relatif (`/services`) ou une
+ * URL complete (lien de pagination HAL).
+ *
+ * La query est encodee a la main plutot que via URLSearchParams : celui-ci
+ * encode l'espace en `+`, alors que `date_start` vaut « YYYY-MM-DD HH:MM » et
+ * doit partir en `%20`.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} pathOrUrl
+ * @param {Record<string, any>|null} [params]
+ * @returns {string}
+ */
+function buildUrl(cfg, pathOrUrl, params) {
+  const s = String(pathOrUrl == null ? '' : pathOrUrl);
+  let url;
+  if (/^https?:\/\//i.test(s)) url = s;
+  else url = String(cfg.base).replace(/\/+$/, '') + (s.startsWith('/') ? s : '/' + s);
 
-  // Mode AUTO : decouverte de TOUTES les lignes du compte (les 3) via /services.
-  if (!cfg.services) cfg.services = await discoverServices(cfg, token);
-  if (!Object.keys(cfg.services).length) throw new Error('KEYYO_SERVICES vide');
-
-  // Email + prenom rattaches a chaque ligne (n'echoue jamais le flux principal).
-  let lines = {};
-  try { lines = await getLines(cfg, token); } catch (e) {}
-
-  let csiCheck = null;
-  if (cfg.validateCsi) csiCheck = await validateCsis(cfg, token);
-
-  const deadline = Date.now() + 25000; // budget global (Vercel coupe à 30s) : on rend ce qu'on a
-
-  const tasks = [];
-  for (const [csi, site] of Object.entries(cfg.services)) {
-    tasks.push(fetchResource(cfg, token, csi, site, 'outgoing_call_detail', 'out', deadline));
-    tasks.push(fetchResource(cfg, token, csi, site, 'incoming_call_detail', 'in', deadline));
-  }
-  const settled = await Promise.allSettled(tasks);
-  const rows = [], errors = [], perTask = [];
-  settled.forEach((s, i) => {
-    if (s.status === 'fulfilled') { rows.push(...s.value.rows); perTask.push(s.value.diag); }
-    else errors.push(`tache#${i}: ${s.reason?.message || s.reason}`);
-  });
-
-  const rawSeen = perTask.reduce((a, d) => a + d.rawSeen, 0);
-  const dropped = perTask.reduce((a, d) => a + d.dropped, 0);
-
-  // Diagnostic explicite : on distingue 3 mondes au lieu de renvoyer "0" muet.
-  let hint = null;
-  if (rows.length === 0) {
-    if (errors.length && rawSeen === 0) {
-      throw new Error('Aucune donnee recuperee. ' + errors.join(' | '));
-    } else if (rawSeen > 0 && dropped > 0) {
-      hint = `Keyyo a renvoye ${rawSeen} enregistrement(s) mais ${dropped} ont ete ecartes a la normalisation `
-        + `(champ date/heure non reconnu). Cles vues: ${(perTask.find(d => d.sampleKeys)?.sampleKeys || []).join(', ') || 'n/a'}.`;
-    } else {
-      hint = `Keyyo a repondu 200 mais 0 enregistrement de detail d'appel. Causes probables : `
-        + `CSI errone (les valeurs de KEYYO_SERVICES doivent etre les identifiants de service, pas forcement les numeros), `
-        + `fenetre de dates vide, ou cles de filtre/format incorrects. Verifier /api/debug.`;
+  const parts = [];
+  if (params) {
+    for (const k of Object.keys(params)) {
+      const v = params[k];
+      if (v == null || v === '') continue;
+      parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(String(v)));
     }
   }
+  if (!parts.length) return url;
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') + parts.join('&');
+}
 
-  rows.sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : b[1] - a[1]));
+/** @param {string} url @returns {string} chemin seul, pour les messages d'erreur. */
+function shortUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.pathname + (u.search || '');
+  } catch {
+    return String(url);
+  }
+}
+
+/** @param {unknown} v @returns {string} */
+function shortText(v) {
+  const s = (v && /** @type {any} */ (v).message ? String(/** @type {any} */ (v).message) : String(v == null ? '' : v))
+    .replace(/\s+/g, ' ').trim();
+  return s.length > 200 ? s.slice(0, 200) + '…' : s;
+}
+
+/** @param {number} ms @returns {Promise<void>} */
+function sleep(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+/**
+ * Erreur de budget de temps : signalee a part pour que la collecte renvoie ce
+ * qu'elle a deja plutot que d'echouer.
+ * @param {string} why
+ * @returns {Error & {budget: true}}
+ */
+function budgetError(why) {
+  const err = /** @type {any} */ (new Error('Budget de temps epuise : ' + why));
+  err.budget = true;
+  return err;
+}
+
+/**
+ * Une requete GET, avec delai maximal et reprises.
+ *
+ * Reprises : jusqu'a 3 tentatives, repli exponentiel, UNIQUEMENT sur 429, 5xx
+ * et erreurs reseau. Un 4xx autre que 429 est definitif — le reessayer ne fait
+ * que bruler le budget de temps.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {string} url          URL absolue.
+ * @param {{timeoutMs?: number, attempts?: number, deadline?: number}} opts
+ * @returns {Promise<any>}
+ */
+async function requestJson(cfg, token, url, opts) {
+  const o = opts || {};
+  const attempts = Math.max(1, Math.min(3, Number(o.attempts) || 3));
+  const baseTimeout = Math.max(1000, Number(o.timeoutMs) || DEFAULT_TIMEOUT_MS);
+  const deadline = Number(o.deadline) || 0;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const remaining = deadline ? deadline - Date.now() : Number.POSITIVE_INFINITY;
+    if (remaining <= DEADLINE_MARGIN_MS) {
+      throw budgetError('appel ' + shortUrl(url) + ' non lance');
+    }
+    const timeoutMs = Math.max(1000, Math.min(baseTimeout, remaining - DEADLINE_MARGIN_MS));
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    let res = null;
+    let text = '';
+    try {
+      res = await fetch(url, {
+        method: 'GET',
+        headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' },
+        signal: ctrl.signal,
+      });
+      text = await res.text();
+    } catch (err) {
+      const aborted = err && /** @type {any} */ (err).name === 'AbortError';
+      if (deadline && Date.now() >= deadline - DEADLINE_MARGIN_MS) {
+        throw budgetError('appel ' + shortUrl(url) + ' interrompu');
+      }
+      lastError = new Error(
+        'Appel Keyyo ' + shortUrl(url) + ' impossible : '
+        + (aborted ? 'delai de ' + timeoutMs + ' ms depasse' : shortText(err))
+        + '.',
+      );
+      if (attempt < attempts) { await backoff(attempt, deadline, 0); continue; }
+      throw enrich(lastError, 0, '', "Reseau ou delai : verifier la disponibilite de api.keyyo.com, puis relancer avec ?force=1.");
+    } finally {
+      clearTimeout(timer);
+    }
+
+    // Keyyo detaille parfois la cause dans cet en-tete non standard.
+    const statusReason = headerOf(res, 'x-status-reason');
+
+    if (res.ok) {
+      if (!text) return {};
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        throw enrich(
+          new Error('Reponse Keyyo illisible sur ' + shortUrl(url) + ' : JSON invalide (' + shortText(err) + ').'),
+          res.status, statusReason,
+          'Reponse recue : ' + shortText(text) + '. Verifier KEYYO_API_BASE.',
+        );
+      }
+    }
+
+    const retryable = res.status === 429 || res.status >= 500;
+    const err = enrich(
+      new Error('Keyyo a repondu ' + res.status + ' sur ' + shortUrl(url)
+        + (statusReason ? ' (' + statusReason + ')' : '')
+        + (text ? ' — ' + shortText(text) : '')),
+      res.status, statusReason, hintForStatus(res.status),
+    );
+    if (!retryable || attempt >= attempts) throw err;
+    lastError = err;
+    await backoff(attempt, deadline, retryAfterMs(res));
+  }
+
+  throw lastError || new Error('Appel Keyyo ' + shortUrl(url) + ' echoue sans diagnostic.');
+}
+
+/**
+ * Repli exponentiel, borne par l'echeance restante.
+ * @param {number} attempt
+ * @param {number} deadline
+ * @param {number} suggested
+ */
+async function backoff(attempt, deadline, suggested) {
+  let wait = suggested > 0 ? suggested : 400 * Math.pow(2, attempt - 1);
+  wait = Math.min(wait, 4000) + Math.floor(Math.random() * 150);
+  if (deadline) {
+    const remaining = deadline - Date.now() - DEADLINE_MARGIN_MS;
+    if (remaining <= 0) throw budgetError('plus de temps pour une nouvelle tentative');
+    wait = Math.min(wait, Math.max(0, remaining - 500));
+  }
+  if (wait > 0) await sleep(wait);
+}
+
+/** @param {any} res @returns {number} delai suggere par Retry-After, en ms. */
+function retryAfterMs(res) {
+  const v = headerOf(res, 'retry-after');
+  if (!v) return 0;
+  const n = Number(v);
+  if (Number.isFinite(n) && n >= 0) return Math.min(n * 1000, 5000);
+  const at = Date.parse(v);
+  if (Number.isFinite(at)) return Math.min(Math.max(0, at - Date.now()), 5000);
+  return 0;
+}
+
+/** @param {any} res @param {string} name @returns {string} */
+function headerOf(res, name) {
+  try {
+    const v = res && res.headers && typeof res.headers.get === 'function' ? res.headers.get(name) : '';
+    return v ? String(v) : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * @param {Error} err
+ * @param {number} status
+ * @param {string} statusReason
+ * @param {string} hint
+ * @returns {Error}
+ */
+function enrich(err, status, statusReason, hint) {
+  const e = /** @type {any} */ (err);
+  e.status = status;
+  e.statusReason = statusReason;
+  e.hint = hint;
+  if (hint) e.message = err.message + ' — ' + hint;
+  return err;
+}
+
+/** @param {number} status @returns {string} consigne actionnable. */
+function hintForStatus(status) {
+  if (status === 400) return "Requete refusee : verifier le format des dates (« YYYY-MM-DD HH:MM ») et le CSI interroge.";
+  if (status === 401) return "Jeton refuse : regenerer KEYYO_REFRESH_TOKEN (le jeton est rotatif) et verifier le scope full_access_read_only.";
+  if (status === 403) return "Acces interdit : le scope du jeton ne couvre pas cette ressource. Demander full_access_read_only.";
+  if (status === 404) return "Ressource inexistante : verifier le CSI de la ligne et KEYYO_API_BASE.";
+  if (status === 429) return 'Quota Keyyo atteint : baisser KEYYO_MAX_PAGES ou espacer les synchronisations.';
+  if (status >= 500) return 'Panne cote Keyyo : reessayer plus tard, la collecte reprendra ou elle s\'est arretee.';
+  return '';
+}
+
+/**
+ * GET sur un chemin de l'API.
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {string} path
+ * @param {Record<string, any>} [params]
+ * @param {{timeoutMs?: number, attempts?: number, deadline?: number}} [opts]
+ * @returns {Promise<any>}
+ */
+export async function keyyoGet(cfg, token, path, params, opts) {
+  return requestJson(cfg, token, buildUrl(cfg, path, params || null), opts || {});
+}
+
+/**
+ * GET pagine : suit `_links.next.href` tant qu'il existe, sinon avance par
+ * `limit`/`offset`. Plafonne par `cfg.maxPages` — une pagination cassee cote
+ * API ne doit pas boucler indefiniment dans une fonction serverless.
+ *
+ * `opts.stats`, si fourni, recoit `{ pages, truncated }` : le contrat impose de
+ * renvoyer un tableau, c'est le seul moyen de remonter le diagnostic.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {string} path
+ * @param {Record<string, any>} [params]
+ * @param {{timeoutMs?: number, attempts?: number, deadline?: number, limit?: number, maxPages?: number, stats?: {pages?: number, truncated?: boolean}}} [opts]
+ * @returns {Promise<any[]>}
+ */
+export async function keyyoGetAll(cfg, token, path, params, opts) {
+  const o = opts || {};
+  const limit = Math.max(1, Number(o.limit) || Number(cfg.pageLimit) || 200);
+  const maxPages = Math.max(1, Number(o.maxPages) || Number(cfg.maxPages) || 40);
+  const baseParams = params || {};
+
+  /** @type {any[]} */
+  const out = [];
+  const seen = new Set();
+  let offset = 0;
+  let pages = 0;
+  let truncated = false;
+  let url = buildUrl(cfg, path, Object.assign({}, baseParams, { limit, offset }));
+
+  while (url) {
+    if (seen.has(url)) break;                       // garde-fou : pagination circulaire
+    seen.add(url);
+
+    const payload = await requestJson(cfg, token, url, o);
+    pages++;
+    const records = extractRecords(payload);
+    for (let i = 0; i < records.length; i++) out.push(records[i]);
+
+    const link = nextLink(payload);
+    const hasMoreByCount = records.length >= limit;
+
+    if (pages >= maxPages) {
+      truncated = !!link || hasMoreByCount;
+      break;
+    }
+    if (link && sameOrigin(link, cfg.base)) { url = buildUrl(cfg, link, null); continue; }
+    if (!hasMoreByCount) break;                     // derniere page
+
+    offset += records.length;
+    url = buildUrl(cfg, path, Object.assign({}, baseParams, { limit, offset }));
+  }
+
+  if (o.stats && typeof o.stats === 'object') {
+    o.stats.pages = pages;
+    o.stats.truncated = truncated;
+  }
+  return out;
+}
+
+/**
+ * Un lien de pagination doit rester sur l'origine de l'API : on ne suit pas un
+ * href pointant ailleurs, et on ne lui envoie donc jamais le jeton.
+ * @param {string} link
+ * @param {string} base
+ * @returns {boolean}
+ */
+function sameOrigin(link, base) {
+  if (!/^https?:\/\//i.test(link)) return true;     // relatif : sera prefixe par la base
+  try {
+    return new URL(link).origin === new URL(base).origin;
+  } catch {
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
+//  Ressources
+// -----------------------------------------------------------------------------
+
+/** @param {unknown} v @returns {string} */
+function str(v) {
+  return v == null ? '' : String(v).trim();
+}
+
+/** @param {unknown} v @returns {boolean} */
+function bool(v) {
+  return v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';
+}
+
+/**
+ * Liste les services du compte.
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {string} [type] `UCaaSVoIPAccount`, `EmailAccount`, …
+ * @param {object} [opts]
+ * @returns {Promise<any[]>}
+ */
+export async function fetchServices(cfg, token, type, opts) {
+  /** @type {Record<string, any>} */
+  const params = {};
+  if (type) params.type = type;
+  return keyyoGetAll(cfg, token, '/services', params, opts || {});
+}
+
+/**
+ * Lignes VoIP. L'objet UCaaSVoIPAccount ne porte NI email NI nom de personne :
+ * l'identite est reconstruite ailleurs (shared/identity.js).
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {object} [opts]
+ * @returns {Promise<Array<object>>}
+ */
+export async function fetchVoipLines(cfg, token, opts) {
+  const raw = await fetchServices(cfg, token, 'UCaaSVoIPAccount', opts);
+  const out = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const csi = str(r.csi);
+    if (!csi) continue;
+    out.push({
+      csi,
+      formattedCsi: str(r.formatted_csi),
+      name: str(r.name),
+      offerId: str(r.offer_id),
+      offerName: str(r.offer_name),
+      status: str(r.status),
+      blockingStatus: str(r.blocking_status),
+      options: Array.isArray(r.options) ? r.options.map((o) => str(o)).filter(Boolean) : [],
+      shortNumber: str(r.short_number),
+      presentedNumber: str(r.presented_number),
+      presentedNumberRaw: str(r.presented_number_raw),
+      incomingAcdCallsAllowed: bool(r.incoming_acd_calls_allowed),
+    });
+  }
+  return out;
+}
+
+/**
+ * Comptes de messagerie : une des sources d'identite (first_name / last_name).
+ *
+ * Le type EmailAccount ne documente pas de champ `email` ; sur le compte reel
+ * c'est le CSI (ou sa forme formatee) qui EST l'adresse. On ne retient donc que
+ * les valeurs qui passent `isEmail`, sans jamais fabriquer une adresse.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {object} [opts]
+ * @returns {Promise<Array<object>>}
+ */
+export async function fetchEmailAccounts(cfg, token, opts) {
+  const raw = await fetchServices(cfg, token, 'EmailAccount', opts);
+  const out = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const csi = str(r.csi);
+    const candidates = [r.email, r.formatted_csi, r.csi, r.name];
+    let email = '';
+    for (const c of candidates) {
+      const v = str(c).toLowerCase();
+      if (isEmail(v)) { email = v; break; }
+    }
+    out.push({
+      csi,
+      formattedCsi: str(r.formatted_csi),
+      email,
+      firstName: str(r.first_name),
+      lastName: str(r.last_name),
+      name: str(r.name),
+      quota: r.quota == null ? null : r.quota,
+      status: str(r.status),
+    });
+  }
+  return out;
+}
+
+/**
+ * Contacts d'annuaire : source d'identite PRINCIPALE, car seule a porter a la
+ * fois l'email et les numeros.
+ *
+ * Attention : dans DirectoryContact, `name` est le NOM DE FAMILLE.
+ * `base64_picture` est deliberement ecarte — une photo par contact ferait
+ * exploser la taille de la reponse pour un usage nul cote supervision.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {object} [opts]
+ * @returns {Promise<Array<object>>}
+ */
+export async function fetchDirectoryContacts(cfg, token, opts) {
+  const raw = await keyyoGetAll(cfg, token, '/directory_contacts', {}, opts || {});
+  const out = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const numbers = uniqueStrings([r.default_number, r.work_number, r.mobile_number, r.home_number]);
+    const speedNumbers = uniqueStrings([r.work_speed_number, r.mobile_speed_number, r.home_speed_number]);
+    const email = str(r.email).toLowerCase();
+    out.push({
+      uid: str(r.uid),
+      branchUid: str(r.branch_uid),
+      firstName: str(r.first_name),
+      lastName: str(r.name),
+      email: isEmail(email) ? email : '',
+      company: str(r.company),
+      job: str(r.job),
+      address: str(r.address),
+      zipcode: str(r.zipcode),
+      city: str(r.city),
+      country: str(r.country),
+      numbers,
+      speedNumbers,
+      hasPicture: !!str(r.base64_picture),
+    });
+  }
+  return out;
+}
+
+/** @param {any[]} values @returns {string[]} */
+function uniqueStrings(values) {
+  const out = [];
+  for (const v of values) {
+    const s = str(v);
+    if (s && out.indexOf(s) < 0) out.push(s);
+  }
+  return out;
+}
+
+/**
+ * Borne de date au format attendu par Keyyo : « YYYY-MM-DD HH:MM ».
+ * Accepte une Date, une date calendaire `YYYY-MM-DD` (minuit) ou une chaine
+ * horodatee.
+ * @param {unknown} value
+ * @param {string} tz
+ * @param {string} which nom du parametre, pour le message d'erreur.
+ * @returns {string}
+ */
+function keyyoBound(value, tz, which) {
+  if (value instanceof Date) return toKeyyoDate(value, tz);
+  const s = str(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s + ' 00:00';
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s)) return s.slice(0, 10) + ' ' + s.slice(11, 16);
+  const d = parseTimestamp(s);
+  if (d) return toKeyyoDate(d, tz);
+  throw new Error(
+    'Borne de date « ' + which + ' » inexploitable (' + (s || 'vide') + '). '
+    + 'Attendu : une date « YYYY-MM-DD » ou un objet Date.',
+  );
+}
+
+/**
+ * Releve d'appels d'une ligne, pour un sens et une fenetre donnes.
+ *
+ * `to` est passe tel quel a `date_end`, qui est EXCLUSIVE cote Keyyo.
+ * Le diagnostic renvoie le brut vu, le garde, l'ecarte et les RAISONS de rejet :
+ * un ecart entre `rawSeen` et `kept` doit toujours pouvoir s'expliquer.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {{csi: string, direction: 'in'|'out', from: any, to: any, month?: string, deadline?: number, onDrop?: (raw: any, reason: string, ctx: any) => void}} args
+ * @returns {Promise<{rows: any[], diag: object}>}
+ */
+export async function fetchCallDetail(cfg, token, args) {
+  const a = args || /** @type {any} */ ({});
+  const csi = str(a.csi);
+  if (!csi) throw new Error('fetchCallDetail : CSI manquant, impossible de choisir la ligne a interroger.');
+  const direction = a.direction === 'out' ? 'out' : 'in';
+  const tz = cfg.tz;
+
+  const dateStart = keyyoBound(a.from, tz, 'from');
+  const dateEnd = keyyoBound(a.to, tz, 'to');
+  const path = '/services/' + encodeURIComponent(csi) + '/'
+    + (direction === 'out' ? 'outgoing_call_detail' : 'incoming_call_detail');
+
+  /** @type {Record<string, number>} */
+  const dropReasons = {};
+  let dropped = 0;
+  const onDrop = (raw, reason) => {
+    const key = str(reason) || 'raison non precisee';
+    dropped++;
+    dropReasons[key] = (dropReasons[key] || 0) + 1;
+    if (typeof a.onDrop === 'function') a.onDrop(raw, key, { csi, direction, month: a.month || '' });
+  };
+
+  const stats = /** @type {{pages?: number, truncated?: boolean}} */ ({});
+  const startedAt = Date.now();
+
+  const records = await keyyoGetAll(cfg, token, path, {
+    date_start: dateStart,
+    date_end: dateEnd,
+  }, { deadline: a.deadline, stats });
+
+  /** @type {any[]} */
+  const rows = [];
+  for (const rec of records) {
+    const row = normalizeCdr(rec, { direction, csi, tz, onDrop });
+    if (!row) continue;
+    // Un releve SMS / data porte un COMPTE d'unites, pas une duree : le garder
+    // le ferait passer pour un appel non decroche, donc pour un manque.
+    if (row[F.unit] !== 'second') {
+      onDrop(rec, 'unite non vocale : ' + (row[F.unit] || 'inconnue'));
+      continue;
+    }
+    rows.push(row);
+  }
+
   return {
     rows,
-    lines,
-    meta: buildMeta(rows),
-    errors: hint ? [...errors, hint] : errors,
-    diag: { rawSeen, kept: rows.length, dropped, perTask, csiCheck, strategy: 'date_start/date_end (doc Keyyo) + limit/offset', windowDays: cfg.historyDays, services: cfg.services },
+    diag: {
+      csi,
+      direction,
+      month: str(a.month) || dateStart.slice(0, 7),
+      from: dateStart,
+      to: dateEnd,
+      pages: Number(stats.pages) || 0,
+      truncated: !!stats.truncated,
+      rawSeen: records.length,
+      kept: rows.length,
+      dropped,
+      dropReasons,
+      elapsedMs: Date.now() - startedAt,
+      ok: true,
+    },
   };
-}
-
-export function buildMeta(rows) {
-  const isos = rows.map(r => r[0]);
-  return {
-    n: rows.length,
-    min: isos.length ? isos.reduce((a, b) => a < b ? a : b) : null,
-    max: isos.length ? isos.reduce((a, b) => a > b ? a : b) : null,
-    days: new Set(isos).size,
-    ym: [...new Set(rows.map(r => r[10]))].sort(),
-    sites: [...new Set(rows.map(r => r[6]))].sort(),
-  };
-}
-
-// export pour tests offline et reutilisation (probe)
-export const __test = { extractRecords, normalizeRecord, parseTimestamp, findAnyTimestamp, buildUrl, readConfig, getAccessToken, safeTz };
-
-if (process.argv.includes('--selftest')) {
-  console.log('Test Keyyo (OAuth refresh + Manager API)...');
-  try {
-    const { rows, meta, errors, diag } = await fetchAllCalls();
-    console.log(`OK : ${rows.length} appels gardes | ${diag.rawSeen} bruts | sites=${meta.sites.join(', ')} | ${meta.min} -> ${meta.max}`);
-    if (errors.length) console.warn('Avertissements:', errors);
-    console.log('Diag par tache:'); for (const d of diag.perTask) console.log('  ', JSON.stringify(d));
-    if (rows[0]) console.log('Exemple:', JSON.stringify(rows[0]));
-  } catch (e) { console.error('ECHEC:', e.message); process.exit(1); }
 }

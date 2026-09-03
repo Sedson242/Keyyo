@@ -1,785 +1,332 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Keyyo · Pilotage téléphonie</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<style>
-:root{
-  --ink:#14146E; --ink2:#1D1D85; --surface:#EEF1F6; --card:#FFFFFF;
-  --line:#E4E8F0; --text:#1B2A3D; --muted:#6A7A92; --muted2:#94A2B8;
-  --cyan:#00C55A; --cyan-d:#009E48; --in:#00C55A; --out:#14146E;
-  --miss:#F0883E; --alert:#E5484D; --gold:#E9B949;
-  --r:16px; --r-s:11px; --shadow:0 1px 2px rgba(16,30,50,.04),0 8px 24px -12px rgba(16,30,50,.18);
-  --shadow-lg:0 24px 60px -20px rgba(16,30,50,.35);
-}
-*{box-sizing:border-box}
-html,body{margin:0;height:100%;width:100%}
-body{font-family:Inter,system-ui,sans-serif;background:var(--surface);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px}
-h1,h2,h3,.disp{font-family:'Space Grotesk',sans-serif}
-.mono{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
-button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
-a{color:inherit}
-::selection{background:var(--cyan);color:#fff}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Supervision des appels Keyyo — volumes, appels manqués, correspondants et activité par collaborateur sur les trois derniers mois.">
+<meta name="robots" content="noindex, nofollow">
+<title>Supervision des appels — Keyyo</title>
 
-/* ---------- Shell ---------- */
-.shell{min-height:100vh}
-.side{background:linear-gradient(180deg,var(--ink) 0%,var(--ink2) 100%);color:#fff;padding:22px 16px;display:flex;flex-direction:column;position:fixed;left:0;top:0;bottom:0;width:248px;overflow-y:auto;z-index:40}
-.brand{display:flex;align-items:center;gap:11px;padding:4px 8px 22px}
-.brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#00C55A,#14146E);display:grid;place-items:center;flex:none;box-shadow:0 6px 16px -4px rgba(0,197,90,.6)}
-.brand .logo svg{width:19px;height:19px}
-.brand b{font-family:'Space Grotesk';font-size:15px;letter-spacing:-.2px;line-height:1.15;display:block}
-.brand span{font-size:11px;color:#8FA3BC;letter-spacing:.3px}
-.nav{display:flex;flex-direction:column;gap:3px;margin-top:6px}
-.nav a{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:11px;color:#AFC0D6;font-weight:500;font-size:13.5px;transition:.15s;cursor:pointer;text-decoration:none}
-.nav a svg{width:18px;height:18px;flex:none;opacity:.85}
-.nav a:hover{background:rgba(255,255,255,.06);color:#fff}
-.nav a.on{background:linear-gradient(90deg,rgba(0,197,90,.22),rgba(0,197,90,.04));color:#fff}
-.nav a.on svg{opacity:1;color:var(--cyan)}
-.nav a.on{box-shadow:inset 2px 0 0 var(--cyan)}
-.side-foot{margin-top:auto;padding:14px 10px 2px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:#7E92AD}
-.side-foot .row{display:flex;justify-content:space-between;align-items:center;margin-top:9px}
-.switch{width:38px;height:21px;border-radius:20px;background:rgba(255,255,255,.16);position:relative;transition:.2s;flex:none}
-.switch.on{background:var(--cyan)}
-.switch i{position:absolute;top:2.5px;left:2.5px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
-.switch.on i{left:19.5px}
+<link rel="preload" href="assets/css/tokens.css" as="style">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/pages.css">
 
-.main{margin-left:248px;min-height:100vh}
-#pages{display:block;width:100%}
-.page{width:100%}
-.top{position:sticky;top:0;z-index:30;background:rgba(238,241,246,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:14px 26px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.top .ttl{display:flex;flex-direction:column;margin-right:auto;min-width:0}
-.top .ttl h1{margin:0;font-size:20px;letter-spacing:-.4px}
-.top .ttl p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
-.burger{display:none}
-.live{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--line);padding:7px 12px;border-radius:10px;font-weight:500}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--in);box-shadow:0 0 0 0 rgba(0,197,90,.5);animation:pulse 2.4s infinite}
-.live.warn .dot{background:var(--miss);animation:pulse 2s infinite}
-.live.err .dot{background:var(--alert);animation:none}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(0,197,90,.5)}70%{box-shadow:0 0 0 7px rgba(0,197,90,0)}100%{box-shadow:0 0 0 0 rgba(0,197,90,0)}}
-.iconbtn{position:relative;width:40px;height:40px;border-radius:11px;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;transition:.15s}
-.iconbtn:hover{border-color:var(--cyan);color:var(--cyan-d)}
-.iconbtn svg{width:18px;height:18px}
-.iconbtn .badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--alert);color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center;font-family:'Space Grotesk'}
-.iconbtn .badge.hide{display:none}
-
-/* ---------- Date control ---------- */
-.daterange{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px}
-.seg button{padding:7px 12px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--muted);transition:.12s;white-space:nowrap}
-.seg button.on{background:var(--ink);color:#fff}
-.seg button:hover:not(.on){background:var(--surface);color:var(--text)}
-.dpick{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:5px 8px}
-.dpick input{border:none;background:none;font-family:inherit;font-size:12.5px;color:var(--text);width:118px}
-.dpick input:focus{outline:none;color:var(--cyan-d)}
-.dpick span{color:var(--muted2)}
-select.site{appearance:none;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:8px 30px 8px 12px;font-size:12.5px;font-weight:500;color:var(--text);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236A7A92' stroke-width='2'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
-
-/* ---------- Page / grid ---------- */
-.page{padding:24px 26px 60px;display:none;animation:fade .35s ease}
-.page.on{display:block}
-@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.grid{display:grid;gap:16px}
-.k6{grid-template-columns:repeat(6,1fr)}
-.k4{grid-template-columns:repeat(4,1fr)}
-.k3{grid-template-columns:repeat(3,1fr)}
-.k2{grid-template-columns:repeat(2,1fr)}
-.span2{grid-column:span 2}.span3{grid-column:span 3}.span4{grid-column:span 4}.span6{grid-column:span 6}
-.sec-h{display:flex;align-items:baseline;gap:10px;margin:30px 2px 14px}
-.sec-h h2{margin:0;font-size:16px;letter-spacing:-.3px}
-.sec-h span{font-size:12.5px;color:var(--muted)}
-
-/* ---------- KPI ---------- */
-.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:17px 17px 15px;position:relative;overflow:hidden;transition:.18s;cursor:pointer}
-.kpi:hover{border-color:#CBD5E6;box-shadow:var(--shadow);transform:translateY(-2px)}
-.kpi .top-row{display:flex;align-items:center;gap:8px;margin-bottom:11px}
-.kpi .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none}
-.kpi .ic svg{width:16px;height:16px}
-.kpi .lbl{font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
-.kpi .q{margin-left:auto;width:18px;height:18px;border-radius:50%;border:1px solid var(--line);color:var(--muted2);font-size:11px;display:grid;place-items:center;font-weight:700;transition:.15s}
-.kpi:hover .q{border-color:var(--cyan);color:var(--cyan)}
-.kpi .val{font-family:'Space Grotesk';font-size:30px;font-weight:600;letter-spacing:-1px;line-height:1}
-.kpi .val small{font-size:15px;color:var(--muted);font-weight:500;margin-left:2px}
-.kpi .sub{font-size:12px;color:var(--muted);margin-top:6px}
-.kpi .sub b{color:var(--text);font-weight:600}
-.kpi .accent{position:absolute;left:0;top:0;bottom:0;width:3px}
-.kpi.expl .explbox{display:block}
-.explbox{display:none;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted);line-height:1.5;animation:fade .2s}
-
-.ic.c-tot{background:rgba(0,197,90,.12);color:var(--cyan-d)} .accent.c-tot{background:var(--cyan)}
-.ic.c-in{background:rgba(0,197,90,.12);color:var(--in)} .accent.c-in{background:var(--in)}
-.ic.c-out{background:rgba(20,20,110,.12);color:var(--out)} .accent.c-out{background:var(--out)}
-.ic.c-miss{background:rgba(240,136,62,.14);color:var(--miss)} .accent.c-miss{background:var(--miss)}
-.ic.c-rate{background:rgba(233,185,73,.16);color:#B98900} .accent.c-rate{background:var(--gold)}
-.ic.c-dur{background:rgba(27,42,61,.08);color:var(--ink)} .accent.c-dur{background:var(--ink)}
-
-/* ---------- Cards / charts ---------- */
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
-.card .hd{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}
-.card .hd h3{margin:0;font-size:14.5px;letter-spacing:-.2px}
-.card .hd p{margin:2px 0 0;font-size:12px;color:var(--muted)}
-.card .hd .pill{margin-left:auto;font-size:11px;font-weight:600;color:var(--cyan-d);background:rgba(0,197,90,.1);padding:4px 9px;border-radius:20px}
-.chart-wrap{position:relative;height:260px;margin-top:14px}
-.chart-wrap.sm{height:210px}
-.chart-wrap.lg{height:320px}
-
-/* ---------- Lists ---------- */
-.rank{display:flex;flex-direction:column;gap:2px;margin-top:10px}
-.rank .it{display:flex;align-items:center;gap:11px;padding:9px 8px;border-radius:10px;cursor:pointer;transition:.12s}
-.rank .it:hover{background:var(--surface)}
-.rank .av{width:34px;height:34px;border-radius:9px;background:var(--surface);display:grid;place-items:center;font-family:'Space Grotesk';font-weight:600;font-size:13px;color:var(--ink);flex:none}
-.rank .nm{min-width:0;flex:1}
-.rank .nm b{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rank .nm span{font-size:11.5px;color:var(--muted)}
-.rank .bar{height:6px;border-radius:4px;background:var(--surface);overflow:hidden;width:80px;flex:none}
-.rank .bar i{display:block;height:100%;border-radius:4px;background:var(--cyan)}
-.rank .ct{font-family:'Space Grotesk';font-weight:600;font-size:14px;width:34px;text-align:right;flex:none}
-.tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:7px}
-.tag.in{background:rgba(0,197,90,.12);color:var(--in)} .tag.out{background:rgba(20,20,110,.12);color:var(--out)}
-.tag.ok{background:rgba(0,197,90,.12);color:var(--in)} .tag.miss{background:rgba(229,72,77,.12);color:var(--alert)}
-
-/* ---------- Table ---------- */
-.tbl-wrap{overflow-x:auto;margin-top:12px;border-radius:12px;border:1px solid var(--line)}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
-thead th{background:var(--surface);text-align:left;padding:11px 14px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);position:sticky;top:0}
-tbody td{padding:11px 14px;border-top:1px solid var(--line)}
-tbody tr{transition:.1s}
-tbody tr:hover{background:var(--surface)}
-td.num{text-align:right;font-family:'IBM Plex Mono';font-variant-numeric:tabular-nums}
-.lnk{color:var(--cyan-d);font-weight:600;cursor:pointer;text-decoration:none}
-.lnk:hover{text-decoration:underline}
-.search{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:9px 13px;max-width:340px}
-.search input{border:none;background:none;font-family:inherit;font-size:13px;width:100%;color:var(--text)}
-.search input:focus{outline:none}
-.search svg{width:16px;height:16px;color:var(--muted2);flex:none}
-
-/* ---------- Heatmap ---------- */
-.heat{margin-top:16px;overflow-x:auto}
-.heat table{min-width:560px;border-collapse:separate;border-spacing:3px}
-.heat td,.heat th{padding:0;border:none;background:none}
-.heat .hl{font-size:10px;color:var(--muted);text-align:center;font-weight:600;font-family:'IBM Plex Mono'}
-.heat .rl{font-size:11px;color:var(--muted);font-weight:600;padding-right:8px;text-align:right;white-space:nowrap}
-.heat .cell{width:100%;height:22px;border-radius:5px;background:var(--surface);position:relative;cursor:default}
-.heat .cell[data-v]:hover{outline:2px solid var(--cyan)}
-
-/* ---------- Modal ---------- */
-.scrim{position:fixed;inset:0;background:rgba(14,26,43,.55);backdrop-filter:blur(3px);z-index:80;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
-.scrim.on{display:flex;animation:fade .2s}
-.modal{background:var(--card);border-radius:20px;width:100%;max-width:680px;box-shadow:var(--shadow-lg);overflow:hidden;animation:pop .26s cubic-bezier(.2,.9,.3,1.2)}
-@keyframes pop{from{opacity:0;transform:scale(.96) translateY(10px)}to{opacity:1;transform:none}}
-.modal .mh{padding:22px 24px;background:linear-gradient(135deg,var(--ink),var(--ink2));color:#fff;position:relative}
-.modal .mh .who{display:flex;align-items:center;gap:14px}
-.modal .mh .mav{width:50px;height:50px;border-radius:13px;background:rgba(255,255,255,.12);display:grid;place-items:center;font-family:'Space Grotesk';font-weight:600;font-size:18px;flex:none}
-.modal .mh h3{margin:0;font-size:19px;letter-spacing:-.3px}
-.modal .mh .num{font-family:'IBM Plex Mono';font-size:13px;color:#9FB3CC;margin-top:2px}
-.modal .mh .x{position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:grid;place-items:center;color:#fff;transition:.15s}
-.modal .mh .x:hover{background:rgba(255,255,255,.24)}
-.modal .mb{padding:20px 24px 26px;max-height:62vh;overflow-y:auto}
-.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
-.mini .m{background:var(--surface);border-radius:12px;padding:12px}
-.mini .m .l{font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
-.mini .m .v{font-family:'Space Grotesk';font-size:20px;font-weight:600;margin-top:4px;letter-spacing:-.5px}
-.tl{display:flex;flex-direction:column;gap:0}
-.tl .e{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
-.tl .e:first-child{border-top:none}
-.tl .e .when{font-family:'IBM Plex Mono';font-size:12px;color:var(--muted);white-space:nowrap;width:120px;flex:none}
-.tl .e .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px}
-
-/* ---------- Toast ---------- */
-.toasts{position:fixed;right:18px;bottom:18px;z-index:90;display:flex;flex-direction:column;gap:10px;max-width:330px}
-.toast{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--miss);border-radius:13px;box-shadow:var(--shadow-lg);padding:13px 15px;display:flex;gap:12px;align-items:flex-start;animation:slidein .35s cubic-bezier(.2,.9,.3,1.1)}
-@keyframes slidein{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
-.toast .ti{width:34px;height:34px;border-radius:10px;background:rgba(240,136,62,.14);color:var(--miss);display:grid;place-items:center;flex:none}
-.toast .tc b{font-size:13px;display:block}
-.toast .tc span{font-size:12px;color:var(--muted)}
-.toast .tx{margin-left:6px;color:var(--muted2);align-self:center}
-
-/* ---------- Notif center ---------- */
-.notif{position:absolute;top:54px;right:0;width:340px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);z-index:60;display:none;overflow:hidden}
-.notif.on{display:block;animation:fade .18s}
-.notif .nh{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
-.notif .nh b{font-size:14px;font-family:'Space Grotesk'}
-.notif .nl{max-height:380px;overflow-y:auto}
-.notif .ni{display:flex;gap:11px;padding:12px 16px;border-top:1px solid var(--line);cursor:pointer;transition:.1s}
-.notif .ni:first-child{border-top:none}
-.notif .ni:hover{background:var(--surface)}
-.notif .ni .d{width:34px;height:34px;border-radius:10px;background:rgba(240,136,62,.14);color:var(--miss);display:grid;place-items:center;flex:none}
-.notif .ni .t b{font-size:13px;display:block}
-.notif .ni .t span{font-size:11.5px;color:var(--muted)}
-.notif .empty{padding:34px 20px;text-align:center;color:var(--muted);font-size:13px}
-
-/* ---------- Empty / overlay ---------- */
-.empty-note{background:#FFF8EC;border:1px solid #F2C779;border-left:4px solid var(--miss);border-radius:12px;padding:15px 17px;font-size:13px;color:#8a5a00;line-height:1.5}
-.overlay{position:fixed;inset:0;background:rgba(238,241,246,.94);z-index:100;display:none;place-items:center;text-align:center;padding:20px}
-.overlay.on{display:grid}
-.overlay .box{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:34px 30px;max-width:440px;box-shadow:var(--shadow)}
-.overlay h3{margin:0 0 8px;font-size:18px}
-.overlay p{color:var(--muted);font-size:13px;margin:0 0 18px;line-height:1.5}
-.btn{background:var(--ink);color:#fff;padding:11px 20px;border-radius:11px;font-weight:600;font-size:13px;transition:.15s}
-.btn:hover{background:var(--ink2)}
-.skel{background:linear-gradient(90deg,var(--surface) 25%,#E8ECF3 50%,var(--surface) 75%);background-size:200% 100%;animation:sh 1.3s infinite;border-radius:8px}
-@keyframes sh{to{background-position:-200% 0}}
-
-/* ---------- Responsive ---------- */
-@media (max-width:1100px){.k6{grid-template-columns:repeat(3,1fr)}.k4{grid-template-columns:repeat(2,1fr)}.span3,.span4{grid-column:span 6}}
-@media (max-width:920px){
-  .side{width:264px;transform:translateX(-100%);transition:transform .28s;box-shadow:var(--shadow-lg)}
-  .side.open{transform:none}
-  .main{margin-left:0}
-  .burger{display:grid}
-  .scrim-nav{position:fixed;inset:0;background:rgba(14,26,43,.4);z-index:35;display:none}
-  .scrim-nav.on{display:block}
-  .k6,.k4,.k3,.k2{grid-template-columns:repeat(2,1fr)}
-  .span2,.span3,.span4,.span6{grid-column:span 2}
-  .top{padding:12px 16px}
-  .page{padding:18px 16px 70px}
-  .mini{grid-template-columns:repeat(2,1fr)}
-}
-@media (max-width:540px){
-  .k6,.k4,.k3,.k2{grid-template-columns:1fr}
-  .span2,.span3,.span4,.span6{grid-column:span 1}
-  .top .ttl h1{font-size:17px}
-  .daterange{width:100%}
-}
-</style>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="modulepreload" href="app/main.js">
 </head>
 <body>
-<div class="shell">
-  <!-- Sidebar -->
-  <aside class="side" id="side">
+
+<!-- =========================================================================
+     Bibliotheque d'icones. Un seul jeu de traces, reference par <use>.
+     Toutes en 24x24, trait de 2, extremites arrondies.
+     ========================================================================= -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="i-base" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
+  </defs>
+  <symbol id="i-monitoring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 12h4l2.5-7 4 14L16 12h5"/>
+  </symbol>
+  <symbol id="i-calls" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>
+  </symbol>
+  <symbol id="i-missed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 3l-6 6m0-6l6 6"/>
+    <path d="M14.5 15.5l-1.6 1.6a13 13 0 0 1-6-6L8.5 9.5 6.8 5.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A17.6 17.6 0 0 0 17.6 21.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+  </symbol>
+  <symbol id="i-peers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/>
+    <circle cx="9" cy="7" r="3.4"/>
+    <path d="M22 20v-1.5a4 4 0 0 0-3-3.87M16.5 3.6a4 4 0 0 1 0 6.8"/>
+  </symbol>
+  <symbol id="i-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/>
+    <circle cx="8.5" cy="7" r="3.4"/>
+    <path d="M16.5 11.5l2 2 4-4"/>
+  </symbol>
+  <symbol id="i-lines" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+    <path d="M15 3h6v6"/>
+  </symbol>
+  <symbol id="i-diagnostics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2.5a9.5 9.5 0 1 0 9.5 9.5"/>
+    <path d="M12 12l5-5"/>
+    <circle cx="12" cy="12" r="1.6"/>
+  </symbol>
+  <symbol id="i-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 3l-7 7m0-5.5V10h5.5"/>
+    <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+  </symbol>
+  <symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 10l7-7m-5.5 0H21v5.5"/>
+    <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+  </symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+  </symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.5 2"/>
+  </symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5"/>
+    <path d="M13.7 20a2 2 0 0 1-3.4 0"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5"/><path d="M4 20h16"/>
+  </symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M21 4v4.5h-4.5"/>
+  </symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 9.5l6 6 6-6"/>
+  </symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.5 6h17M3.5 12h17M3.5 18h17"/>
+  </symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 6l12 12M18 6L6 18"/>
+  </symbol>
+  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>
+  </symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3.5l9.5 16.5H2.5z"/><path d="M12 9.5v4.5M12 17h.01"/>
+  </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6h.01"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 12.5l5 5 10-11"/>
+  </symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M3 7l9 6 9-6"/>
+  </symbol>
+  <symbol id="i-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M8.5 15h7"/>
+  </symbol>
+</svg>
+
+<div class="app">
+
+  <!-- =======================================================================
+       Barre laterale
+       ======================================================================= -->
+  <aside class="side" id="sidebar">
     <div class="brand">
-      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div>
-      <div><b>BIOS Téléphonie</b><span>Pilotage Keyyo</span></div>
+      <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
+      <div>
+        <span class="brand-name">Keyyo</span>
+        <span class="brand-sub">Supervision</span>
+      </div>
     </div>
-    <nav class="nav" id="nav"></nav>
+
+    <nav aria-label="Navigation principale">
+      <div class="nav-group">
+        <p class="nav-title" id="navgrp-activite">Activité</p>
+        <ul aria-labelledby="navgrp-activite">
+          <li>
+            <button class="nav-item is-active" data-route="monitoring" aria-current="page">
+              <svg aria-hidden="true"><use href="#i-monitoring"/></svg>Monitoring
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-route="calls">
+              <svg aria-hidden="true"><use href="#i-calls"/></svg>Journal des appels
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-route="missed">
+              <svg aria-hidden="true"><use href="#i-missed"/></svg>Appels manqués
+              <span class="nav-badge" id="nav-badge-missed" hidden>0</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <p class="nav-title" id="navgrp-annuaire">Annuaire</p>
+        <ul aria-labelledby="navgrp-annuaire">
+          <li>
+            <button class="nav-item" data-route="peers">
+              <svg aria-hidden="true"><use href="#i-peers"/></svg>Correspondants
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-route="people">
+              <svg aria-hidden="true"><use href="#i-people"/></svg>Collaborateurs
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-route="lines">
+              <svg aria-hidden="true"><use href="#i-lines"/></svg>Lignes Keyyo
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <p class="nav-title" id="navgrp-systeme">Système</p>
+        <ul aria-labelledby="navgrp-systeme">
+          <li>
+            <button class="nav-item" data-route="diagnostics">
+              <svg aria-hidden="true"><use href="#i-diagnostics"/></svg>Diagnostic
+            </button>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
     <div class="side-foot">
-      <div class="row"><span>Son des alertes</span><div class="switch on" id="sw-sound" onclick="toggleSound()"><i></i></div></div>
-      <div class="row"><span>Alertes appels manqués</span><div class="switch on" id="sw-notif" onclick="toggleNotif()"><i></i></div></div>
-      <div class="row" style="margin-top:14px;color:#6E82A0"><span id="foot-period">—</span></div>
-      <div class="row" style="margin-top:6px;color:#52688A;font-size:10px"><span>Interface — build 2026-06-12&nbsp;D</span></div>
+      <button class="switch" id="sw-sound" type="button" aria-pressed="false">
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>Son sur appel manqué</span>
+      </button>
+      <button class="switch" id="sw-notif" type="button" aria-pressed="false">
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>Notifications système</span>
+      </button>
+      <p class="faint" style="font: var(--t-micro)" id="store-status">Base : —</p>
     </div>
   </aside>
-  <div class="scrim-nav" id="scrim-nav" onclick="closeNav()"></div>
 
-  <!-- Main -->
-  <div class="main">
-    <header class="top">
-      <button class="burger iconbtn" onclick="openNav()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
-      <div class="ttl"><h1 id="pg-title">Vue d'ensemble</h1><p id="pg-sub">Activité téléphonique consolidée</p></div>
-      <div class="daterange" id="daterange"></div>
-      <span class="live" id="live"><span class="dot"></span><span id="live-tx">Connexion…</span></span>
-      <button class="iconbtn" id="bell" onclick="toggleNotifCenter(event)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-        <span class="badge hide" id="bell-badge">0</span>
-        <div class="notif" id="notif" onclick="event.stopPropagation()"></div>
+  <!-- =======================================================================
+       Zone principale
+       ======================================================================= -->
+  <main class="main">
+    <div class="topbar">
+      <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="sidebar">
+        <svg aria-hidden="true"><use href="#i-menu"/></svg>
       </button>
-    </header>
 
-    <main id="pages">
-      <section class="page on" data-page="overview" id="p-overview"></section>
-      <section class="page" data-page="incoming" id="p-incoming"></section>
-      <section class="page" data-page="missed" id="p-missed"></section>
-      <section class="page" data-page="outgoing" id="p-outgoing"></section>
-      <section class="page" data-page="contacts" id="p-contacts"></section>
-      <section class="page" data-page="logs" id="p-logs"></section>
-      <section class="page" data-page="detail" id="p-detail"></section>
-    </main>
+      <div class="topbar-title">
+        <h1 class="page-title" id="page-title">Monitoring</h1>
+        <p class="page-sub" id="page-sub">Activité téléphonique des trois derniers mois</p>
+      </div>
+
+      <div class="topbar-actions">
+        <span class="live is-loading" id="live" title="État de la connexion à l'API Keyyo">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span id="live-text">Chargement…</span>
+        </span>
+
+        <button class="btn btn--icon" id="btn-refresh" type="button" aria-label="Rafraîchir les données" title="Rafraîchir maintenant">
+          <svg aria-hidden="true"><use href="#i-refresh"/></svg>
+        </button>
+
+        <div class="bell" style="position:relative">
+          <button class="btn btn--icon" id="btn-bell" type="button" aria-label="Alertes d'appels manqués" aria-expanded="false" aria-controls="notif-popover">
+            <svg aria-hidden="true"><use href="#i-bell"/></svg>
+            <span class="bell-badge" id="bell-badge" hidden>0</span>
+          </button>
+          <div class="popover" id="notif-popover" role="dialog" aria-label="Alertes d'appels manqués" hidden>
+            <div class="popover-head">
+              <span>Appels manqués récents</span>
+              <button class="btn btn--ghost btn--sm" id="btn-notif-clear" type="button">Tout marquer lu</button>
+            </div>
+            <div id="notif-list"></div>
+          </div>
+        </div>
+
+        <div class="account">
+          <span class="avatar avatar--sm" id="account-initials" aria-hidden="true">K</span>
+          <span class="account-text">
+            <span class="account-name" id="account-name">Compte Keyyo</span>
+            <span class="account-sub" id="account-sub">Chargement…</span>
+          </span>
+          <svg aria-hidden="true"><use href="#i-chevron"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bandeau d'avertissement global (collecte partielle, base absente...) -->
+    <div id="global-notice"></div>
+
+    <!-- Barre de periode : masquee sur les vues qui n'en dependent pas -->
+    <div class="periodbar" id="periodbar">
+      <div class="segmented" role="group" aria-label="Période">
+        <button type="button" data-preset="7">7 jours</button>
+        <button type="button" data-preset="30">30 jours</button>
+        <button type="button" data-preset="92" class="is-active">3 mois</button>
+        <button type="button" data-preset="all">Tout</button>
+      </div>
+
+      <div class="periodbar-range">
+        <label for="date-from" class="sr-only">Date de début</label>
+        <input type="date" id="date-from">
+        <span aria-hidden="true">→</span>
+        <label for="date-to" class="sr-only">Date de fin</label>
+        <input type="date" id="date-to">
+      </div>
+
+      <div class="select-pill">
+        <label for="filter-line" class="sr-only">Ligne</label>
+        <select id="filter-line"><option value="">Toutes les lignes</option></select>
+        <svg aria-hidden="true" style="width:13px;height:13px"><use href="#i-chevron"/></svg>
+      </div>
+
+      <div class="select-pill">
+        <label for="filter-dir" class="sr-only">Sens</label>
+        <select id="filter-dir">
+          <option value="">Entrants et sortants</option>
+          <option value="in">Entrants seulement</option>
+          <option value="out">Sortants seulement</option>
+          <option value="missed">Manqués seulement</option>
+        </select>
+        <svg aria-hidden="true" style="width:13px;height:13px"><use href="#i-chevron"/></svg>
+      </div>
+
+      <span class="toolbar-spacer"></span>
+      <span class="periodbar-info" id="period-info"></span>
+    </div>
+
+    <!-- Vues. Une seule porte .is-active a la fois. -->
+    <section class="page is-active" data-page="monitoring" id="page-monitoring" aria-labelledby="page-title"></section>
+    <section class="page" data-page="calls" id="page-calls" aria-labelledby="page-title"></section>
+    <section class="page" data-page="missed" id="page-missed" aria-labelledby="page-title"></section>
+    <section class="page" data-page="peers" id="page-peers" aria-labelledby="page-title"></section>
+    <section class="page" data-page="people" id="page-people" aria-labelledby="page-title"></section>
+    <section class="page" data-page="lines" id="page-lines" aria-labelledby="page-title"></section>
+    <section class="page" data-page="diagnostics" id="page-diagnostics" aria-labelledby="page-title"></section>
+  </main>
+</div>
+
+<!-- Voile de la barre laterale en mobile -->
+<div class="scrim" id="nav-scrim" hidden></div>
+
+<!-- Fiche correspondant -->
+<div class="modal-scrim" id="modal-scrim" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+  <div class="modal" id="modal-body">
+    <div class="modal-head">
+      <span class="avatar avatar--lg" id="modal-avatar" aria-hidden="true">?</span>
+      <div class="grow">
+        <h2 class="modal-title" id="modal-title">Correspondant</h2>
+        <p class="modal-sub" id="modal-sub"></p>
+      </div>
+      <button class="btn btn--icon modal-close" id="modal-close" type="button" aria-label="Fermer">
+        <svg aria-hidden="true"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div id="modal-content"></div>
   </div>
 </div>
 
-<div class="scrim" id="scrim" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
-<div class="toasts" id="toasts"></div>
-<div class="overlay" id="overlay"><div class="box"><h3 id="ov-t">Connexion impossible</h3><p id="ov-p"></p><button class="btn" onclick="loadData(true)">Réessayer</button></div></div>
+<!-- Messages ephemeres -->
+<div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
 
-<script>
-"use strict";
-/* ===================== Constantes & état ===================== */
-const C={ISO:0,HOUR:1,CALLER:2,CALLED:3,NAT:4,DUR:5,SITE:6,OK:7,CORR:8,WD:9,YM:10,MIN:11};
-const WD=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-const COL={in:'#00C55A',out:'#14146E',cyan:'#00C55A',miss:'#F0883E',gold:'#E9B949',muted:'#94A2B8',line:'#E4E8F0'};
-const NAV=[
-  ['overview','Vue d\'ensemble','Activité téléphonique consolidée','M3 12l9-9 9 9M5 10v10h14V10'],
-  ['incoming','Appels entrants','Qui appelle, quand, vers quel site','M12 19V5M5 12l7-7 7 7'],
-  ['missed','Appels manqués','À rappeler en priorité — analyse détaillée','M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6M23 1l-6 6M17 1l6 6'],
-  ['outgoing','Appels sortants','Activité émise par site','M12 5v14M19 12l-7 7-7-7'],
-  ['contacts','Correspondants','Classement et fiches détaillées','M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'],
-  ['logs','Journal (logs)','Logs Keyyo — ligne, email et collaborateur par appel','M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8'],
-  ['detail','Détail des appels','Journal complet et recherche','M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01']
-];
-let RAW=[],META={},CONTACTS={},DIAG={};
-let state={page:'overview',preset:'90',from:null,to:null,site:'all',dir:'all'};
-let LINES={};let STORE={};
-/* Ligne -> collaborateur (prenom extrait de l'email rattachee au CSI) */
-function lineOf(site){return LINES&&LINES[site]?LINES[site]:null;}
-function whoOf(site){const l=lineOf(site);return l&&l.firstName?l.firstName:null;}
-function siteL(site){const w=whoOf(site);return w?site+' \u00b7 '+w:site;}
-let soundOn=true,notifOn=true,firstLoad=true;
-let seenMissed=loadSeen(),unread=[],notifOpen=false;
-const charts={};
+<!-- Repli si les modules ES ne se chargent pas -->
+<noscript>
+  <div class="notice notice--error" style="margin:20px">
+    <svg><use href="#i-alert"/></svg>
+    <div><span class="notice-title">JavaScript est requis.</span> Cette console lit l'API Keyyo dans le navigateur ; sans JavaScript, aucune donnée ne peut être affichée.</div>
+  </div>
+</noscript>
 
-/* ===================== Stockage tolérant ===================== */
-function ls(){try{return window.localStorage}catch(e){return null}}
-function loadSeen(){try{return new Set(JSON.parse(ls().getItem('keyyo_seen')||'[]'))}catch(e){return new Set()}}
-function saveSeen(){try{ls().setItem('keyyo_seen',JSON.stringify([...seenMissed].slice(-2000)))}catch(e){}}
-
-/* ===================== Contacts ===================== */
-function normNum(s){if(s==null)return'';let x=String(s).replace(/[^\d+]/g,'');if(!x)return'';if(x.startsWith('00'))x='+'+x.slice(2);if(x[0]!=='+'){if(x.length===10&&x[0]==='0')x='+33'+x.slice(1);else x='+'+x;}return x;}
-function nameOf(num){return CONTACTS[normNum(num)]||null;}
-function labelOf(num){return nameOf(num)||fmtNum(num);}
-function fmtNum(n){const k=normNum(n);if(/^\+33[1-9]\d{8}$/.test(k)){const d='0'+k.slice(3);return d.replace(/(\d{2})(?=\d)/g,'$1 ').trim();}return n||'—';}
-function initials(s){const w=String(s).replace(/[^\wÀ-ÿ ]/g,'').trim().split(/\s+/);if(!w[0])return'?';return((w[0][0]||'')+(w[1]?w[1][0]:'')).toUpperCase();}
-function buildContactMap(d){const m={};if(Array.isArray(d)){for(const c of d){const nm=c.name||c.displayName||'';const ns=c.numbers||(c.number?[c.number]:[]);for(const n of ns){const k=normNum(n);if(k&&nm)m[k]=nm;}}}else if(d&&typeof d==='object'){for(const[k,v]of Object.entries(d)){const kk=normNum(k);if(kk&&typeof v==='string'&&v)m[kk]=v;}}return m;}
-async function loadContacts(){
-  try{const r=await fetch('/api/contacts',{cache:'no-store'});if(r.ok){const d=await r.json();if(d&&!d.error){const m=buildContactMap(d);if(Object.keys(m).length){CONTACTS=m;return;}}}}catch(e){}
-  try{const r=await fetch('/contacts.json',{cache:'no-store'});if(r.ok)CONTACTS=buildContactMap(await r.json());}catch(e){}
-}
-
-/* ===================== Helpers ===================== */
-const fmt=n=>(n||0).toLocaleString('fr-FR');
-const pctN=(a,b)=>b?Math.round(a/b*100):0;
-function hhmm(r){return String(r[C.HOUR]).padStart(2,'0')+':'+String(r[C.MIN]||0).padStart(2,'0');}
-function mmss(s){s=s||0;const m=Math.floor(s/60),x=s%60;return m?`${m}m${String(x).padStart(2,'0')}`:`${x}s`;}
-function hms(s){s=s||0;const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h}h${String(m).padStart(2,'0')}`:`${m} min`;}
-function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),m=Math.floor(s.length/2);return s.length%2?s[m]:Math.round((s[m-1]+s[m])/2);}
-function frDate(iso){const[y,m,d]=iso.split('-');return `${d}/${m}/${y}`;}
-function isMissed(r){return r[C.NAT]===0&&r[C.OK]===0;}
-function sigOf(r,i){return r[C.ISO]+'|'+r[C.HOUR]+'|'+r[C.CORR]+'|'+i;}
-function filtered(){return RAW.filter(r=>{
-  if(state.from&&r[C.ISO]<state.from)return false;
-  if(state.to&&r[C.ISO]>state.to)return false;
-  if(state.site!=='all'&&r[C.SITE]!==state.site)return false;
-  if(state.dir==='in'&&r[C.NAT]!==0)return false;
-  if(state.dir==='out'&&r[C.NAT]!==1)return false;
-  return true;});}
-function groupCount(rows,keyFn){const m=new Map();for(const r of rows){const k=keyFn(r);m.set(k,(m.get(k)||0)+1);}return m;}
-
-/* ===================== Charts ===================== */
-Chart.defaults.font.family="Inter";Chart.defaults.font.size=11.5;Chart.defaults.color=COL.muted;
-function mk(id,cfg){if(typeof Chart==='undefined')return;if(charts[id])charts[id].destroy();const el=document.getElementById(id);if(!el)return;try{charts[id]=new Chart(el,cfg);}catch(e){}}
-function gridOpt(extra={}){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},y:{beginAtZero:true,grid:{color:COL.line,drawBorder:false},ticks:{precision:0}}},...extra};}
-
-/* ===================== Date selector ===================== */
-function renderDateBar(){
-  const presets=[['7','7 j'],['30','30 j'],['90','3 mois'],['all','Tout']];
-  document.getElementById('daterange').innerHTML=`
-    <div class="seg">${presets.map(p=>`<button class="${state.preset===p[0]?'on':''}" onclick="setPreset('${p[0]}')">${p[1]}</button>`).join('')}</div>
-    <div class="dpick"><input type="date" id="d-from" value="${state.from||''}" onchange="setCustom()"><span>→</span><input type="date" id="d-to" value="${state.to||''}" onchange="setCustom()"></div>
-    <select class="site" id="sel-site" onchange="state.site=this.value;render()">
-      <option value="all">Toutes les lignes</option>${(META.sites||[]).map(s=>`<option value="${s}" ${state.site===s?'selected':''}>${escH(siteL(s))}</option>`).join('')}
-    </select>`;
-}
-function setPreset(p){state.preset=p;const max=META.max||new Date().toISOString().slice(0,10);if(p==='all'){state.from=META.min||null;state.to=max;}else{const d=new Date(max+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-(+p-1));state.from=d.toISOString().slice(0,10);state.to=max;}renderDateBar();render();}
-function setCustom(){state.preset='';state.from=document.getElementById('d-from').value||null;state.to=document.getElementById('d-to').value||null;renderDateBar();render();}
-
-/* ===================== Navigation ===================== */
-function buildNav(){document.getElementById('nav').innerHTML=NAV.map(n=>`<a data-go="${n[0]}" onclick="go('${n[0]}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${n[3]}"/></svg>${n[1]}</a>`).join('');}
-function go(p){state.page=p;document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.go===p));document.querySelectorAll('.page').forEach(s=>s.classList.toggle('on',s.dataset.page===p));const n=NAV.find(x=>x[0]===p);document.getElementById('pg-title').textContent=n[1];document.getElementById('pg-sub').textContent=n[2];closeNav();render();window.scrollTo({top:0,behavior:'smooth'});}
-function openNav(){document.getElementById('side').classList.add('open');document.getElementById('scrim-nav').classList.add('on');}
-function closeNav(){document.getElementById('side').classList.remove('open');document.getElementById('scrim-nav').classList.remove('on');}
-
-/* ===================== KPI ===================== */
-const EXPL={
-  tot:'Nombre total d\'appels (entrants + sortants) sur la période et les filtres sélectionnés.',
-  in:'Appels reçus sur vos lignes. Cliquez un correspondant pour voir son historique.',
-  out:'Appels émis depuis vos lignes vers l\'extérieur.',
-  miss:'Appels entrants non décrochés (durée nulle). À rappeler en priorité — voir la cloche en haut à droite.',
-  rate:'Part des appels entrants effectivement décrochés. Un bon indicateur de qualité d\'accueil.',
-  dur:'Durée moyenne d\'un appel abouti (durée > 0). Les appels manqués ne comptent pas.',
-  ans:'Durée cumulée de communication sur la période.'
-};
-function kpi(o){return `<div class="kpi" onclick="this.classList.toggle('expl')">
-  <div class="accent c-${o.c}"></div>
-  <div class="top-row"><div class="ic c-${o.c}">${o.icon}</div><div class="lbl">${o.label}</div><div class="q">?</div></div>
-  <div class="val">${o.val}${o.unit?`<small>${o.unit}</small>`:''}</div>
-  <div class="sub">${o.sub||''}</div>
-  <div class="explbox">${o.expl||EXPL[o.c]||''}</div></div>`;}
-const IC={phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
-in:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7 7 7-7"/></svg>',
-out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7-7 7 7"/></svg>',
-miss:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
-rate:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3"/></svg>',
-dur:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>'};
-
-/* ===================== Pages ===================== */
-function render(){const p=state.page;if(p==='overview')renderOverview();else if(p==='incoming')renderIncoming();else if(p==='missed')renderMissed();else if(p==='outgoing')renderOutgoing();else if(p==='contacts')renderContacts();else if(p==='logs')renderLogs();else if(p==='detail')renderDetail();renderNotifCenter();}
-
-function statBlock(rows){
-  const inc=rows.filter(r=>r[C.NAT]===0),out=rows.filter(r=>r[C.NAT]===1);
-  const miss=inc.filter(r=>r[C.OK]===0),ans=inc.filter(r=>r[C.OK]===1);
-  const durOk=rows.filter(r=>r[C.OK]===1).map(r=>r[C.DUR]);
-  return{n:rows.length,inc,out,miss,ans,inN:inc.length,outN:out.length,missN:miss.length,
-    rate:pctN(ans.length,inc.length),totDur:rows.reduce((s,r)=>s+r[C.DUR],0),
-    avg:durOk.length?Math.round(durOk.reduce((a,b)=>a+b,0)/durOk.length):0};
-}
-
-function renderOverview(){
-  const f=filtered(),s=statBlock(f);
-  document.getElementById('p-overview').innerHTML=`
-    ${f.length===0?emptyNote():''}
-    <div class="grid k6">
-      ${kpi({c:'tot',icon:IC.phone,label:'Appels',val:fmt(s.n),sub:`sur la période filtrée`})}
-      ${kpi({c:'in',icon:IC.in,label:'Entrants',val:fmt(s.inN),sub:`<b>${pctN(s.inN,s.n)}%</b> du total`})}
-      ${kpi({c:'out',icon:IC.out,label:'Sortants',val:fmt(s.outN),sub:`<b>${pctN(s.outN,s.n)}%</b> du total`})}
-      ${kpi({c:'miss',icon:IC.miss,label:'Manqués',val:fmt(s.missN),sub:s.inN?`<b>${pctN(s.missN,s.inN)}%</b> des entrants`:'—'})}
-      ${kpi({c:'rate',icon:IC.rate,label:'Taux de réponse',val:s.rate,unit:'%',sub:`${fmt(s.ans.length)} décrochés`})}
-      ${kpi({c:'dur',icon:IC.dur,label:'Durée moyenne',val:mmss(s.avg),sub:`${hms(s.totDur)} cumulées`})}
-    </div>
-    <div class="sec-h"><h2>Tendance</h2><span>Volume d'appels dans le temps</span></div>
-    <div class="grid k3">
-      <div class="card span2"><div class="hd"><div><h3>Évolution des appels</h3><p>Entrants et sortants par jour</p></div></div><div class="chart-wrap"><canvas id="cEvo"></canvas></div></div>
-      <div class="card"><div class="hd"><div><h3>Répartition</h3><p>Sens des appels</p></div></div><div class="chart-wrap"><canvas id="cSplit"></canvas></div></div>
-    </div>
-    <div class="sec-h"><h2>Lignes &amp; collaborateurs</h2><span>Qui appelle, qui décroche — email rattaché à chaque ligne Keyyo</span></div>
-    <div class="card"><div class="tbl-wrap" id="linesTbl"></div></div>
-    <div class="sec-h"><h2>Activité récente</h2><span>Derniers appels — cliquez un correspondant</span></div>
-    <div class="card"><div class="tbl-wrap" id="recent"></div></div>`;
-  renderLinesTable(f);
-  // Évolution
-  const days=[...new Set(f.map(r=>r[C.ISO]))].sort();
-  const byDayIn=groupCount(f.filter(r=>r[C.NAT]===0),r=>r[C.ISO]),byDayOut=groupCount(f.filter(r=>r[C.NAT]===1),r=>r[C.ISO]);
-  mk('cEvo',{type:'line',data:{labels:days.map(frDate),datasets:[
-    {label:'Entrants',data:days.map(d=>byDayIn.get(d)||0),borderColor:COL.in,backgroundColor:'rgba(0,197,90,.08)',fill:true,tension:.35,pointRadius:0,borderWidth:2.5},
-    {label:'Sortants',data:days.map(d=>byDayOut.get(d)||0),borderColor:COL.out,backgroundColor:'rgba(20,20,110,.06)',fill:true,tension:.35,pointRadius:0,borderWidth:2.5}
-  ]},options:gridOpt({plugins:{legend:{display:true,position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16,boxWidth:7}}}})});
-  // Split
-  mk('cSplit',{type:'doughnut',data:{labels:['Entrants','Sortants'],datasets:[{data:[s.inN,s.outN],backgroundColor:[COL.in,COL.out],borderWidth:0,cutout:'68%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16,boxWidth:7}}}}});
-  // Recent
-  const rec=[...f].slice(0,12);
-  document.getElementById('recent').innerHTML=`<table><thead><tr><th>Date</th><th>Heure</th><th>Correspondant</th><th>Sens</th><th>Ligne</th><th>Durée</th><th>État</th></tr></thead><tbody>${rec.map(r=>`<tr><td>${frDate(r[C.ISO])}</td><td class="num">${hhmm(r)}</td><td><span class="lnk" onclick="openDrill('${r[C.CORR]}')">${escH(labelOf(r[C.CORR]))}</span></td><td><span class="tag ${r[C.NAT]?'out':'in'}">${r[C.NAT]?'Sortant':'Entrant'}</span></td><td>${escH(siteL(r[C.SITE]))}</td><td class="num">${mmss(r[C.DUR])}</td><td>${isMissed(r)?'<span class="tag miss">Manqué</span>':'<span class="tag ok">OK</span>'}</td></tr>`).join('')||emptyRow(7)}</tbody></table>`;
-}
-
-function renderLinesTable(f){
-  const el=document.getElementById('linesTbl');if(!el)return;
-  const sites=[...new Set([...(META.sites||[]),...Object.keys(LINES||{})])];
-  const rowsH=sites.map(site=>{
-    const l=lineOf(site)||{};
-    const mine=f.filter(r=>r[C.SITE]===site);
-    const inc=mine.filter(r=>r[C.NAT]===0),ans=inc.filter(r=>r[C.OK]===1),miss=inc.filter(r=>r[C.OK]===0);
-    const out=mine.filter(r=>r[C.NAT]===1);
-    const durOk=mine.filter(r=>r[C.OK]===1).reduce((a,r)=>a+r[C.DUR],0);
-    return `<tr>
-      <td><b>${escH(site)}</b>${l.csi?`<div style="font-size:11px;color:var(--muted)">${escH(l.csi)}</div>`:''}</td>
-      <td>${l.firstName?`<span class="tag in">${escH(l.firstName)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
-      <td style="color:var(--muted)">${escH(l.email||'—')}</td>
-      <td class="num">${fmt(inc.length)}</td>
-      <td class="num" style="color:var(--in);font-weight:600">${fmt(ans.length)}</td>
-      <td class="num" style="color:var(--miss);font-weight:600">${fmt(miss.length)}</td>
-      <td class="num">${fmt(out.length)}</td>
-      <td class="num">${hms(durOk)}</td>
-    </tr>`;}).join('');
-  el.innerHTML=`<table><thead><tr><th>Ligne (CSI)</th><th>Collaborateur</th><th>Email rattaché</th><th>Entrants</th><th>Décrochés</th><th>Manqués</th><th>Sortants émis</th><th>Comm. cumulée</th></tr></thead><tbody>${rowsH||emptyRow(8)}</tbody></table>`;
-}
-function renderIncoming(){
-  const f=filtered().filter(r=>r[C.NAT]===0),s=statBlock(filtered());
-  const ans=f.filter(r=>r[C.OK]===1),miss=f.filter(r=>r[C.OK]===0);
-  const callers=[...groupCount(f,r=>r[C.CORR]).entries()].sort((a,b)=>b[1]-a[1]);
-  const byHour=Array.from({length:24},(_,h)=>f.filter(r=>r[C.HOUR]===h).length);
-  const byWd=Array.from({length:7},(_,w)=>f.filter(r=>r[C.WD]===w).length);
-  const bySite=[...groupCount(f,r=>r[C.SITE]).entries()].sort((a,b)=>b[1]-a[1]);
-  const peakH=byHour.indexOf(Math.max(...byHour,0)),peakD=byWd.indexOf(Math.max(...byWd,0));
-  document.getElementById('p-incoming').innerHTML=`
-    ${f.length===0?emptyNote():''}
-    <div class="grid k4">
-      ${kpi({c:'in',icon:IC.in,label:'Appels entrants',val:fmt(f.length),sub:`${bySite.length} site(s)`})}
-      ${kpi({c:'rate',icon:IC.rate,label:'Taux de réponse',val:pctN(ans.length,f.length),unit:'%',sub:`${fmt(ans.length)} décrochés`})}
-      ${kpi({c:'miss',icon:IC.miss,label:'Manqués',val:fmt(miss.length),sub:miss.length?'à rappeler':'aucun '})}
-      ${kpi({c:'dur',icon:IC.dur,label:'Heure de pointe',val:peakH<0?'—':String(peakH).padStart(2,'0')+'h',sub:peakD>=0?`Jour fort : <b>${WD[peakD]}</b>`:''})}
-    </div>
-    <div class="grid k3" style="margin-top:16px">
-      <div class="card span2"><div class="hd"><div><h3>Qui appelle le plus</h3><p>Top correspondants entrants — cliquez pour la fiche</p></div><span class="pill">${callers.length} numéros</span></div><div class="rank" id="topIn"></div></div>
-      <div class="card"><div class="hd"><div><h3>Répondus vs manqués</h3></div></div><div class="chart-wrap sm"><canvas id="cAns"></canvas></div></div>
-    </div>
-    <div class="grid k2" style="margin-top:16px">
-      <div class="card"><div class="hd"><div><h3>Affluence par heure</h3><p>Quand vos lignes sonnent</p></div></div><div class="chart-wrap sm"><canvas id="cHour"></canvas></div></div>
-      <div class="card"><div class="hd"><div><h3>Affluence par jour</h3><p>Répartition hebdomadaire</p></div></div><div class="chart-wrap sm"><canvas id="cWd"></canvas></div></div>
-    </div>
-    <div class="grid k3" style="margin-top:16px">
-      <div class="card span2"><div class="hd"><div><h3>Carte d'affluence</h3><p>Volume d'entrants par jour et par heure</p></div></div><div class="heat" id="heat"></div></div>
-      <div class="card"><div class="hd"><div><h3>Par site</h3><p>Ligne la plus sollicitée</p></div></div><div class="chart-wrap sm"><canvas id="cSite"></canvas></div></div>
-    </div>`;
-  // top callers
-  document.getElementById('topIn').innerHTML=callers.slice(0,10).map(([k,v])=>{const mx=callers[0][1];const nm=nameOf(k);return `<div class="it" onclick="openDrill('${k}')"><div class="av">${nm?initials(nm):'#'}</div><div class="nm"><b>${escH(nm||fmtNum(k))}</b><span>${nm?fmtNum(k):'numéro non répertorié'}</span></div><div class="bar"><i style="width:${v/mx*100}%"></i></div><div class="ct">${v}</div></div>`;}).join('')||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Aucun appel entrant</div>';
-  mk('cAns',{type:'doughnut',data:{labels:['Répondus','Manqués'],datasets:[{data:[ans.length,miss.length],backgroundColor:[COL.in,COL.miss],borderWidth:0,cutout:'68%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14,boxWidth:7}}}}});
-  mk('cHour',{type:'bar',data:{labels:Array.from({length:24},(_,h)=>h+'h'),datasets:[{data:byHour,backgroundColor:COL.cyan,borderRadius:5,maxBarThickness:18}]},options:gridOpt()});
-  mk('cWd',{type:'bar',data:{labels:WD,datasets:[{data:byWd,backgroundColor:COL.in,borderRadius:5,maxBarThickness:32}]},options:gridOpt()});
-  mk('cSite',{type:'bar',data:{labels:bySite.map(x=>x[0]),datasets:[{data:bySite.map(x=>x[1]),backgroundColor:[COL.out,COL.cyan,COL.gold,COL.miss],borderRadius:5,maxBarThickness:40}]},options:gridOpt({indexAxis:'y',scales:{x:{beginAtZero:true,grid:{color:COL.line},ticks:{precision:0}},y:{grid:{display:false}}}})});
-  renderHeat(f);
-}
-function renderHeat(rows){
-  const grid=Array.from({length:7},()=>Array(24).fill(0));let mx=0;
-  for(const r of rows){grid[r[C.WD]][r[C.HOUR]]++;if(grid[r[C.WD]][r[C.HOUR]]>mx)mx=grid[r[C.WD]][r[C.HOUR]];}
-  const hours=[7,8,9,10,11,12,13,14,15,16,17,18,19,20];
-  const sc=v=>{if(!v)return'background:var(--surface)';const t=v/mx;const a=.15+t*.85;return `background:rgba(0,197,90,${a.toFixed(2)})`;};
-  document.getElementById('heat').innerHTML=`<table><tr><th></th>${hours.map(h=>`<th class="hl">${h}h</th>`).join('')}</tr>${grid.map((row,w)=>`<tr><td class="rl">${WD[w]}</td>${hours.map(h=>`<td><div class="cell" ${row[h]?`data-v="${row[h]}" title="${WD[w]} ${h}h — ${row[h]} appel(s)"`:''} style="${sc(row[h])}"></div></td>`).join('')}</tr>`).join('')}</table>`;
-}
-
-function renderMissed(){
-  const all=filtered();
-  const inc=all.filter(r=>r[C.NAT]===0);
-  const missed=inc.filter(r=>r[C.OK]===0);
-  const stamp=r=>r[C.ISO]+'#'+String(r[C.HOUR]*60+(r[C.MIN]||0)).padStart(4,'0');
-  // Détection des rappels : un manqué est "rappelé" s'il existe un sortant vers ce numéro APRÈS l'appel manqué (sur l'ensemble des données).
-  const outByCorr=new Map();
-  for(const r of RAW){if(r[C.NAT]===1){if(!outByCorr.has(r[C.CORR]))outByCorr.set(r[C.CORR],[]);outByCorr.get(r[C.CORR]).push(stamp(r));}}
-  const calledBack=m=>{const a=outByCorr.get(m[C.CORR]);if(!a)return false;const s=stamp(m);return a.some(x=>x>=s);};
-  const toCall=missed.filter(m=>!calledBack(m)),rappeles=missed.length-toCall.length;
-  // Distincts à rappeler (par numéro, dernier manqué en tête)
-  const tcMap=new Map();
-  for(const m of toCall){if(!tcMap.has(m[C.CORR]))tcMap.set(m[C.CORR],{n:0,last:m});const o=tcMap.get(m[C.CORR]);o.n++;if(stamp(m)>stamp(o.last))o.last=m;}
-  const tcArr=[...tcMap.entries()].sort((a,b)=>stamp(b[1].last)<stamp(a[1].last)?1:-1);
-  const topMiss=[...groupCount(missed,r=>r[C.CORR]).entries()].sort((a,b)=>b[1]-a[1]);
-  const byHour=Array.from({length:24},(_,h)=>missed.filter(r=>r[C.HOUR]===h).length);
-  const byWd=Array.from({length:7},(_,w)=>missed.filter(r=>r[C.WD]===w).length);
-  const bySite=[...groupCount(missed,r=>r[C.SITE]).entries()].sort((a,b)=>b[1]-a[1]);
-  const days=[...new Set(missed.map(r=>r[C.ISO]))].sort(),byDay=groupCount(missed,r=>r[C.ISO]);
-  const peakH=byHour.indexOf(Math.max(...byHour,0)),peakD=byWd.indexOf(Math.max(...byWd,0));
-  const tx=inc.length?Math.round(missed.length/inc.length*100):0;
-  document.getElementById('p-missed').innerHTML=`
-    ${missed.length===0?`<div class="empty-note" style="margin-bottom:18px;background:#EAF8F1;border-color:#9BD9BC;border-left-color:var(--in);color:#0B6B47"><b>Aucun appel manqué sur la période 🎉</b> Tous vos appels entrants ont été décrochés.</div>`:''}
-    <div class="grid k6">
-      ${kpi({c:'miss',icon:IC.miss,label:'Appels manqués',val:fmt(missed.length),sub:`sur ${fmt(inc.length)} entrants`,expl:'Appels entrants non décrochés (durée nulle) sur la période et le site sélectionnés.'})}
-      ${kpi({c:'rate',icon:IC.rate,label:'Taux de manqués',val:tx,unit:'%',sub:tx>20?'<b style="color:var(--alert)">à surveiller</b>':'maîtrisé',expl:'Part des appels entrants restés sans réponse. Au-delà de 20%, l\'accueil téléphonique est à renforcer.'})}
-      ${kpi({c:'miss',icon:IC.phone,label:'À rappeler',val:fmt(tcMap.size),sub:`${fmt(toCall.length)} appel(s)`,expl:'Numéros ayant un appel manqué SANS rappel sortant ultérieur de votre part. Cliquez un numéro dans la liste pour le traiter.'})}
-      ${kpi({c:'in',icon:IC.rate,label:'Rappelés',val:missed.length?Math.round(rappeles/missed.length*100):0,unit:'%',sub:`${fmt(rappeles)} traités`,expl:'Manqués pour lesquels vous avez passé un appel sortant ensuite vers le même numéro.'})}
-      ${kpi({c:'dur',icon:IC.dur,label:'Heure de pointe',val:peakH<0||!missed.length?'—':String(peakH).padStart(2,'0')+'h',sub:'des manqués',expl:'Tranche horaire où vous manquez le plus d\'appels — utile pour ajuster les présences.'})}
-      ${kpi({c:'out',icon:IC.miss,label:'Jour le plus touché',val:peakD<0||!missed.length?'—':WD[peakD],sub:'des manqués',expl:'Jour de la semaine avec le plus d\'appels manqués cumulés sur la période.'})}
-    </div>
-    <div class="grid k3" style="margin-top:16px">
-      <div class="card span2"><div class="hd"><div><h3>À rappeler en priorité</h3><p>Numéros sans rappel — cliquez pour la fiche</p></div><span class="pill">${tcMap.size}</span></div><div class="rank" id="mToCall"></div></div>
-      <div class="card"><div class="hd"><div><h3>Traitement</h3><p>Rappelés vs à rappeler</p></div></div><div class="chart-wrap sm"><canvas id="mDonut"></canvas></div></div>
-    </div>
-    <div class="grid k2" style="margin-top:16px">
-      <div class="card"><div class="hd"><div><h3>Manqués par heure</h3><p>Quand les appels échappent</p></div></div><div class="chart-wrap sm"><canvas id="mHour"></canvas></div></div>
-      <div class="card"><div class="hd"><div><h3>Manqués par jour</h3><p>Répartition hebdomadaire</p></div></div><div class="chart-wrap sm"><canvas id="mWd"></canvas></div></div>
-    </div>
-    <div class="grid k3" style="margin-top:16px">
-      <div class="card span2"><div class="hd"><div><h3>Évolution des manqués</h3><p>Tendance jour par jour</p></div></div><div class="chart-wrap sm"><canvas id="mEvo"></canvas></div></div>
-      <div class="card"><div class="hd"><div><h3>Par site</h3></div></div><div class="chart-wrap sm"><canvas id="mSite"></canvas></div></div>
-    </div>
-    <div class="card" style="margin-top:16px"><div class="hd"><div><h3>Qui manque le plus d'appels</h3><p>Top numéros manqués — cliquez pour l'historique</p></div></div><div class="rank" id="mTop"></div></div>`;
-  // à rappeler
-  document.getElementById('mToCall').innerHTML=tcArr.slice(0,12).map(([k,o])=>{const nm=nameOf(k);return `<div class="it" onclick="openDrill('${k}')"><div class="av" style="background:rgba(240,136,62,.14);color:var(--miss)">${nm?initials(nm):'!'}</div><div class="nm"><b>${escH(nm||fmtNum(k))}</b><span>dernier : ${frDate(o.last[C.ISO])} · ${hhmm(o.last)} · ${escH(siteL(o.last[C.SITE]))}</span></div><div class="ct" style="color:var(--miss)">${o.n}</div></div>`;}).join('')||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Rien à rappeler 🎉</div>';
-  document.getElementById('mTop').innerHTML=topMiss.slice(0,10).map(([k,v])=>{const mx=topMiss[0][1];const nm=nameOf(k);return `<div class="it" onclick="openDrill('${k}')"><div class="av">${nm?initials(nm):'#'}</div><div class="nm"><b>${escH(nm||fmtNum(k))}</b><span>${nm?fmtNum(k):'non répertorié'}</span></div><div class="bar"><i style="width:${v/mx*100}%;background:var(--miss)"></i></div><div class="ct">${v}</div></div>`;}).join('')||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Aucun manqué</div>';
-  mk('mDonut',{type:'doughnut',data:{labels:['Rappelés','À rappeler'],datasets:[{data:[rappeles,toCall.length],backgroundColor:[COL.in,COL.miss],borderWidth:0,cutout:'68%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14,boxWidth:7}}}}});
-  mk('mHour',{type:'bar',data:{labels:Array.from({length:24},(_,h)=>h+'h'),datasets:[{data:byHour,backgroundColor:COL.miss,borderRadius:5,maxBarThickness:18}]},options:gridOpt()});
-  mk('mWd',{type:'bar',data:{labels:WD,datasets:[{data:byWd,backgroundColor:COL.miss,borderRadius:5,maxBarThickness:32}]},options:gridOpt()});
-  mk('mEvo',{type:'line',data:{labels:days.map(frDate),datasets:[{data:days.map(d=>byDay.get(d)||0),borderColor:COL.miss,backgroundColor:'rgba(240,136,62,.1)',fill:true,tension:.35,pointRadius:0,borderWidth:2.5}]},options:gridOpt()});
-  mk('mSite',{type:'doughnut',data:{labels:bySite.map(x=>x[0]),datasets:[{data:bySite.map(x=>x[1]),backgroundColor:[COL.miss,COL.gold,COL.out,COL.cyan],borderWidth:0,cutout:'66%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14,boxWidth:7}}}}});
-}
-
-function renderOutgoing(){
-  const f=filtered().filter(r=>r[C.NAT]===1);
-  const dest=[...groupCount(f,r=>r[C.CORR]).entries()].sort((a,b)=>b[1]-a[1]);
-  const byHour=Array.from({length:24},(_,h)=>f.filter(r=>r[C.HOUR]===h).length);
-  const bySite=[...groupCount(f,r=>r[C.SITE]).entries()].sort((a,b)=>b[1]-a[1]);
-  const durOk=f.filter(r=>r[C.OK]===1).map(r=>r[C.DUR]);
-  document.getElementById('p-outgoing').innerHTML=`
-    ${f.length===0?emptyNote():''}
-    <div class="grid k4">
-      ${kpi({c:'out',icon:IC.out,label:'Appels sortants',val:fmt(f.length)})}
-      ${kpi({c:'dur',icon:IC.dur,label:'Durée moyenne',val:mmss(durOk.length?Math.round(durOk.reduce((a,b)=>a+b,0)/durOk.length):0),sub:`${hms(f.reduce((s,r)=>s+r[C.DUR],0))} cumulées`})}
-      ${kpi({c:'tot',icon:IC.phone,label:'Numéros appelés',val:fmt(dest.length)})}
-      ${kpi({c:'rate',icon:IC.rate,label:'Médiane durée',val:mmss(median(durOk))})}
-    </div>
-    <div class="grid k3" style="margin-top:16px">
-      <div class="card span2"><div class="hd"><div><h3>Numéros les plus appelés</h3><p>Cliquez pour la fiche</p></div></div><div class="rank" id="topOut"></div></div>
-      <div class="card"><div class="hd"><div><h3>Par site</h3></div></div><div class="chart-wrap sm"><canvas id="cSiteO"></canvas></div></div>
-    </div>
-    <div class="card" style="margin-top:16px"><div class="hd"><div><h3>Affluence par heure</h3><p>Quand vous émettez</p></div></div><div class="chart-wrap sm"><canvas id="cHourO"></canvas></div></div>`;
-  document.getElementById('topOut').innerHTML=dest.slice(0,10).map(([k,v])=>{const mx=dest[0][1];const nm=nameOf(k);return `<div class="it" onclick="openDrill('${k}')"><div class="av">${nm?initials(nm):'#'}</div><div class="nm"><b>${escH(nm||fmtNum(k))}</b><span>${nm?fmtNum(k):'non répertorié'}</span></div><div class="bar"><i style="width:${v/mx*100}%;background:${COL.out}"></i></div><div class="ct">${v}</div></div>`;}).join('')||'<div class="empty" style="padding:30px;text-align:center;color:var(--muted)">Aucun appel sortant</div>';
-  mk('cSiteO',{type:'doughnut',data:{labels:bySite.map(x=>x[0]),datasets:[{data:bySite.map(x=>x[1]),backgroundColor:[COL.out,COL.cyan,COL.gold],borderWidth:0,cutout:'66%'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:14,boxWidth:7}}}}});
-  mk('cHourO',{type:'bar',data:{labels:Array.from({length:24},(_,h)=>h+'h'),datasets:[{data:byHour,backgroundColor:COL.out,borderRadius:5,maxBarThickness:18}]},options:gridOpt()});
-}
-
-function renderContacts(){
-  const f=filtered();
-  const map=new Map();
-  for(const r of f){const k=r[C.CORR];if(!map.has(k))map.set(k,{n:0,in:0,out:0,miss:0,dur:0,last:r[C.ISO]});const o=map.get(k);o.n++;o[r[C.NAT]?'out':'in']++;if(isMissed(r))o.miss++;o.dur+=r[C.DUR];if(r[C.ISO]>o.last)o.last=r[C.ISO];}
-  const arr=[...map.entries()].sort((a,b)=>b[1].n-a[1].n);
-  document.getElementById('p-contacts').innerHTML=`
-    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg><input id="cSearch" placeholder="Rechercher un nom ou un numéro…" oninput="filterContacts()"></div>
-    <div class="card" style="margin-top:14px"><div class="tbl-wrap"><table id="cTable"><thead><tr><th>Correspondant</th><th>Total</th><th>Entrants</th><th>Sortants</th><th>Manqués</th><th>Durée</th><th>Dernier appel</th></tr></thead><tbody id="cBody"></tbody></table></div></div>`;
-  window.__contacts=arr;fillContacts(arr);
-}
-function fillContacts(arr){document.getElementById('cBody').innerHTML=arr.slice(0,200).map(([k,o])=>{const nm=nameOf(k);return `<tr onclick="openDrill('${k}')" style="cursor:pointer"><td><div style="display:flex;align-items:center;gap:10px"><div class="av" style="width:30px;height:30px;border-radius:8px">${nm?initials(nm):'#'}</div><div><b style="font-size:13px">${escH(nm||fmtNum(k))}</b>${nm?`<div style="font-size:11px;color:var(--muted)" class="mono">${fmtNum(k)}</div>`:''}</div></div></td><td class="num">${o.n}</td><td class="num">${o.in}</td><td class="num">${o.out}</td><td class="num">${o.miss?'<b style="color:var(--alert)">'+o.miss+'</b>':'0'}</td><td class="num">${hms(o.dur)}</td><td class="num">${frDate(o.last)}</td></tr>`;}).join('')||emptyRow(7);}
-function filterContacts(){const q=document.getElementById('cSearch').value.toLowerCase().trim();const a=window.__contacts.filter(([k])=>!q||fmtNum(k).includes(q)||normNum(k).includes(q)||(nameOf(k)||'').toLowerCase().includes(q));fillContacts(a);}
-
-/* ===================== Journal (logs Keyyo) ===================== */
-let logSearch='';
-function renderLogs(){
-  const nbL=Object.keys(LINES||{}).length,nbMail=Object.values(LINES||{}).filter(l=>l&&l.email).length;
-  document.getElementById('p-logs').innerHTML=`
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg><input id="lSearch" placeholder="Numéro, nom, email, prénom, ligne…" value="${escH(logSearch)}" oninput="logSearch=this.value;fillLogs()"></div>
-      <div class="seg"><button class="${state.dir==='all'?'on':''}" onclick="state.dir='all';render()">Tous</button><button class="${state.dir==='in'?'on':''}" onclick="state.dir='in';render()">Entrants</button><button class="${state.dir==='out'?'on':''}" onclick="state.dir='out';render()">Sortants</button></div>
-      <span style="font-size:12px;color:var(--muted)">${nbL} ligne(s) · ${nbMail} email(s) rattaché(s) — <span class="lnk" onclick="window.open('/api/lines','_blank')">vérifier /api/lines</span></span>
-      <button class="btn" style="margin-left:auto;background:var(--card);color:var(--text);border:1px solid var(--line)" onclick="exportLogsCSV()">Exporter CSV</button>
-    </div>
-    <div class="card" style="margin-top:14px"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Heure</th><th>Ligne (CSI)</th><th>Collaborateur</th><th>Email</th><th>Appelant</th><th>Appelé</th><th>Sens</th><th>Durée</th><th>État</th></tr></thead><tbody id="lBody"></tbody></table></div></div>
-    <p style="color:var(--muted);font-size:12px;margin-top:10px" id="lCount"></p>`;
-  fillLogs();
-}
-function logRows(){
-  let f=filtered();
-  if(logSearch.trim()){const q=logSearch.toLowerCase().trim();
-    f=f.filter(r=>{const l=lineOf(r[C.SITE])||{};
-      return fmtNum(r[C.CALLER]).toLowerCase().includes(q)||fmtNum(r[C.CALLED]).toLowerCase().includes(q)
-        ||(nameOf(r[C.CALLER])||'').toLowerCase().includes(q)||(nameOf(r[C.CALLED])||'').toLowerCase().includes(q)
-        ||String(r[C.SITE]).toLowerCase().includes(q)||String(l.csi||'').toLowerCase().includes(q)
-        ||String(l.email||'').toLowerCase().includes(q)||String(l.firstName||'').toLowerCase().includes(q);});}
-  return f;
-}
-function fillLogs(){
-  const f=logRows();
-  document.getElementById('lBody').innerHTML=f.slice(0,1000).map(r=>{const l=lineOf(r[C.SITE])||{};
-    return `<tr>
-      <td>${frDate(r[C.ISO])}</td><td class="num">${hhmm(r)}</td>
-      <td><b>${escH(r[C.SITE])}</b>${l.csi?`<div style="font-size:11px;color:var(--muted)" class="mono">${escH(l.csi)}</div>`:''}</td>
-      <td>${l.firstName?`<span class="tag in">${escH(l.firstName)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
-      <td style="color:var(--muted);font-size:12px">${escH(l.email||'—')}</td>
-      <td>${cellNum(r[C.CALLER])}</td><td>${cellNum(r[C.CALLED])}</td>
-      <td><span class="tag ${r[C.NAT]?'out':'in'}">${r[C.NAT]?'Sortant':'Entrant'}</span></td>
-      <td class="num">${mmss(r[C.DUR])}</td>
-      <td>${isMissed(r)?'<span class="tag miss">Manqué</span>':'<span class="tag ok">OK</span>'}</td></tr>`;}).join('')||emptyRow(10);
-  const c=document.getElementById('lCount');if(c)c.textContent=`${fmt(f.length)} log(s)`+(f.length>1000?' — 1 000 affichés (affinez la recherche ou exportez en CSV)':'');
-}
-function exportLogsCSV(){
-  const f=logRows();
-  const head=['Date','Heure','Ligne','CSI','Collaborateur','Email','Appelant','Appelant_nom','Appelé','Appelé_nom','Sens','Duree_s','Abouti','Manqué'];
-  const lines=[head.join(';')].concat(f.map(r=>{const l=lineOf(r[C.SITE])||{};
-    return [r[C.ISO],hhmm(r),r[C.SITE],l.csi||'',l.firstName||'',l.email||'',fmtNum(r[C.CALLER]),nameOf(r[C.CALLER])||'',fmtNum(r[C.CALLED]),nameOf(r[C.CALLED])||'',r[C.NAT]?'Sortant':'Entrant',r[C.DUR],r[C.OK]?'Oui':'Non',isMissed(r)?'Oui':'Non']
-      .map(x=>`"${String(x).replace(/"/g,'""')}"`).join(';');}));
-  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='logs_keyyo.csv';a.click();
-}
-
-let detSearch='';
-function renderDetail(){
-  document.getElementById('p-detail').innerHTML=`
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg><input id="dSearch" placeholder="Nom, numéro…" value="${detSearch}" oninput="detSearch=this.value;fillDetail()"></div>
-      <div class="seg"><button class="${state.dir==='all'?'on':''}" onclick="state.dir='all';render()">Tous</button><button class="${state.dir==='in'?'on':''}" onclick="state.dir='in';render()">Entrants</button><button class="${state.dir==='out'?'on':''}" onclick="state.dir='out';render()">Sortants</button></div>
-      <button class="btn" style="margin-left:auto;background:var(--card);color:var(--text);border:1px solid var(--line)" onclick="exportCSV()">Exporter CSV</button>
-    </div>
-    <div class="card" style="margin-top:14px"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Heure</th><th>Appelant</th><th>Appelé</th><th>Sens</th><th>Ligne</th><th>Durée</th><th>État</th></tr></thead><tbody id="dBody"></tbody></table></div></div>
-    <p style="color:var(--muted);font-size:12px;margin-top:10px" id="dCount"></p>`;
-  fillDetail();
-}
-function detRows(){let f=filtered();if(detSearch.trim()){const q=detSearch.toLowerCase().trim();f=f.filter(r=>fmtNum(r[C.CALLER]).includes(q)||fmtNum(r[C.CALLED]).includes(q)||(nameOf(r[C.CALLER])||'').toLowerCase().includes(q)||(nameOf(r[C.CALLED])||'').toLowerCase().includes(q));}return f;}
-function cellNum(num){const n=nameOf(num);return n?`<span class="lnk" onclick="openDrill('${num}')" title="${escH(fmtNum(num))}">${escH(n)}</span>`:`<span class="lnk mono" onclick="openDrill('${num}')">${escH(fmtNum(num))}</span>`;}
-function fillDetail(){const f=detRows();document.getElementById('dBody').innerHTML=f.slice(0,800).map(r=>`<tr><td>${frDate(r[C.ISO])}</td><td class="num">${hhmm(r)}</td><td>${cellNum(r[C.CALLER])}</td><td>${cellNum(r[C.CALLED])}</td><td><span class="tag ${r[C.NAT]?'out':'in'}">${r[C.NAT]?'Sortant':'Entrant'}</span></td><td>${escH(siteL(r[C.SITE]))}</td><td class="num">${mmss(r[C.DUR])}</td><td>${isMissed(r)?'<span class="tag miss">Manqué</span>':'<span class="tag ok">OK</span>'}</td></tr>`).join('')||emptyRow(8);const c=document.getElementById('dCount');if(c)c.textContent=`${fmt(f.length)} appel(s)`+(f.length>800?' — 800 affichés':'');}
-function exportCSV(){const f=detRows();const head=['Date','Heure','Appelant','Appelé','Sens','Ligne','Collaborateur','Duree_s','Abouti'];const lines=[head.join(';')].concat(f.map(r=>[r[C.ISO],r[C.HOUR]+'h',labelOf(r[C.CALLER]),labelOf(r[C.CALLED]),r[C.NAT]?'Sortant':'Entrant',r[C.SITE],whoOf(r[C.SITE])||'',r[C.DUR],r[C.OK]?'Oui':'Non'].map(x=>`"${String(x).replace(/"/g,'""')}"`).join(';')));const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='appels.csv';a.click();}
-
-/* ===================== Drilldown ===================== */
-function openDrill(num){
-  const calls=RAW.filter(r=>r[C.CORR]===num).sort((a,b)=>a[C.ISO]<b[C.ISO]?1:-1);
-  const nm=nameOf(num);const inc=calls.filter(r=>r[C.NAT]===0),out=calls.filter(r=>r[C.NAT]===1),miss=calls.filter(isMissed);
-  const dur=calls.reduce((s,r)=>s+r[C.DUR],0);const isos=calls.map(r=>r[C.ISO]);
-  const hours=calls.map(r=>r[C.HOUR]);const minH=hours.length?Math.min(...hours):null,maxH=hours.length?Math.max(...hours):null;
-  const plage=minH==null?'—':(minH===maxH?String(minH).padStart(2,'0')+'h':String(minH).padStart(2,'0')+'h–'+String(maxH).padStart(2,'0')+'h');
-  const txMiss=inc.length?Math.round(miss.length/inc.length*100):0;
-  const avg=calls.filter(r=>r[C.OK]).length?Math.round(calls.filter(r=>r[C.OK]).reduce((a,r)=>a+r[C.DUR],0)/calls.filter(r=>r[C.OK]).length):0;
-  const byDay=[...groupCount(calls,r=>r[C.ISO]).entries()].sort((a,b)=>a[0]<b[0]?-1:1);
-  document.getElementById('modal').innerHTML=`
-    <div class="mh"><button class="x" onclick="closeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-      <div class="who"><div class="mav">${nm?initials(nm):'#'}</div><div><h3>${escH(nm||fmtNum(num))}</h3><div class="num">${escH(fmtNum(num))}${nm?'':' · non répertorié'}</div></div></div></div>
-    <div class="mb">
-      <div class="mini" style="grid-template-columns:repeat(3,1fr)">
-        <div class="m" style="border:1px solid var(--line)"><div class="l">Taux manqué</div><div class="v" style="color:${txMiss>30?'var(--alert)':txMiss>0?'var(--miss)':'var(--in)'}">${inc.length?txMiss+'%':'—'}</div><div style="font-size:11px;color:var(--muted);margin-top:3px">${miss.length}/${inc.length} entrants</div></div>
-        <div class="m" style="border:1px solid var(--line)"><div class="l">Nb d'appels</div><div class="v">${calls.length}</div><div style="font-size:11px;color:var(--muted);margin-top:3px">${inc.length} entr. · ${out.length} sort.</div></div>
-        <div class="m" style="border:1px solid var(--line)"><div class="l">Plage horaire</div><div class="v" style="font-size:18px">${plage}</div><div style="font-size:11px;color:var(--muted);margin-top:3px">heures d'appel</div></div>
-      </div>
-      <div class="mini">
-        <div class="m"><div class="l">Durée totale</div><div class="v" style="font-size:16px">${hms(dur)}</div></div>
-        <div class="m"><div class="l">Durée moy.</div><div class="v" style="font-size:16px">${mmss(avg)}</div></div>
-        <div class="m"><div class="l">Premier appel</div><div class="v" style="font-size:14px">${isos.length?frDate(isos[isos.length-1]):'—'}</div></div>
-        <div class="m"><div class="l">Dernier appel</div><div class="v" style="font-size:14px">${isos.length?frDate(isos[0]):'—'}</div></div>
-      </div>
-      ${byDay.length>1?`<div class="chart-wrap sm" style="margin-bottom:18px"><canvas id="cDrill"></canvas></div>`:''}
-      <h3 style="font-family:'Space Grotesk';font-size:14px;margin:0 0 6px">Historique des appels</h3>
-      <div class="tl">${calls.slice(0,40).map(r=>`<div class="e"><div class="when">${frDate(r[C.ISO])} · ${hhmm(r)}</div><div class="meta"><span class="tag ${r[C.NAT]?'out':'in'}">${r[C.NAT]?'Sortant':'Entrant'}</span><span class="tag ${isMissed(r)?'miss':'ok'}">${isMissed(r)?'Manqué':mmss(r[C.DUR])}</span><span style="color:var(--muted)">${escH(siteL(r[C.SITE]))}</span></div></div>`).join('')}</div>
-    </div>`;
-  document.getElementById('scrim').classList.add('on');
-  if(byDay.length>1)mk('cDrill',{type:'bar',data:{labels:byDay.map(x=>frDate(x[0])),datasets:[{data:byDay.map(x=>x[1]),backgroundColor:COL.cyan,borderRadius:4,maxBarThickness:24}]},options:gridOpt()});
-}
-function closeModal(){document.getElementById('scrim').classList.remove('on');}
-
-/* ===================== Notifications appels manqués ===================== */
-function recentMissed(){return RAW.filter(isMissed).slice(0,60);}
-function detectMissed(){
-  const cur=RAW.map((r,i)=>[r,i]).filter(([r])=>isMissed(r));
-  if(firstLoad){cur.forEach(([r,i])=>seenMissed.add(sigOf(r,i)));saveSeen();return;}
-  const fresh=[];
-  cur.forEach(([r,i])=>{const sg=sigOf(r,i);if(!seenMissed.has(sg)){seenMissed.add(sg);fresh.push(r);}});
-  if(fresh.length){saveSeen();fresh.slice(0,4).forEach(r=>notifyMissed(r));unread=fresh.concat(unread).slice(0,60);updateBell();if(notifOn)chime();}
-}
-function notifyMissed(r){
-  const nm=nameOf(r[C.CORR]);const num=fmtNum(r[C.CORR]);const heure=hhmm(r);
-  const sub=`${num}${nm?' · '+nm:''} · ${heure} · ${siteL(r[C.SITE])}`;
-  toast('Appel entrant manqué',sub);
-  if(notifOn&&'Notification'in window&&Notification.permission==='granted'){try{new Notification('📞 Appel manqué',{body:`${num} — ${heure} — ${siteL(r[C.SITE])}`,silent:true});}catch(e){}}
-}
-function toast(title,sub){
-  const t=document.createElement('div');t.className='toast';
-  t.innerHTML=`<div class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div><div class="tc"><b>${escH(title)}</b><span>${escH(sub)}</span></div><button class="tx" onclick="this.parentNode.remove()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
-  document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),9000);
-}
-function updateBell(){const b=document.getElementById('bell-badge');const n=unread.length;b.textContent=n>9?'9+':n;b.classList.toggle('hide',n===0);}
-function toggleNotifCenter(e){e.stopPropagation();notifOpen=!notifOpen;document.getElementById('notif').classList.toggle('on',notifOpen);if(notifOpen){unread=[];updateBell();renderNotifCenter();}}
-function renderNotifCenter(){
-  const list=recentMissed();
-  document.getElementById('notif').innerHTML=`<div class="nh"><b>Appels manqués</b><span style="font-size:12px;color:var(--muted)">${list.length}</span></div><div class="nl">${list.length?list.map(r=>`<div class="ni" onclick="closeNotifCenter();openDrill('${r[C.CORR]}')"><div class="d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 2.18 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6"/></svg></div><div class="t"><b>${escH(fmtNum(r[C.CORR]))}</b><span>${hhmm(r)} · ${escH(siteL(r[C.SITE]))}${nameOf(r[C.CORR])?' · '+escH(nameOf(r[C.CORR])):''}</span></div></div>`).join(''):'<div class="empty">Aucun appel manqué 🎉</div>'}</div>`;
-}
-function closeNotifCenter(){notifOpen=false;document.getElementById('notif').classList.remove('on');}
-document.addEventListener('click',()=>{if(notifOpen)closeNotifCenter();});
-
-/* ===================== Son ===================== */
-let actx;
-function unlockAudio(){if(!actx){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}if(actx&&actx.state==='suspended')actx.resume();}
-document.addEventListener('click',unlockAudio,{once:true});
-function chime(){if(!soundOn||!actx)return;try{const now=actx.currentTime;[[784,0],[1047,.13],[1319,.26]].forEach(([f,d])=>{const o=actx.createOscillator(),g=actx.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(actx.destination);const t=now+d;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.16,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.45);o.start(t);o.stop(t+.5);});}catch(e){}}
-function toggleSound(){soundOn=!soundOn;document.getElementById('sw-sound').classList.toggle('on',soundOn);if(soundOn){unlockAudio();chime();}}
-function toggleNotif(){notifOn=!notifOn;document.getElementById('sw-notif').classList.toggle('on',notifOn);if(notifOn&&'Notification'in window&&Notification.permission==='default')Notification.requestPermission();}
-
-/* ===================== Divers UI ===================== */
-function escH(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function emptyRow(n){return `<tr><td colspan="${n}" style="text-align:center;color:var(--muted);padding:30px">Aucune donnée sur cette période</td></tr>`;}
-function emptyNote(){return `<div class="empty-note" style="margin-bottom:18px"><b>Aucun appel sur la période sélectionnée.</b> Élargissez les dates (essayez « Tout ») ou vérifiez les filtres. ${DIAG&&DIAG.rawSeen===0?'L\'API n\'a renvoyé aucun enregistrement.':''}</div>`;}
-
-/* ===================== Live status ===================== */
-function fmtTime(iso){try{return new Date(iso).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch(e){return'—';}}
-function setLive(kind,at,warn){const el=document.getElementById('live');el.className='live'+(kind==='warn'?' warn':kind==='err'?' err':'');const t=document.getElementById('live-tx');if(kind==='ok')t.innerHTML='Live · '+fmtTime(at);else if(kind==='warn')t.innerHTML='Live · 0 appel';else if(kind==='err')t.textContent='Hors-ligne';el.title=warn||'';}
-
-/* ===================== Chargement ===================== */
-async function loadData(force){
-  try{
-    const r=await fetch('/api/data'+(force?'?force=1':''),{cache:'no-store'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const p=await r.json();
-    if(p.error)throw new Error(p.error);
-    document.getElementById('overlay').classList.remove('on');
-    RAW=p.rows||[];META=p.meta||{};DIAG=p.diag||{};LINES=p.lines||LINES||{};STORE=p.store||{};
-    document.getElementById('foot-period').textContent=(META.min?`${frDate(META.min)} → ${frDate(META.max)} · ${fmt(META.n)} appels`:'—')+(STORE&&STORE.enabled?` · base : ${fmt(STORE.totalArchived||0)} archivés${STORE.newAdded?` (+${fmt(STORE.newAdded)})`:''}`:' · base désactivée (BLOB_READ_WRITE_TOKEN manquant)');
-    if(firstLoad){if(!state.from){const max=META.max||new Date().toISOString().slice(0,10);const d=new Date(max+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-89);state.from=d.toISOString().slice(0,10);state.to=max;}renderDateBar();}
-    detectMissed();
-    setLive(RAW.length?'ok':'warn',p.updatedAt,p.warning);
-    render();
-    firstLoad=false;
-  }catch(e){
-    if(firstLoad){document.getElementById('ov-p').textContent=String(e.message||e);document.getElementById('overlay').classList.add('on');}
-    setLive('err',null,String(e.message||e));
-  }
-}
-function startPolling(){setInterval(()=>{if(!document.hidden)loadData();},60000);}
-
-/* ===================== Boot ===================== */
-buildNav();
-document.querySelector('.nav a[data-go="overview"]').classList.add('on');
-(async()=>{await loadContacts();await loadData();startPolling();})();
-</script>
+<script type="module" src="app/main.js"></script>
 </body>
 </html>

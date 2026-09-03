@@ -1,10 +1,10 @@
 {
-  "name": "keyyo-vercel-reporting",
-  "version": "2.0.0",
+  "name": "keyyo-supervision",
+  "version": "3.0.0",
   "private": true,
+  "description": "Supervision des appels Keyyo : volumes, appels manques a rappeler, activite par collaborateur.",
   "type": "module",
   "scripts": {
-    "test:keyyo": "node --env-file=.env.local api/_keyyo.js --selftest",
     "dev": "vercel dev",
     "deploy": "vercel --prod"
   },
