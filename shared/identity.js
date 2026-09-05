@@ -445,13 +445,24 @@ export function resolveLineIdentities(input) {
 
     // -- Regle 5 : DERNIER RECOURS. Le nom lu tel quel, sans aucune source. --
     //
-    // Ne se declenche QUE si rien d'autre n'a abouti. La garde est essentielle :
-    // sans elle, une ligne nommee d'apres un site (« BIOS ABE ») fabriquerait un
-    // collaborateur nomme « Bios Abe » et evincerait l'identite exacte que
-    // l'annuaire fournit. Un nom de service ressemble beaucoup a un nom de
-    // personne — deux jetons, pas de mot-cle — et aucun test de forme ne les
-    // separe de maniere fiable.
-    if (!candidates.length && deviceName && looksLikePerson(deviceName)) {
+    // DEUX gardes, et la seconde a ete apprise en production.
+    //
+    // `!candidates.length` : si une source a deja identifie quelqu'un, on ne
+    // superpose pas une lecture de nom par-dessus.
+    //
+    // `!team.length` : SI L'ANNUAIRE RATTACHE DES PERSONNES A CETTE LIGNE, SON
+    // NOM N'EST PAS UNE PERSONNE, c'est un contenant. Verifie sur le compte
+    // reel : les lignes s'appellent « BIOS ABE » ou « BIOS TNR » — des sites —
+    // et l'annuaire y rattache 7 a 24 collaborateurs. Sans cette garde, la
+    // regle lisait « BIOS ABE » comme un prenom et affichait « Bios » comme
+    // titulaire de trois lignes partagees par 56 personnes.
+    //
+    // Le piege est que `looksLikePerson` ne peut pas trancher : « BIOS ABE »
+    // a exactement la forme d'un nom propre — deux jetons, aucun mot-cle de
+    // service. Aucun test de forme ne separe un nom de site d'un nom de
+    // personne. Le signal fiable n'est pas la FORME du nom, c'est le fait que
+    // d'autres personnes soient rattachees a la ligne.
+    if (!candidates.length && !team.length && deviceName && looksLikePerson(deviceName)) {
       const tokens = nameTokens(deviceName);
       candidates.push({
         email: null,
