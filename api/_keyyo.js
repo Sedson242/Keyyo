@@ -488,7 +488,27 @@ export async function fetchServices(cfg, token, type, opts) {
   /** @type {Record<string, any>} */
   const params = {};
   if (type) params.type = type;
-  return keyyoGetAll(cfg, token, '/services', params, opts || {});
+  const raw = await keyyoGetAll(cfg, token, '/services', params, opts || {});
+  if (!type) return raw;
+
+  // FILTRAGE COTE CLIENT, INDISPENSABLE. Verifie sur un compte reel :
+  // `?type=KeyyoPhone`, un type qui n'existe pas, renvoie exactement les memes
+  // services que `?type=UCaaSVoIPAccount`. Le parametre `type` est donc IGNORE
+  // par l'API des qu'il ne lui plait pas, et rien ne le signale.
+  //
+  // Sans ce filtre, `fetchEmailAccounts` recevait la liste complete et prenait
+  // les lignes VoIP pour des comptes de messagerie : une ligne nommee
+  // « BIOS ABE » ressortait alors comme une boite « BIOS ABE », se rapprochait
+  // d'elle-meme a 100 % et fabriquait une identite qui n'existe pas.
+  //
+  // Un enregistrement sans `_resource_type` est conserve : on ne peut pas le
+  // contredire, et le jeter perdrait des donnees que l'API a bien voulu rendre.
+  const wanted = String(type);
+  return raw.filter((s) => {
+    if (!s || typeof s !== 'object') return false;
+    const kind = s._resource_type;
+    return kind == null || kind === '' || String(kind) === wanted;
+  });
 }
 
 /**

@@ -88,6 +88,8 @@ défaut utilisables :
 | `KEYYO_LINE_EMAILS` | forçage manuel ligne → collaborateur |
 | `CRON_SECRET` | protège `/api/sync` |
 | `BLOB_READ_WRITE_TOKEN` | injecté par Vercel en reliant un store Blob |
+| `KEYYO_OAUTH_SETUP` | ouvre `/api/oauth` le temps d'obtenir un jeton, `404` sinon |
+| `KEYYO_OAUTH_REDIRECT` | URI de redirection fixe, si la déduction ne convient pas |
 
 `.env.example` documente chacune d'elles en détail, avec ses bornes et son effet.
 Il ne contient que des valeurs d'exemple : **n'y écrivez jamais un secret**.
@@ -140,6 +142,13 @@ harnais — c'est le rôle de la page Diagnostic, en conditions réelles.
 | `GET /api/directory` | annuaire `numéro → nom` |
 | `GET /api/health` | état global et liste de contrôles |
 | `GET /api/sync` | déclenche une collecte, cible du cron |
+| `GET /api/oauth` | mise en service : obtient un refresh token portant les bons scopes |
+
+`/api/oauth` répond `404` tant que `KEYYO_OAUTH_SETUP` ne vaut pas `1`. Elle
+sert à ajouter le scope `cti_admin`, indispensable au pilotage des appels : un
+scope ne s'ajoute pas à un jeton déjà émis, il faut refaire l'autorisation. La
+marche à suivre complète est dans `.env.example`, section 7. **Refermez la
+route après usage** : elle affiche un refresh token en clair.
 
 Paramètres : `?force=1` contourne le cache CDN, `?full=1` relance un balayage
 complet, `?month=AAAA-MM` remplit un mois précis, `?debug=1` détaille

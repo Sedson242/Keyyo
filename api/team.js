@@ -20,24 +20,16 @@ import {
 } from './_keyyo.js';
 import { resolveLineIdentities, lineLabel } from '../shared/identity.js';
 
-const CACHE_FRESH = 's-maxage=300, stale-while-revalidate=600';
+/**
+ * Cache PRIVE. `s-maxage` s'adresse au CDN, un cache PARTAGE : la reponse y
+ * serait resservie a quiconque redemande l'URL, sans rejouer la fonction ni son
+ * controle d'acces. Cette route porte les noms et les adresses e-mail de toute
+ * l'equipe. Voir la note detaillee dans api/calls.js.
+ */
+const CACHE_PRIVATE = 'private, max-age=30';
 
 /** Domaine de repli quand aucune adresse connue ne permet de le deduire. */
 const FALLBACK_DOMAIN = 'exemple.fr';
-
-/**
- * Types de service tentes par `?inventory=1`.
- *
- * Les deux premiers sont cites par la documentation dans les rubriques
- * « Applicable types » de /sip_records et /incoming_call_detail, mais
- * n'apparaissent PAS dans la liste des huit types de GET /services : ce sont
- * les meilleurs candidats pour designer un terminal. Les suivants sont des
- * noms plausibles, essayes parce qu'un refus coute une requete et repond
- * definitivement.
- */
-const PROBE_TYPES = [
-  'SIPAccount', 'TelephonyService', 'KeyyoPhone', 'Phone', 'Device', 'Terminal', 'Softphone',
-];
 
 /**
  * @param {any} req
@@ -62,12 +54,11 @@ export default async function handler(req, res) {
     // Keyyo Phone identifies par `c8um2@kphone`, introuvables dans les huit
     // types documentes.
     //
-    // Cette sonde repond a la question empiriquement : elle demande d'abord
-    // TOUS les services sans aucun filtre, puis reessaie avec les types que la
-    // documentation mentionne au detour d'une page sans les lister
-    // (`SIPAccount` pour /sip_records, `TelephonyService` pour
-    // /incoming_call_detail), et enfin quelques noms plausibles. Chaque
-    // service est rendu avec son `_resource_type`, son CSI et son nom.
+    // Cette sonde repond a la question empiriquement : elle demande TOUS les
+    // services, sans aucun filtre, et les regroupe par `_resource_type`.
+    // Resultat sur le compte reel : 3 services, tous `UCaaSVoIPAccount`. Les
+    // terminaux ne sont donc pas des services — l'API Manager ne les publie
+    // pas, quel que soit le type demande.
     if (flag(params.inventory)) {
       const all = await settle(() => fetchServices(cfg, token, '', { deadline }));
 
@@ -91,20 +82,12 @@ export default async function handler(req, res) {
         }
       }
 
-      // Types non documentes, tentes un par un. Un refus est une reponse : il
-      // dit que la piste est fermee, ce qui vaut mieux que de le supposer.
-      const probes = {};
-      for (const type of PROBE_TYPES) {
-        const r = await settle(() => fetchServices(cfg, token, type, { deadline }));
-        probes[type] = r.ok
-          ? { ok: true, count: r.value.length, sample: r.value.slice(0, 3).map((s) => ({
-            resourceType: String((s && s._resource_type) || ''),
-            csi: String((s && s.csi) || ''),
-            name: String((s && s.name) || ''),
-          })) }
-          : { ok: false, error: r.message };
-      }
-
+      // Pas de sondage par `type` : l'experience a montre que l'API IGNORE ce
+      // parametre des qu'elle ne le reconnait pas (`?type=KeyyoPhone` renvoie
+      // les memes services que `?type=UCaaSVoIPAccount`). Interroger des types
+      // inventes ne prouverait donc rien, et sept requetes de suite epuisaient
+      // le budget de temps. La liste sans filtre ci-dessus suffit : elle EST
+      // l'inventaire complet.
       return sendJson(res, 200, {
         inventory: {
           ok: all.ok,
@@ -113,7 +96,8 @@ export default async function handler(req, res) {
           types: Object.keys(byType).sort().map((t) => ({ type: t, count: byType[t].length })),
           services: byType,
         },
-        probes,
+        note: 'Cette liste est TOUT ce que /services expose pour ce compte, sans aucun filtre. '
+          + "Les terminaux Keyyo Phone n'y figurent pas : l'API Manager ne les publie pas.",
         updatedAt: new Date().toISOString(),
       }, 'no-store');
     }
@@ -163,8 +147,11 @@ export default async function handler(req, res) {
       shared: !!line.shared,
     }));
 
+    // Une ligne PARTAGEE n'est pas une ligne « non résolue » : aucun réglage ne
+    // lui donnera un titulaire, puisqu'elle n'en a pas. La lister parmi les
+    // anomalies enverrait chercher une correction qui n'existe pas.
     const unresolved = lines
-      .filter((l) => !l.person || !l.person.email)
+      .filter((l) => !l.shared && (!l.person || !l.person.email))
       .map((l) => ({
         csi: l.csi,
         formattedCsi: l.formattedCsi,
@@ -186,7 +173,7 @@ export default async function handler(req, res) {
       );
     }
 
-    const cacheControl = (!lines.length || force) ? 'no-store' : CACHE_FRESH;
+    const cacheControl = (!lines.length || force) ? 'no-store' : CACHE_PRIVATE;
 
     sendJson(res, 200, {
       lines,

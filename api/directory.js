@@ -18,7 +18,14 @@ import { toE164 } from '../shared/phone.js';
 import { capitalizeName } from '../shared/identity.js';
 
 /** L'annuaire bouge rarement : une heure de cache CDN suffit largement. */
-const CACHE_FRESH = 's-maxage=3600, stale-while-revalidate=7200';
+/**
+ * Cache PRIVE. L'annuaire change peu, d'ou une fenetre plus large que les
+ * autres routes — mais elle reste PRIVEE : `s-maxage` aurait depose sur le CDN,
+ * cache partage, la correspondance complete numero -> nom des correspondants du
+ * client, resservie sans que la fonction ni son controle d'acces soient
+ * rejoues. Voir la note detaillee dans api/calls.js.
+ */
+const CACHE_PRIVATE = 'private, max-age=600';
 
 /** Taille de l'echantillon renvoye en mode debug. */
 const SAMPLE_SIZE = 12;
@@ -79,7 +86,7 @@ export default async function handler(req, res) {
     }
 
     const count = Object.keys(map).length;
-    const cacheControl = (!count || force || debug) ? 'no-store' : CACHE_FRESH;
+    const cacheControl = (!count || force || debug) ? 'no-store' : CACHE_PRIVATE;
 
     /** @type {any} */
     const body = {

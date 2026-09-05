@@ -15,7 +15,26 @@ import { collect } from './_collect.js';
 import { readParams, flag, sendJson, rejectNonGet, errorMessage } from './_config.js';
 import { SCHEMA_VERSION, FIELDS } from '../shared/schema.js';
 
-const CACHE_FRESH = 's-maxage=300, stale-while-revalidate=600';
+/**
+ * Cache PRIVE, jamais partage.
+ *
+ * `s-maxage` s'adresse aux caches PARTAGES — ici le CDN de Vercel. Une reponse
+ * ainsi mise en cache est resservie a QUICONQUE redemande la meme URL, sans que
+ * la fonction soit rejouee. Le controle d'acces qui vit dans la fonction est
+ * alors contourne par construction : la premiere requete autorisee remplit le
+ * cache, les suivantes n'ont plus rien a prouver. Cette route transporte le
+ * detail nominatif des appels de 56 personnes.
+ *
+ * `private` interdit toute mise en cache partagee et n'autorise que le cache du
+ * navigateur qui a recu la reponse. La fenetre est courte : elle sert seulement
+ * a absorber deux rendus rapproches, pas a amortir le sondage.
+ *
+ * CONSEQUENCE ASSUMEE : le CDN n'absorbe plus le sondage de 60 s, chaque
+ * navigateur ouvert atteint donc la fonction. C'est l'archive Blob qui doit
+ * amortir le cout cote Keyyo, pas un cache qui distribue des donnees nominatives
+ * a des requetes non verifiees.
+ */
+const CACHE_PRIVATE = 'private, max-age=30';
 
 /**
  * @param {any} req
@@ -38,7 +57,7 @@ export default async function handler(req, res) {
     });
 
     const empty = !result.rows.length;
-    const cacheControl = (empty || force || full) ? 'no-store' : CACHE_FRESH;
+    const cacheControl = (empty || force || full) ? 'no-store' : CACHE_PRIVATE;
 
     sendJson(res, 200, {
       schemaVersion: SCHEMA_VERSION,

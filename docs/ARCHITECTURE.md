@@ -238,6 +238,21 @@ contrôle qui prouve que la chaîne complète fonctionne).
 casse. Un client qui jette le corps d'une réponse d'erreur perd exactement le
 diagnostic qu'il était venu chercher.
 
+### Règle de cache — `private`, jamais `s-maxage`
+
+Aucune route transportant des données nominatives ne doit poser `s-maxage`.
+Cette directive s'adresse aux caches **partagés**, ici le CDN de Vercel : la
+réponse y est resservie à quiconque redemande la même URL, **sans que la
+fonction soit rejouée**. Tout contrôle d'accès vivant dans la fonction est
+alors contourné par construction — la première requête autorisée remplit le
+cache, les suivantes n'ont plus rien à prouver.
+
+`/api/calls`, `/api/team` et `/api/directory` utilisent donc `private`, qui
+n'autorise que le cache du navigateur destinataire. Conséquence assumée : le
+CDN n'amortit plus le sondage, c'est à l'archive Blob de contenir le coût côté
+Keyyo. Un cache qui distribue des données nominatives à des requêtes non
+vérifiées n'est pas une optimisation, c'est une fuite.
+
 ---
 
 ## 5. `app/` — front
