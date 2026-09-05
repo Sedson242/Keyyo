@@ -15,17 +15,22 @@
 //                       quand un rebalayage complet depasse le budget de temps
 //    ?days=N            fenetre explicite en jours
 //
-//  Protection : si CRON_SECRET est defini, la requete doit porter
-//  « Authorization: Bearer <secret> ». Vercel l'envoie automatiquement a ses
-//  crons. Sans CRON_SECRET, la route reste ouverte : elle ne fait que lire
-//  l'API Keyyo et n'expose aucune donnee d'appel, mais elle consomme du quota,
-//  d'ou l'interet de la proteger.
+//  Protection : DEUX portes, pas une de plus.
+//    - le cron Vercel, qui envoie « Authorization: Bearer <CRON_SECRET> »
+//      des que la variable est definie ;
+//    - une personne de la direction connectee (cookie de session), depuis la
+//      page Diagnostic.
+//  Sans CRON_SECRET, le cron n'a donc plus de porte : la variable est devenue
+//  OBLIGATOIRE pour que la synchronisation nocturne fonctionne. Une route qui
+//  ecrit l'archive et consomme du quota Keyyo ne reste pas ouverte au public.
 // =============================================================================
 
 import { collect } from './_collect.js';
 import {
   readConfig, readParams, flag, sendJson, rejectNonGet, errorMessage,
 } from './_config.js';
+import { readAuthConfig, readSession, safeEqual } from './_auth.js';
+import { canAccess } from '../shared/roles.js';
 
 /**
  * @param {any} req
@@ -48,12 +53,20 @@ export default async function handler(req, res) {
     }, 'no-store');
   }
 
-  if (cfg.cronSecret && !isAuthorized(req, cfg.cronSecret)) {
+  const byCron = !!cfg.cronSecret && isAuthorized(req, cfg.cronSecret);
+  let byPerson = false;
+  if (!byCron) {
+    const auth = readAuthConfig();
+    const session = auth.configured ? readSession(req, auth) : null;
+    byPerson = !!session && canAccess('/api/sync', session.role);
+  }
+  if (!byCron && !byPerson) {
     return sendJson(res, 401, {
       ok: false,
       error: 'Non autorisé',
-      hint: 'Cette route est protégée par CRON_SECRET. Envoyer l\'en-tête '
-        + '« Authorization: Bearer <CRON_SECRET> ». Les crons Vercel le font automatiquement.',
+      hint: 'Cette route accepte soit l\'en-tête « Authorization: Bearer <CRON_SECRET> » '
+        + '(envoyé automatiquement par les crons Vercel quand CRON_SECRET est défini), '
+        + 'soit une personne de la direction connectée.',
     }, 'no-store');
   }
 
@@ -126,11 +139,7 @@ export default async function handler(req, res) {
 function isAuthorized(req, expected) {
   const header = String((req && req.headers && (req.headers.authorization || req.headers.Authorization)) || '');
   const m = /^Bearer\s+(.+)$/i.exec(header.trim());
-  const got = m ? m[1] : '';
-  if (got.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0;
+  return safeEqual(m ? m[1] : '', expected);
 }
 
 /**

@@ -99,9 +99,11 @@ function describeHttpError(status, body, url) {
     : '';
   if (fromBody) return String(fromBody);
 
-  if (status === 401 || status === 403) {
-    return 'Accès refusé par l’API Keyyo (' + status + '). Le jeton est probablement expiré '
-      + 'ou révoqué : voir la page Diagnostic pour l’état de l’authentification.';
+  if (status === 401) {
+    return 'Session absente ou expirée (401) : reconnectez-vous.';
+  }
+  if (status === 403) {
+    return 'Accès réservé (403) : cette ressource est limitée à la direction.';
   }
   if (status === 404) {
     return 'Route ' + url + ' introuvable (404). Le déploiement est incomplet : '
@@ -200,6 +202,15 @@ async function execute(method, url, opts) {
     }
 
     if (!res.ok) {
+      // Une session tombee en cours d'utilisation (expiration, deconnexion
+      // dans un autre onglet) se voit ici en premier : on le signale a la
+      // coquille, qui remet l'ecran de connexion. La demande « qui suis-je »
+      // en est exclue, elle sert justement a poser cette question.
+      if (res.status === 401 && typeof document !== 'undefined' && url.indexOf('/auth?') < 0) {
+        try {
+          document.dispatchEvent(new CustomEvent('keyyo:unauthenticated', { detail: { url } }));
+        } catch (err) { /* un navigateur sans CustomEvent n'a rien a signaler */ }
+      }
       throw new ApiError(describeHttpError(res.status, parseFailed ? null : body, url), {
         status: res.status,
         body,
@@ -340,6 +351,17 @@ export async function getHealth(opts) {
     noCache: !!o.force || !!o.deep,
     timeoutMs: o.timeoutMs,
   });
+}
+
+/**
+ * Qui est connecte. Repond 200 avec `{ authenticated, user }`, 401 sans
+ * session, 503 si la connexion n'est pas configuree — les deux derniers
+ * arrivent en ApiError, que app/session.js traduit en etat d'ecran.
+ * Jamais mis en cache : la reponse change a chaque connexion.
+ * @returns {Promise<any>} `{ authenticated, configured, user: { email, name, role, roleLabel, expiresAt } }`
+ */
+export async function getMe() {
+  return request('/auth', { params: { action: 'me' }, noCache: true, timeoutMs: 15000 });
 }
 
 /**

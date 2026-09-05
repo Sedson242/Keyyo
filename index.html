@@ -17,7 +17,7 @@
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="modulepreload" href="app/main.js">
 </head>
-<body>
+<body class="is-gated">
 
 <!-- =========================================================================
      Bibliotheque d'icones. Un seul jeu de traces, reference par <use>.
@@ -112,7 +112,32 @@
   </symbol>
 </svg>
 
-<div class="app">
+<!-- =========================================================================
+     Ecran de connexion. Affiche tant que /api/auth?action=me n'a pas repondu
+     « connecte » : c'est app/main.js qui le remplit et le retire. Le bouton
+     est un LIEN, pas un fetch : la connexion est une navigation vers
+     Microsoft, jouee par le serveur.
+     ========================================================================= -->
+<div class="gate" id="gate">
+  <div class="gate-card" role="dialog" aria-labelledby="gate-title" aria-describedby="gate-text">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
+      <div>
+        <span class="brand-name">Keyyo</span>
+        <span class="brand-sub">Supervision</span>
+      </div>
+    </div>
+    <h1 class="gate-title" id="gate-title">Connexion</h1>
+    <p class="gate-text" id="gate-text">Vérification de la session…</p>
+    <div class="gate-actions" id="gate-actions"></div>
+    <p class="gate-foot" id="gate-foot"></p>
+  </div>
+</div>
+
+<!-- La coquille nait masquee (body.is-gated, aria-hidden) : c'est app/main.js
+     qui la revele une fois la session verifiee. Sans cela, un visiteur non
+     connecte verrait la coquille clignoter avant l'ecran de connexion. -->
+<div class="app" id="app" aria-hidden="true">
 
   <!-- =======================================================================
        Barre laterale
@@ -233,13 +258,13 @@
           </div>
         </div>
 
-        <div class="account">
-          <span class="avatar avatar--sm" id="account-initials" aria-hidden="true">K</span>
+        <div class="account" id="account">
+          <span class="avatar avatar--sm" id="account-initials" aria-hidden="true">–</span>
           <span class="account-text">
-            <span class="account-name" id="account-name">Compte Keyyo</span>
-            <span class="account-sub" id="account-sub">Chargement…</span>
+            <span class="account-name" id="account-name">Connexion…</span>
+            <span class="account-sub" id="account-sub"></span>
           </span>
-          <svg aria-hidden="true"><use href="#i-chevron"/></svg>
+          <a class="btn btn--ghost btn--sm" id="btn-logout" href="/api/auth?action=logout" title="Se déconnecter">Déconnexion</a>
         </div>
       </div>
     </div>

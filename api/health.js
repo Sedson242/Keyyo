@@ -25,6 +25,7 @@ import {
   getAccessToken, fetchVoipLines, fetchEmailAccounts, fetchDirectoryContacts, fetchCallDetail,
 } from './_keyyo.js';
 import { archiveEnabled, loadArchive } from './_archive.js';
+import { requireRole, readAuthConfig, authSummary } from './_auth.js';
 import { resolveLineIdentities } from '../shared/identity.js';
 import { isoDaysAgo, todayIso, nextDay } from '../shared/time.js';
 import { SCHEMA_VERSION } from '../shared/schema.js';
@@ -38,6 +39,10 @@ const PROBE_DAYS = 7;
  */
 export default async function handler(req, res) {
   if (rejectNonGet(req, res, '/api/health')) return;
+  // Le diagnostic cite les lignes, les personnes et l'etat des secrets :
+  // direction seulement.
+  const session = requireRole(req, res, '/api/health');
+  if (!session) return;
 
   const params = readParams(req);
   const deep = flag(params.deep);
@@ -75,6 +80,27 @@ export default async function handler(req, res) {
       return null;
     }
   }
+
+  // -- 0. Authentification des utilisateurs ----------------------------------
+  // Si ce controle s'execute, c'est que la connexion fonctionne (la route est
+  // gardee) : il sert a montrer COMMENT elle est configuree, sans secret.
+  await check('entra', 'Connexion Microsoft Entra', async () => {
+    const auth = readAuthConfig();
+    const summary = authSummary(auth);
+    const derived = auth.sessionSecretSource === 'derived';
+    return {
+      level: derived ? 'warn' : 'ok',
+      message: 'Connecté en tant que ' + session.email + ' (' + session.role + ').'
+        + (auth.directionEmails.length
+          ? ' ' + auth.directionEmails.length + ' adresse(s) de direction déclarée(s) par AUTH_DIRECTION_EMAILS.'
+          : ' Rôles attendus dans le claim « roles » des app roles Entra.')
+        + (derived
+          ? ' SESSION_SECRET absent : le secret de session est dérivé du secret client Entra, '
+            + 'changer ce dernier déconnectera tout le monde.'
+          : ''),
+      detail: summary,
+    };
+  });
 
   // -- 1. Configuration -------------------------------------------------------
   /** @type {any} */

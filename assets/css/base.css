@@ -238,6 +238,44 @@ input, select, textarea { font: inherit; color: inherit; }
 .page.is-active { display: block; }
 
 /* -----------------------------------------------------------------------------
+   Ecran de connexion
+
+   Pose au-dessus de tout (meme plan que la modale), sur le degrade de la
+   page. Tant qu'il est affiche, la coquille derriere est rendue invisible et
+   inerte : `visibility: hidden` la retire aussi de l'ordre de tabulation, ce
+   qu'une simple superposition ne ferait pas.
+   -------------------------------------------------------------------------- */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+/* `display: grid` ci-dessus l'emporte sur la regle [hidden] du navigateur. */
+.gate[hidden] { display: none; }
+
+.gate-card {
+  display: grid;
+  gap: 12px;
+  width: min(440px, 100%);
+  padding: 30px 30px 26px;
+  background: var(--surface);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--sh-lg);
+}
+.gate-card .brand { padding: 0; margin-bottom: 8px; }
+.gate-title { font: var(--t-h1); color: var(--ink); letter-spacing: var(--track-tight); }
+.gate-text { font: var(--t-body); color: var(--ink-soft); }
+.gate-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.gate-actions:empty { display: none; }
+.gate-foot { font: var(--t-sm); color: var(--ink-muted); }
+.gate-foot:empty { display: none; }
+
+body.is-gated .app { visibility: hidden; }
+
+/* -----------------------------------------------------------------------------
    Bouton de menu mobile — masque au-dela du point de rupture
    -------------------------------------------------------------------------- */
 

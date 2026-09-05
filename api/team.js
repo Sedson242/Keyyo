@@ -15,6 +15,7 @@
 // =============================================================================
 
 import { readConfig, readParams, flag, sendJson, rejectNonGet, errorMessage } from './_config.js';
+import { requireRole } from './_auth.js';
 import {
   getAccessToken, fetchServices, fetchVoipLines, fetchDirectoryContacts, fetchEmailAccounts,
 } from './_keyyo.js';
@@ -37,6 +38,8 @@ const FALLBACK_DOMAIN = 'exemple.fr';
  */
 export default async function handler(req, res) {
   if (rejectNonGet(req, res, '/api/team')) return;
+  // Noms et adresses de toute l'equipe : direction seulement.
+  if (!requireRole(req, res, '/api/team')) return;
 
   const params = readParams(req);
   const force = flag(params.force);

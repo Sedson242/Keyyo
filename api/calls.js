@@ -13,6 +13,7 @@
 
 import { collect } from './_collect.js';
 import { readParams, flag, sendJson, rejectNonGet, errorMessage } from './_config.js';
+import { requireRole } from './_auth.js';
 import { SCHEMA_VERSION, FIELDS } from '../shared/schema.js';
 
 /**
@@ -42,6 +43,9 @@ const CACHE_PRIVATE = 'private, max-age=30';
  */
 export default async function handler(req, res) {
   if (rejectNonGet(req, res, '/api/calls')) return;
+  // Donnees nominatives de toute l'equipe : direction seulement. Le garde
+  // ecrit lui-meme la reponse de refus (voir shared/roles.js pour la politique).
+  if (!requireRole(req, res, '/api/calls')) return;
 
   const params = readParams(req);
   const force = flag(params.force);

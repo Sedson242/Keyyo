@@ -7,6 +7,11 @@ et comment l'activité se répartit entre les collaborateurs.
 Sept vues : Monitoring, Journal des appels, Appels manqués, Correspondants,
 Collaborateurs, Lignes Keyyo, Diagnostic.
 
+**L'accès est réservé à la direction.** Chacun se connecte avec son compte
+Microsoft de l'organisation (Entra ID) ; les routes de données refusent toute
+requête sans session, et l'application est fermée tant que la connexion n'est
+pas configurée.
+
 ---
 
 ## Ce que fait l'outil
@@ -48,11 +53,12 @@ exportées par chaque module. Une divergence entre ce document et le code est un
 bug à corriger.
 
 ```
-index.html          coquille : menu, barre de période, sections vides
+index.html          coquille : écran de connexion, menu, barre de période, sections vides
 selftest.html       page de vérification (voir plus bas)
-app/                front — main, router, store, api, dom, ui, charts, format, alerts, pages/
-api/                fonctions serverless — calls, team, directory, health, sync (+ _config, _keyyo, _archive, _collect)
-shared/             noyau pur partagé — phone, time, schema, cdr, identity
+app/                front — main, session, router, store, api, dom, ui, charts, format, alerts, pages/
+api/                fonctions serverless — auth, calls, team, directory, health, sync, oauth
+                    (+ _auth, _config, _keyyo, _archive, _collect)
+shared/             noyau pur partagé — phone, time, schema, cdr, identity, roles
 assets/css/         tokens, base, components, pages
 tests/run.js        harnais exécuté par selftest.html
 docs/               ARCHITECTURE.md (contrat), MAPPING-IDENTITES.md
@@ -90,9 +96,25 @@ défaut utilisables :
 | `BLOB_READ_WRITE_TOKEN` | injecté par Vercel en reliant un store Blob |
 | `KEYYO_OAUTH_SETUP` | ouvre `/api/oauth` le temps d'obtenir un jeton, `404` sinon |
 | `KEYYO_OAUTH_REDIRECT` | URI de redirection fixe, si la déduction ne convient pas |
+| `ENTRA_TENANT_ID` | **obligatoire** — locataire Microsoft Entra |
+| `ENTRA_CLIENT_ID` | **obligatoire** — inscription d'application Entra (plateforme Web) |
+| `ENTRA_CLIENT_SECRET` | **obligatoire** — secret client de cette inscription |
+| `SESSION_SECRET` | signe le cookie de session ; dérivé du secret client à défaut |
+| `SESSION_TTL_SECONDS` | durée d'une session, 12 h par défaut |
+| `AUTH_DIRECTION_EMAILS` | adresses de la direction, si les app roles Entra ne sont pas configurés |
+| `AUTH_REDIRECT_URI` | URI de redirection fixe (`https://<domaine>/api/auth`), si la déduction ne convient pas |
 
 `.env.example` documente chacune d'elles en détail, avec ses bornes et son effet.
 Il ne contient que des valeurs d'exemple : **n'y écrivez jamais un secret**.
+
+**3 bis. Configurer la connexion Microsoft.** Dans Entra ID, créer une
+inscription d'application avec une plateforme **Web** et l'URI de redirection
+`https://<votre-domaine>/api/auth`, un secret client, et, de préférence, deux
+rôles d'application `Direction` et `Agent` attribués aux personnes. Sans rôle,
+toute personne du locataire est « agent » ; la direction se déclare alors par
+`AUTH_DIRECTION_EMAILS`. La marche à suivre pas à pas est dans `.env.example`,
+section 8. Tant que ces variables manquent, l'application affiche « Application
+fermée » et ne sert aucune donnée.
 
 **4. Créer le store Blob.** *Storage > Create Database > Blob*, puis relier le
 store au projet. `BLOB_READ_WRITE_TOKEN` est alors injecté automatiquement. Sans
@@ -103,9 +125,10 @@ latérale l'affiche.
 d'authentification retenu, les lignes détectées, les mois collectés et les lignes
 sans identité.
 
-Un cron déclare dans `vercel.json` appelle `/api/sync` chaque jour à 5 h. Vercel
+Un cron déclaré dans `vercel.json` appelle `/api/sync` chaque jour à 5 h. Vercel
 y joint automatiquement l'en-tête `Authorization` attendu quand `CRON_SECRET` est
-défini.
+défini — **et c'est désormais la seule porte du cron** : sans `CRON_SECRET`, la
+synchronisation nocturne reçoit un `401`.
 
 ---
 
@@ -135,14 +158,20 @@ harnais — c'est le rôle de la page Diagnostic, en conditions réelles.
 
 ## Routes
 
-| Route | Réponse |
-|---|---|
-| `GET /api/calls` | appels normalisés, lignes, métadonnées, couverture, état de l'archive |
-| `GET /api/team` | lignes avec leur identité, lignes non résolues, réglage suggéré |
-| `GET /api/directory` | annuaire `numéro → nom` |
-| `GET /api/health` | état global et liste de contrôles |
-| `GET /api/sync` | déclenche une collecte, cible du cron |
-| `GET /api/oauth` | mise en service : obtient un refresh token portant les bons scopes |
+| Route | Accès | Réponse |
+|---|---|---|
+| `GET /api/auth` | public | connexion Microsoft (`?action=login`), session courante (`?action=me`), déconnexion (`?action=logout`) |
+| `GET /api/calls` | direction | appels normalisés, lignes, métadonnées, couverture, état de l'archive |
+| `GET /api/team` | direction | lignes avec leur identité, lignes non résolues, réglage suggéré |
+| `GET /api/directory` | connecté | annuaire `numéro → nom` |
+| `GET /api/health` | direction | état global et liste de contrôles |
+| `GET /api/sync` | direction ou cron | déclenche une collecte, cible du cron |
+| `GET /api/oauth` | direction | mise en service : obtient un refresh token portant les bons scopes |
+
+Toute route de données commence par le garde `requireRole` de `api/_auth.js`,
+qui applique la politique de `shared/roles.js` : `503` tant que la connexion
+n'est pas configurée, `401` sans session, `403` hors rôle. La politique refuse
+par défaut : une route qui n'y figure pas n'est ouverte à personne.
 
 `/api/oauth` répond `404` tant que `KEYYO_OAUTH_SETUP` ne vaut pas `1`. Elle
 sert à ajouter le scope `cti_admin`, indispensable au pilotage des appels : un
@@ -158,6 +187,11 @@ complet, `?month=AAAA-MM` remplit un mois précis, `?debug=1` détaille
 
 ## Sécurité
 
+- **Connexion Microsoft Entra jouée côté serveur** (code + PKCE + secret
+  client). Le navigateur ne reçoit jamais de jeton Microsoft, seulement un
+  cookie de session `HttpOnly; Secure; SameSite=Lax` signé HMAC-SHA256. Le
+  jeton d'identité est validé (émetteur, destinataire, locataire, nonce,
+  expiration) avant toute ouverture de session.
 - Les secrets ne vivent que dans les variables d'environnement Vercel. Aucune
   valeur par défaut n'est codée en dur, et `configSummary` ne rapporte que la
   **présence** d'un secret, jamais sa valeur.

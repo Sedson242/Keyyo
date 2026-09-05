@@ -27,6 +27,7 @@
 
 import * as router from './router.js';
 import * as alerts from './alerts.js';
+import * as session from './session.js';
 import {
   state, setFilter, subscribe, load, status,
   getRows, filtered, getLines, lineByCsi, labelOf, callbackAnalysis,
@@ -445,27 +446,137 @@ function paintStoreStatus(st) {
 }
 
 /**
- * Bloc de compte, en haut a droite. Il ne porte pas d'identite d'utilisateur :
- * l'outil lit UN compte Keyyo, pas une session par personne. On y met donc ce
- * qui renseigne vraiment — la taille du parc et la profondeur des donnees.
+ * Bloc de compte, en haut a droite : la personne connectee (nom, initiales,
+ * role), puis ce que l'outil sait — la taille du parc et la profondeur des
+ * donnees.
  * @param {ReturnType<typeof status>} st
  */
 function paintAccount(st) {
+  const name = qs('#account-name');
+  const initials = qs('#account-initials');
   const sub = qs('#account-sub');
   if (!sub) return;
 
-  if (st.kind === 'loading') { sub.textContent = 'Chargement…'; return; }
+  const user = session.current().user;
+  if (name) name.textContent = user ? user.name : 'Non connecté';
+  if (initials) initials.textContent = user ? initialsOf(user.name) : '–';
+  if (name && user) name.setAttribute('title', user.email);
 
-  const lines = getLines();
-  const meta = st.meta || {};
-  const nLines = lines.length;
-  const nCalls = Number(meta.n) || 0;
+  const parts = [];
+  if (user) parts.push(user.roleLabel || session.roleLabel());
 
-  const parts = [fmtInt(nLines) + ' ' + pluralize(nLines, 'ligne', 'lignes')];
-  if (nCalls) parts.push(fmtInt(nCalls) + ' ' + pluralize(nCalls, 'appel', 'appels'));
-  if (meta.min) parts.push('depuis le ' + fmtDate(meta.min));
+  if (st.kind === 'loading') {
+    parts.push('Chargement…');
+  } else {
+    const lines = getLines();
+    const meta = st.meta || {};
+    const nLines = lines.length;
+    const nCalls = Number(meta.n) || 0;
+    parts.push(fmtInt(nLines) + ' ' + pluralize(nLines, 'ligne', 'lignes'));
+    if (nCalls) parts.push(fmtInt(nCalls) + ' ' + pluralize(nCalls, 'appel', 'appels'));
+    if (meta.min) parts.push('depuis le ' + fmtDate(meta.min));
+  }
 
   sub.textContent = parts.join(' · ');
+}
+
+// -----------------------------------------------------------------------------
+//  Ecran de connexion
+// -----------------------------------------------------------------------------
+
+/**
+ * Affiche l'ecran de connexion dans l'etat voulu et rend la coquille inerte.
+ *
+ * Cinq situations, cinq messages — jamais un ecran vide :
+ *   checking      la question est partie au serveur, on attend ;
+ *   anonymous     personne n'est connecte : bouton vers Microsoft ;
+ *   unconfigured  le deploiement n'a pas ses variables ENTRA_* : on le dit,
+ *                 sans bouton, un clic n'y changerait rien ;
+ *   error         le serveur ne repond pas : bouton « Reessayer » ;
+ *   agent         connecte mais pas de la direction : la supervision est
+ *                 reservee, on propose de changer de compte.
+ *
+ * @param {{state: string, user: any, message: string}} s
+ */
+function showGate(s) {
+  const gate = qs('#gate');
+  const title = qs('#gate-title');
+  const text = qs('#gate-text');
+  const actions = qs('#gate-actions');
+  const foot = qs('#gate-foot');
+  if (!gate || !title || !text || !actions || !foot) return;
+
+  let t = 'Connexion';
+  let body = '';
+  let buttons = '';
+  let note = '';
+
+  if (s.state === 'checking') {
+    t = 'Connexion';
+    body = 'Vérification de la session…';
+  } else if (s.state === 'unconfigured') {
+    t = 'Application fermée';
+    body = s.message || 'La connexion Microsoft n\'est pas configurée sur ce déploiement.';
+    note = 'Aucune donnée n\'est servie tant que la connexion n\'est pas en place.';
+  } else if (s.state === 'error') {
+    t = 'Serveur injoignable';
+    body = s.message || 'Impossible de vérifier la session.';
+    buttons = html`<button class="btn btn--primary" type="button" data-gate-retry>Réessayer</button>`;
+  } else if (s.state === 'agent') {
+    const who = s.user && s.user.name ? s.user.name : 'vous';
+    t = 'Bonjour, ' + who;
+    body = 'Votre compte est reconnu comme « ' + (s.user && s.user.roleLabel ? s.user.roleLabel : 'Agent')
+      + ' ». La supervision est réservée à la direction ; votre espace personnel arrive dans la prochaine version.';
+    buttons = html`<a class="btn btn--ghost" href="${session.LOGOUT_URL}">Changer de compte</a>`;
+    note = s.user && s.user.email ? s.user.email : '';
+  } else {
+    t = 'Connexion';
+    body = 'Connectez-vous avec votre compte Microsoft de l\'organisation pour accéder à la supervision des appels.';
+    buttons = html`<a class="btn btn--primary" href="${session.loginUrl()}">Se connecter avec Microsoft</a>`;
+    note = 'La connexion se fait sur la page de Microsoft ; l\'application ne voit jamais votre mot de passe.';
+  }
+
+  title.textContent = t;
+  text.textContent = body;
+  mount(actions, buttons);
+  foot.textContent = note;
+
+  gate.hidden = false;
+  document.body.classList.add('is-gated');
+  const app = qs('#app');
+  if (app) app.setAttribute('aria-hidden', 'true');
+
+  const first = /** @type {HTMLElement|null} */ (actions.querySelector('a, button'));
+  if (first && typeof first.focus === 'function') first.focus();
+}
+
+/** Retire l'ecran de connexion et rend la coquille a l'utilisateur. */
+function hideGate() {
+  const gate = qs('#gate');
+  if (gate) gate.hidden = true;
+  document.body.classList.remove('is-gated');
+  const app = qs('#app');
+  if (app) app.removeAttribute('aria-hidden');
+}
+
+/** Cablage de l'ecran de connexion, une fois pour toutes. */
+function wireGate() {
+  const actions = qs('#gate-actions');
+  if (actions) {
+    on(actions, 'click', '[data-gate-retry]', function () {
+      window.location.reload();
+    });
+  }
+
+  // Session tombee en cours d'utilisation : on arrete le sondage (chaque
+  // collecte ferait un 401 de plus) et on remet l'ecran de connexion, qui
+  // ramenera sur la vue courante apres reconnexion.
+  document.addEventListener('keyyo:unauthenticated', function () {
+    if (qs('#gate') && !qs('#gate').hidden) return;
+    stopPoll();
+    session.forget();
+    showGate({ state: 'anonymous', user: null, message: '' });
+  });
 }
 
 // -----------------------------------------------------------------------------
@@ -827,7 +938,25 @@ function messageOf(err) {
 // -----------------------------------------------------------------------------
 
 /**
- * Sequence d'amorcage, dans cet ordre :
+ * Amorcage. D'abord la question « qui est la ? » au serveur ; l'application
+ * ne demarre que pour une personne de la direction connectee. Tout autre cas
+ * s'arrete a l'ecran de connexion, sans collecte ni sondage : chaque requete
+ * de donnees serait refusee, autant ne pas la lancer.
+ */
+export function boot() {
+  wireGate();
+  showGate({ state: 'checking', user: null, message: '' });
+
+  session.resolve().then(function (s) {
+    if (s.state !== 'ready') { showGate(s); return; }
+    if (!session.isDirection()) { showGate({ state: 'agent', user: s.user, message: '' }); return; }
+    hideGate();
+    startApp();
+  });
+}
+
+/**
+ * Sequence de demarrage de la supervision, dans cet ordre :
  *
  *  1. les alertes, pour que les preferences (son, notifications) soient
  *     restaurees avant tout rendu et que les interrupteurs ne clignotent pas ;
@@ -837,7 +966,7 @@ function messageOf(err) {
  *  4. l'abonnement au store, puis la premiere collecte ;
  *  5. le sondage de fond et le vieillissement de la pastille d'etat.
  */
-export function boot() {
+function startApp() {
   alerts.init();
   wireShell();
 

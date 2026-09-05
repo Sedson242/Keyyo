@@ -13,6 +13,7 @@
 // =============================================================================
 
 import { readConfig, readParams, flag, sendJson, rejectNonGet, errorMessage } from './_config.js';
+import { requireRole } from './_auth.js';
 import { getAccessToken, fetchDirectoryContacts } from './_keyyo.js';
 import { toE164 } from '../shared/phone.js';
 import { capitalizeName } from '../shared/identity.js';
@@ -36,6 +37,9 @@ const SAMPLE_SIZE = 12;
  */
 export default async function handler(req, res) {
   if (rejectNonGet(req, res, '/api/directory')) return;
+  // Annuaire : ouvert a toute personne connectee (un agent en a besoin pour
+  // nommer ses correspondants), ferme a tout le monde sinon.
+  if (!requireRole(req, res, '/api/directory')) return;
 
   const params = readParams(req);
   const debug = flag(params.debug);

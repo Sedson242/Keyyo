@@ -157,12 +157,14 @@ const CONTRACT = [
   ['../shared/schema.js', ['SCHEMA_VERSION', 'FIELDS', 'F', 'ROW_LENGTH', 'isMissed', 'isIncoming', 'isOutgoing', 'rowKey', 'toObject', 'fromObject', 'isValidRow']],
   ['../shared/cdr.js', ['normalizeCdr', 'extractRecords', 'nextLink']],
   ['../shared/identity.js', ['capitalizeName', 'normalizeName', 'nameTokens', 'isEmail', 'nameFromEmail', 'firstNameFromEmail', 'nameSimilarity', 'NAME_MATCH_THRESHOLD', 'resolveLineIdentities', 'lineLabel', 'initialsOf', 'parseLineEmails', 'isPhoneCsi', 'formatCsi']],
+  ['../shared/roles.js', ['ROLE_DIRECTION', 'ROLE_AGENT', 'ROLES', 'POLICY', 'parseEmailList', 'roleFromClaims', 'allowedRoles', 'canAccess', 'isDirection', 'roleLabel']],
 
   ['../app/format.js', ['fmtInt', 'fmtPct', 'fmtDuration', 'fmtDurationShort', 'fmtHms', 'fmtDate', 'fmtDateLong', 'fmtDayShort', 'fmtTime', 'fmtMonth', 'fmtClock', 'fmtRelative', 'WEEKDAYS', 'pluralize']],
   ['../app/dom.js', ['esc', 'h', 'html', 'raw', 'mount', 'qs', 'qsa', 'on', 'icon']],
   ['../app/charts.js', ['barChart', 'areaChart', 'donutChart', 'heatmap', 'sparkline', 'attachChartTips']],
   ['../app/ui.js', ['card', 'sectionHead', 'kpi', 'statbar', 'table', 'tag', 'avatar', 'avatarStack', 'meter', 'split', 'rankRow', 'empty', 'notice', 'skeleton', 'toolbar']],
-  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'postSync', 'ApiError']],
+  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'postSync', 'ApiError']],
+  ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'roleLabel', 'loginUrl', 'forget']],
   ['../app/store.js', ['state', 'setFilter', 'subscribe', 'getRows', 'filtered', 'getLines', 'lineByCsi', 'nameOf', 'labelOf', 'stats', 'byDay', 'byMonth', 'byHour', 'byWeekday', 'heatMatrix', 'byLine', 'byPeer', 'callbackAnalysis', 'trend', 'load', 'status']],
   ['../app/router.js', ['ROUTES', 'start', 'go', 'current']],
   ['../app/alerts.js', ['init', 'check', 'toast', 'renderCenter', 'unreadCount', 'markAllRead']],
@@ -215,6 +217,8 @@ const time = NS['../shared/time.js'];
 const schema = NS['../shared/schema.js'];
 const cdr = NS['../shared/cdr.js'];
 const identity = NS['../shared/identity.js'];
+const roles = NS['../shared/roles.js'];
+const sessionMod = NS['../app/session.js'];
 const format = NS['../app/format.js'];
 const dom = NS['../app/dom.js'];
 const charts = NS['../app/charts.js'];
@@ -883,6 +887,119 @@ if (need(identity, 'shared/identity.js', 'shared/identity.js')) suite('shared/id
     });
     eq(out[0].person.source, 'override');
     eq(out[0].person.email, 'paul.bernard@x.fr');
+  });
+});
+
+// -----------------------------------------------------------------------------
+//  6 bis. shared/roles.js — la politique d'acces refuse par defaut
+// -----------------------------------------------------------------------------
+
+if (need(roles, 'shared/roles.js', 'shared/roles.js')) suite('shared/roles.js', () => {
+  const {
+    ROLE_DIRECTION, ROLE_AGENT, ROLES, POLICY, parseEmailList, roleFromClaims,
+    allowedRoles, canAccess, isDirection, roleLabel,
+  } = roles;
+
+  test('deux roles, la direction d’abord', () => {
+    eqDeep(Array.from(ROLES), [ROLE_DIRECTION, ROLE_AGENT]);
+    eq(ROLE_DIRECTION, 'direction');
+    eq(ROLE_AGENT, 'agent');
+  });
+
+  test('parseEmailList tolere tous les separateurs et ecarte ce qui n’est pas une adresse', () => {
+    eqDeep(parseEmailList(' A@x.fr, b@y.com;c@z.org\nbad  d@e.io '), ['a@x.fr', 'b@y.com', 'c@z.org', 'd@e.io']);
+    eqDeep(parseEmailList(''), []);
+    eqDeep(parseEmailList(null), []);
+    eqDeep(parseEmailList('a@x.fr,a@x.fr,A@X.FR'), ['a@x.fr'], 'sans doublon, insensible a la casse');
+  });
+
+  test('le claim roles d’Entra donne le role, quelle que soit la casse', () => {
+    eq(roleFromClaims({ roles: ['Direction'] }), 'direction');
+    eq(roleFromClaims({ roles: ['DIRECTION'] }), 'direction');
+    eq(roleFromClaims({ roles: 'direction' }), 'direction', 'une chaine seule est toleree');
+    eq(roleFromClaims({ roles: ['Agent'] }), 'agent');
+    eq(roleFromClaims({ roles: ['Agent', 'Direction'] }), 'direction', 'le plus eleve gagne');
+    eq(roleFromClaims({ roles: ['Inconnu'] }), 'agent', 'un app role inconnu ne donne rien');
+  });
+
+  test('sans app role, toute personne connectee est agent', () => {
+    eq(roleFromClaims({}), 'agent');
+    eq(roleFromClaims(null), 'agent');
+    eq(roleFromClaims({ email: 'x@y.fr' }), 'agent');
+  });
+
+  test('la liste AUTH_DIRECTION_EMAILS promeut, sur email comme sur preferred_username', () => {
+    const opts = { directionEmails: parseEmailList('boss@bios.fr') };
+    eq(roleFromClaims({ email: 'Boss@BIOS.fr' }, opts), 'direction');
+    eq(roleFromClaims({ preferred_username: 'boss@bios.fr' }, opts), 'direction');
+    eq(roleFromClaims({ roles: ['Agent'], email: 'boss@bios.fr' }, opts), 'direction', 'la liste l’emporte sur un app role Agent');
+    eq(roleFromClaims({ email: 'autre@bios.fr' }, opts), 'agent');
+  });
+
+  test('la politique refuse par defaut : route inconnue, role inconnu, role vide', () => {
+    eq(canAccess('/api/inexistante', 'direction'), false);
+    eq(canAccess('/api/calls', 'inconnu'), false);
+    eq(canAccess('/api/calls', ''), false);
+    eq(canAccess('/api/calls', null), false);
+    eq(canAccess('', 'direction'), false);
+    eqDeep(Array.from(allowedRoles('/api/inexistante')), []);
+  });
+
+  test('la supervision est reservee a la direction, l’annuaire ouvert aux agents', () => {
+    eq(canAccess('/api/calls', 'direction'), true);
+    eq(canAccess('/api/calls', 'agent'), false);
+    eq(canAccess('/api/team', 'agent'), false);
+    eq(canAccess('/api/health', 'agent'), false);
+    eq(canAccess('/api/sync', 'agent'), false);
+    eq(canAccess('/api/directory', 'agent'), true);
+    eq(canAccess('/api/directory', 'direction'), true);
+  });
+
+  test('la query est ignoree pour retrouver la route', () => {
+    eq(canAccess('/api/calls?force=1', 'direction'), true);
+    eq(canAccess('/api/team?inventory=1', 'agent'), false);
+  });
+
+  test('toute route de la politique est fermee a un role hors liste', () => {
+    for (const route of Object.keys(POLICY)) {
+      eq(canAccess(route, 'visiteur'), false, route);
+      ok(POLICY[route].length > 0, route + ' autorise au moins un role');
+    }
+  });
+
+  test('libelles et predicat', () => {
+    eq(isDirection('direction'), true);
+    eq(isDirection('agent'), false);
+    eq(isDirection(undefined), false);
+    eq(roleLabel('direction'), 'Direction');
+    eq(roleLabel('agent'), 'Agent');
+    eq(roleLabel('x'), 'Sans rôle');
+  });
+});
+
+// -----------------------------------------------------------------------------
+//  6 ter. app/session.js — sans reseau, on ne teste que le pur
+// -----------------------------------------------------------------------------
+
+if (need(sessionMod, 'app/session.js', 'app/session.js')) suite('app/session.js', () => {
+  const { LOGIN_URL, LOGOUT_URL, loginUrl, current, isDirection, forget } = sessionMod;
+
+  test('les adresses de connexion et de deconnexion passent par /api/auth', () => {
+    has(LOGIN_URL, '/api/auth?action=login');
+    has(LOGOUT_URL, '/api/auth?action=logout');
+  });
+
+  test('loginUrl transporte la page de retour, encodee, et rien pour la racine', () => {
+    eq(loginUrl('/'), LOGIN_URL);
+    eq(loginUrl('/#/calls'), LOGIN_URL + '&next=' + encodeURIComponent('/#/calls'));
+    has(loginUrl(), '/api/auth?action=login', 'sans argument : l’URL courante');
+  });
+
+  test('avant toute resolution, personne n’est connecte', () => {
+    forget();
+    eq(current().state, 'anonymous');
+    eq(current().user, null);
+    eq(isDirection(), false);
   });
 });
 

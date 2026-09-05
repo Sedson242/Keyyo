@@ -22,6 +22,7 @@
 // =============================================================================
 
 import { readConfig, readParams, sendJson, rejectNonGet, errorMessage } from './_config.js';
+import { readAuthConfig, requireRole } from './_auth.js';
 
 /** Point d'autorisation Keyyo. Different de l'hote de l'API. */
 const AUTHORIZE_URL = 'https://ssl.keyyo.com/oauth2/authorize.php';
@@ -49,6 +50,11 @@ export default async function handler(req, res) {
   if (String(process.env.KEYYO_OAUTH_SETUP || '').trim() !== '1') {
     return sendJson(res, 404, { error: 'Route inconnue.' }, 'no-store');
   }
+
+  // Une fois la connexion Entra en place, cette route — qui affiche un
+  // refresh token — n'est plus ouverte qu'a la direction. Avant, elle ne tient
+  // qu'a KEYYO_OAUTH_SETUP : c'est le mode « mise en service », a refermer.
+  if (readAuthConfig().configured && !requireRole(req, res, '/api/oauth')) return;
 
   const params = readParams(req);
 

@@ -30,17 +30,24 @@ Diagnostic les affiche. Une collecte partielle est signalée, jamais masquée.
 ## 2. Flux de données
 
 ```
+Microsoft Entra ID ◄──────────┐
+  (connexion, côté serveur)   │ GET /api/auth
+                              │
 API Keyyo Manager 1.0                        Navigateur
   /services?type=…            ┌────────────┐
   /directory_contacts   ───►  │ api/*.js   │ ───► GET /api/calls     ─┐
   /services/:csi/           │ (Vercel)   │      GET /api/team       ├─► app/store.js
-      incoming_call_detail   │            │      GET /api/directory  │      │
+      incoming_call_detail   │ requireRole│      GET /api/directory  │      │
       outgoing_call_detail   └─────┬──────┘      GET /api/health    ─┘      ▼
                                    │                              app/pages/*.js
                                    ▼                                   (rendu)
                         Archive Vercel Blob
                          keyyo/history.json
 ```
+
+- Chaque route de données commence par `requireRole` (`api/_auth.js`) : sans
+  session de la direction, elle ne sert rien. La politique est dans
+  `shared/roles.js`.
 
 - Le back collecte par **tranches mensuelles** (`shared/time.js#monthSlices`)
   pour qu'aucune requête ne dépasse la durée maximale d'une fonction.
@@ -147,6 +154,31 @@ export function formatCsi(csi): string         // '02 53 35 95 65' | 'rqepz@kpho
 avec `source` ∈ `override` \| `directory_number` \| `directory_short_number` \|
 `directory_name` \| `email_account_name` \| `line_name`.
 
+### `shared/roles.js`
+```js
+export const ROLE_DIRECTION: 'direction'
+export const ROLE_AGENT: 'agent'
+export const ROLES: string[]                          // ['direction', 'agent']
+export const POLICY: Record<string, string[]>         // route -> roles autorisés
+export function parseEmailList(raw): string[]         // AUTH_DIRECTION_EMAILS
+export function roleFromClaims(claims, opts?): 'direction'|'agent'
+        // opts : { directionEmails? } — claim `roles` d'Entra d'abord, liste ensuite, `agent` sinon
+export function allowedRoles(route): string[]         // [] pour une route inconnue
+export function canAccess(route, role): boolean       // REFUS PAR DÉFAUT
+export function isDirection(role): boolean
+export function roleLabel(role): string               // 'Direction' | 'Agent'
+```
+
+Deux rôles seulement. **La politique est écrite route par route et refuse par
+défaut** : une route absente de `POLICY` n'est ouverte à personne, un rôle
+inconnu n'ouvre rien. Le back applique la politique (`api/_auth.js`), le front
+ne fait que cacher les menus.
+
+| Route | `direction` | `agent` |
+|---|:-:|:-:|
+| `/api/calls`, `/api/team`, `/api/health`, `/api/sync`, `/api/oauth` | ✔ | — |
+| `/api/directory`, `/api/me`, `/api/cti-token`, `/api/events` | ✔ | ✔ |
+
 ---
 
 ## 4. `api/` — fonctions serverless
@@ -179,6 +211,43 @@ définit elle-même `TZ` (à `UTC`) dans l'environnement des fonctions : la lire
 sans précaution ferait gagner Vercel à tous les coups et le défaut
 `Europe/Paris` ne s'appliquerait jamais. Un `TZ` valant `UTC` est donc ignoré ;
 pour demander réellement UTC, on renseigne `KEYYO_TZ=UTC`.
+
+### `api/_auth.js` — session et contrôle d'accès
+```js
+export const SESSION_COOKIE: string                   // 'keyyo_session'
+export const FLOW_COOKIE: string                      // 'keyyo_auth_flow'
+export function readAuthConfig(env?): AuthConfig      // ne jette jamais : `configured` dit l'état
+export function authSummary(auth): object             // sans aucun secret
+export function seal(secret, obj): string             // '<payload b64url>.<hmac>'
+export function open(secret, token): any|null         // signature vérifiée à temps constant
+export function randomToken(bytes): string
+export function parseCookies(req): Record<string, string>
+export function cookieHeader(name, value, opts?): string      // toujours HttpOnly; Secure; SameSite=Lax
+export function clearCookieHeader(name, path?): string
+export function appendSetCookie(res, header): void
+export function sessionFromClaims(claims, auth, now?): Session
+export function readSession(req, auth, now?): Session|null
+export function sessionCookieHeader(session, auth): string
+export function publicUser(session): { email, name, role, expiresAt }
+export function requireRole(req, res, route, auth?): Session|null   // écrit 503 / 401 / 403 et renvoie null
+export function safeEqual(a, b): boolean              // comparaison à temps constant
+```
+`AuthConfig` : `{ configured, missing[], tenantId, clientId, clientSecret,
+authority, sessionSecret, sessionSecretSource, sessionTtlSec, directionEmails[],
+redirectUri }` — variables `ENTRA_*`, `SESSION_*`, `AUTH_*` de `.env.example`,
+section 8.
+
+`Session` : `{ sub, email, name, role, iat, exp }`, scellée dans un cookie
+**HttpOnly, Secure, SameSite=Lax** par HMAC-SHA256. Il n'y a **aucun magasin
+de sessions** : les fonctions serverless n'ont pas de mémoire commune, et le
+cookie porte lui-même l'identité. Le secret de session est `SESSION_SECRET`,
+ou à défaut un dérivé SHA-256 du secret client Entra.
+
+**Toute route de données commence par `requireRole`.** Le garde répond `503`
+si la connexion n'est pas configurée (l'application est fermée, pas en panne),
+`401` sans session, `403` si le rôle n'est pas dans la politique, et pose
+`Vary: Cookie` sur les succès. `/api/sync` accepte en plus le porteur
+`CRON_SECRET` du cron Vercel.
 
 ### `api/_keyyo.js`
 ```js
@@ -221,13 +290,38 @@ export async function collect(opts): Promise<CollectResult>
 
 ### Points d'entrée HTTP
 
-| Route | Réponse |
-|---|---|
-| `GET /api/calls` | `{ schemaVersion, fields, rows, lines, meta, coverage, store, diag, updatedAt, empty, warning }` |
-| `GET /api/team` | `{ lines, unresolved[], suggestion, sources, updatedAt }` |
-| `GET /api/directory` | `{ map: {"+33…": "Nom"}, count, sources, updatedAt }` |
-| `GET /api/health` | `{ status: 'ok'\|'empty'\|'error', calls, period, lines, checks[], elapsedMs }` |
-| `GET /api/sync` | `{ ok, at, store, period, warnings }` — cible du cron |
+| Route | Accès | Réponse |
+|---|---|---|
+| `GET /api/auth` | public | `?action=login` → 302 Microsoft · retour `?code&state` → cookie de session puis 302 · `?action=me` → `{ authenticated, configured, user }` ou 401 · `?action=logout` → 302 |
+| `GET /api/calls` | direction | `{ schemaVersion, fields, rows, lines, meta, coverage, store, diag, updatedAt, empty, warning }` |
+| `GET /api/team` | direction | `{ lines, unresolved[], suggestion, sources, updatedAt }` |
+| `GET /api/directory` | connecté | `{ map: {"+33…": "Nom"}, count, sources, updatedAt }` |
+| `GET /api/health` | direction | `{ status: 'ok'\|'empty'\|'error', calls, period, lines, checks[], elapsedMs }` |
+| `GET /api/sync` | direction ou cron | `{ ok, at, store, period, warnings }` — cible du cron |
+| `GET /api/oauth` | direction, si `KEYYO_OAUTH_SETUP=1` | page HTML : refresh token Keyyo avec `cti_admin` |
+
+### Connexion — `api/auth.js`
+
+Flot *authorization code* OpenID Connect avec PKCE, joué **entièrement côté
+serveur** : le navigateur ne reçoit jamais de jeton Microsoft, la CSP reste
+`script-src 'self'` / `connect-src 'self'` sans exception, et le contrôle
+d'accès vit dans les fonctions qui servent les données.
+
+1. `?action=login` pose un cookie de flot signé (`state`, `nonce`,
+   vérificateur PKCE, page de retour) et redirige vers
+   `login.microsoftonline.com/<tenant>/oauth2/v2.0/authorize`.
+2. Au retour, le cookie de flot est descellé, `state` comparé, puis le code
+   est échangé **directement** avec le serveur de jetons (secret client +
+   `code_verifier`).
+3. Le jeton d'identité est validé : émetteur, destinataire, locataire, nonce,
+   expiration. Reçu par un échange direct et chiffré, il n'a pas besoin d'une
+   vérification de signature (OpenID Connect Core 3.1.3.7, point 6).
+4. Le cookie de session est posé, et l'utilisateur renvoyé sur la page qu'il
+   demandait (`next`, chemin relatif uniquement — jamais un redirecteur ouvert).
+
+Côté Entra : inscription de type **Web**, URI de redirection
+`https://<domaine>/api/auth`, secret client, app roles `Direction` / `Agent`
+facultatifs.
 
 Paramètres : `?force=1` (contourne le cache CDN), `?full=1` (rebalayage complet),
 `?month=YYYY-MM` (remplissage d'un mois précis), `?debug=1` sur `/api/directory`,
@@ -362,9 +456,28 @@ export async function getCalls(opts?): Promise<any>
 export async function getTeam(): Promise<any>
 export async function getDirectory(): Promise<any>
 export async function getHealth(): Promise<any>
+export async function getMe(): Promise<any>        // /api/auth?action=me, jamais mis en cache
 export async function postSync(opts?): Promise<any>
 export class ApiError extends Error { status; body }
 ```
+Un `401` reçu sur n'importe quelle route (sauf `getMe`) émet
+`document.dispatchEvent(new CustomEvent('keyyo:unauthenticated'))` : la
+coquille remet l'écran de connexion.
+
+### `app/session.js`
+```js
+export const LOGIN_URL: string                     // '/api/auth?action=login' — une NAVIGATION
+export const LOGOUT_URL: string                    // '/api/auth?action=logout'
+export async function resolve(): Promise<SessionState>   // ne jette jamais
+export function current(): SessionState
+export function isDirection(): boolean
+export function roleLabel(): string
+export function loginUrl(next?): string            // porte la page de retour dans `next`
+export function forget(): void
+```
+`SessionState` : `{ state: 'ready'|'anonymous'|'unconfigured'|'error', user, message }`
+avec `user` : `{ email, name, role, roleLabel, expiresAt }`. Le navigateur ne
+détient aucun jeton ; le rôle n'est ici qu'un confort d'affichage.
 
 ### `app/router.js`
 ```js
@@ -399,9 +512,17 @@ directement.
 ```js
 export function boot(): void               // appelé automatiquement par index.html
 ```
-Amorçage : `alerts.init()` → câblage de la coquille → `router.start()` →
+Amorçage : `session.resolve()` d'abord. Sans personne de la direction
+connectée, l'écran de connexion (`#gate` de `index.html`) est affiché et
+**rien d'autre ne démarre** — ni collecte ni sondage, chaque requête serait
+refusée. Sinon : `alerts.init()` → câblage de la coquille → `router.start()` →
 `store.subscribe()` → `store.load()` → sondage toutes les 60 s (suspendu quand
 l'onglet est masqué) → rendu.
+
+L'écran de connexion a cinq états : vérification en cours, anonyme (bouton
+vers Microsoft), non configuré (variables `ENTRA_*` absentes), serveur
+injoignable, et connecté sans être de la direction. Un `401` survenu en cours
+d'utilisation (`keyyo:unauthenticated`) arrête le sondage et remet cet écran.
 
 C'est le seul module qui connaisse à la fois le routeur, le store, les alertes
 et les sept pages. Il ne calcule aucune statistique : il tient à jour la
