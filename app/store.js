@@ -22,7 +22,7 @@
 //      arrivee du tout, les donnees precedentes sont conservees).
 // =============================================================================
 
-import { getCalls, getTeam, getDirectory } from './api.js';
+import { getCalls, getTeam, getDirectory, getEvents } from './api.js';
 import { F, isMissed, isIncoming, isOutgoing } from '../shared/schema.js';
 import { toE164, formatNumber } from '../shared/phone.js';
 import { lineLabel, initialsOf, formatCsi } from '../shared/identity.js';
@@ -1092,6 +1092,57 @@ export async function load(opts) {
   })().finally(() => { _inflight = null; });
 
   return _inflight;
+}
+
+// -----------------------------------------------------------------------------
+//  Journal d'attribution (direction)
+//
+//  Charge a part de la collecte des appels : un mois de faits nominatifs,
+//  relu a la demande de la vue Attribution. Le store en garde UN mois a la
+//  fois, avec son etat de chargement et son erreur, pour que la vue puisse
+//  dire « chargement », « rien », « indisponible » sans rien deviner.
+// -----------------------------------------------------------------------------
+
+/** @type {{month: string, loading: boolean, error: string, events: any[], summary: any, partitions: number, at: string}} */
+let _journal = { month: '', loading: false, error: '', events: [], summary: null, partitions: 0, at: '' };
+
+/** @returns {typeof _journal} dernier etat connu du journal, sans requete. */
+export function journal() {
+  return _journal;
+}
+
+/**
+ * Charge le journal d'un mois pour toute l'equipe (`scope=all`, direction).
+ * Rappeler avec le meme mois pendant un chargement ne double pas la requete.
+ * @param {string} month `AAAA-MM`
+ * @param {{force?: boolean}} [opts]
+ * @returns {Promise<void>}
+ */
+export async function loadJournal(month, opts) {
+  const ym = String(month || '').trim();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return;
+  const o = opts || {};
+  if (_journal.loading && _journal.month === ym) return;
+  if (!o.force && _journal.month === ym && _journal.at && !_journal.error) return;
+
+  _journal = { ..._journal, month: ym, loading: true, error: '' };
+  notify();
+  try {
+    const res = await getEvents({ month: ym, scope: 'all' });
+    _journal = {
+      month: ym,
+      loading: false,
+      error: '',
+      events: Array.isArray(res && res.events) ? res.events : [],
+      summary: res && res.summary ? res.summary : null,
+      partitions: Number(res && res.partitions) || 0,
+      at: res && res.updatedAt ? String(res.updatedAt) : nowIso(),
+    };
+  } catch (err) {
+    _journal = { ..._journal, month: ym, loading: false, error: messageOf(err) };
+    console.warn('[store] journal indisponible :', err);
+  }
+  notify();
 }
 
 /** @returns {{kind: string, at: string, warning: string, empty: boolean, store: any, diag: any, meta: any}} */

@@ -50,6 +50,7 @@ import * as pageCalls from './pages/calls.js';
 import * as pageMissed from './pages/missed.js';
 import * as pagePeers from './pages/peers.js';
 import * as pagePeople from './pages/people.js';
+import * as pageAgents from './pages/agents.js';
 import * as pageLines from './pages/lines.js';
 import * as pageDiagnostics from './pages/diagnostics.js';
 
@@ -92,6 +93,7 @@ const PAGES = {
   missed: pageMissed.render,
   peers: pagePeers.render,
   people: pagePeople.render,
+  agents: pageAgents.render,
   lines: pageLines.render,
   diagnostics: pageDiagnostics.render,
 };

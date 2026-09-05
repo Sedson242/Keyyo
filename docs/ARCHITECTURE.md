@@ -497,6 +497,8 @@ export function callbackAnalysis(rows): { pending, done }
 export function trend(rows, unit): Array<{label, value}>
 export async function load(opts?): Promise<void>  // { force?, full? }
 export function status(): { kind, at, warning, empty, store, diag, meta }
+export function journal(): { month, loading, error, events, summary, partitions, at }
+export async function loadJournal(month, opts?): Promise<void>   // { force? } — /api/events?scope=all
 ```
 `Stats` : `{ total, in, out, missed, answered, answerRate, avgDuration,
 medianDuration, totalDuration, uniquePeers }`
@@ -636,6 +638,14 @@ export function render(root): void         // écrit dans l'élément de section
 ```
 et lit son état via `app/store.js`. Aucun module de page n'appelle `fetch`
 directement.
+
+Huit vues : `monitoring`, `calls`, `missed`, `peers`, `people`, `agents`,
+`lines`, `diagnostics`. La vue **Attribution** (`agents.js`) est la seule qui
+réponde à « qui a répondu ? » : elle lit le journal d'attribution du mois
+(`store.journal()`), affiche par personne les appels pris, émis, transférés et
+la sonnerie moyenne, et met au même niveau le nombre d'appels **décrochés par
+on ne sait qui**. Une personne absente n'a rien fait dans l'application — pas
+forcément rien pris.
 
 ### `app/main.js`
 ```js

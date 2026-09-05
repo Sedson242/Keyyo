@@ -34,6 +34,11 @@ body::before {
     linear-gradient(152deg, var(--bg-cream) 0%, var(--bg-shell) 46%, var(--bg-shell) 100%);
 }
 
+/* `hidden` doit gagner sur tout `display` d'auteur : un bouton (inline-flex)
+   ou une grille masques par l'attribut ne doivent jamais reapparaitre parce
+   qu'une classe leur donne un display. */
+[hidden] { display: none !important; }
+
 h1, h2, h3, h4, p, figure { margin: 0; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
@@ -273,7 +278,9 @@ input, select, textarea { font: inherit; color: inherit; }
 .gate-foot { font: var(--t-sm); color: var(--ink-muted); }
 .gate-foot:empty { display: none; }
 
-body.is-gated .app { visibility: hidden; }
+/* La coquille — `.app` sur la supervision, `.agent` sur la page agent — porte
+   toujours l'identifiant `app`. */
+body.is-gated #app { visibility: hidden; }
 
 /* -----------------------------------------------------------------------------
    Bouton de menu mobile — masque au-dela du point de rupture

@@ -4,8 +4,9 @@ Console web qui lit les relevés d'appels d'un compte Keyyo et répond à quatre
 questions : combien d'appels, lesquels ont été manqués, **qui reste à rappeler**,
 et comment l'activité se répartit entre les collaborateurs.
 
-Sept vues : Monitoring, Journal des appels, Appels manqués, Correspondants,
-Collaborateurs, Lignes Keyyo, Diagnostic.
+Huit vues : Monitoring, Journal des appels, Appels manqués, Correspondants,
+Collaborateurs, **Attribution** (qui a pris, émis, transféré quels appels, et
+avec quelle durée de sonnerie), Lignes Keyyo, Diagnostic.
 
 **L'accès est réservé à la direction.** Chacun se connecte avec son compte
 Microsoft de l'organisation (Entra ID) ; les routes de données refusent toute

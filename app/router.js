@@ -15,7 +15,7 @@
 import { qs, qsa, on } from './dom.js';
 
 /**
- * Les sept vues, DANS L'ORDRE DU MENU de index.html.
+ * Les huit vues, DANS L'ORDRE DU MENU de index.html.
  *
  * `needsPeriod` dit si la barre de periode a un sens sur la vue : le Diagnostic
  * decrit l'etat de la collecte entiere, pas une fenetre de dates — lui laisser
@@ -53,6 +53,12 @@ export const ROUTES = [
     title: 'Collaborateurs',
     sub: 'Activité de chaque personne derrière sa ligne Keyyo',
     needsPeriod: true,
+  },
+  {
+    id: 'agents',
+    title: 'Attribution',
+    sub: 'Qui a pris, émis et transféré quels appels — d’après les actions faites dans l’application',
+    needsPeriod: false,
   },
   {
     id: 'lines',

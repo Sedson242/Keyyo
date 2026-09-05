@@ -171,7 +171,7 @@ const CONTRACT = [
   ['../app/callbar.js', ['init', 'setColleagues', 'setLabelOf']],
   // agent.js ne s'amorce que si #agent-root est present : importable ici.
   ['../app/agent.js', ['boot']],
-  ['../app/store.js', ['state', 'setFilter', 'subscribe', 'getRows', 'filtered', 'getLines', 'lineByCsi', 'nameOf', 'labelOf', 'stats', 'byDay', 'byMonth', 'byHour', 'byWeekday', 'heatMatrix', 'byLine', 'byPeer', 'callbackAnalysis', 'trend', 'load', 'status']],
+  ['../app/store.js', ['state', 'setFilter', 'subscribe', 'getRows', 'filtered', 'getLines', 'lineByCsi', 'nameOf', 'labelOf', 'stats', 'byDay', 'byMonth', 'byHour', 'byWeekday', 'heatMatrix', 'byLine', 'byPeer', 'callbackAnalysis', 'trend', 'load', 'status', 'journal', 'loadJournal']],
   ['../app/router.js', ['ROUTES', 'start', 'go', 'current']],
   ['../app/alerts.js', ['init', 'check', 'toast', 'renderCenter', 'unreadCount', 'markAllRead']],
 
@@ -180,6 +180,7 @@ const CONTRACT = [
   ['../app/pages/missed.js', ['render']],
   ['../app/pages/peers.js', ['render']],
   ['../app/pages/people.js', ['render']],
+  ['../app/pages/agents.js', ['render']],
   ['../app/pages/lines.js', ['render']],
   ['../app/pages/diagnostics.js', ['render']],
 
@@ -1761,11 +1762,11 @@ if (need(ui, 'app/ui.js', 'app/ui.js')) suite('app/ui.js', () => {
 if (need(router, 'app/router.js', 'app/router.js')) suite('app/router.js', () => {
   const { ROUTES } = router;
 
-  test('les sept vues sont declarees, sans doublon', () => {
-    eq(ROUTES.length, 7);
+  test('les huit vues sont declarees, sans doublon', () => {
+    eq(ROUTES.length, 8);
     const ids = ROUTES.map((r) => r.id);
-    eq(new Set(ids).size, 7, 'aucun identifiant en double');
-    eqDeep(ids, ['monitoring', 'calls', 'missed', 'peers', 'people', 'lines', 'diagnostics'],
+    eq(new Set(ids).size, 8, 'aucun identifiant en double');
+    eqDeep(ids, ['monitoring', 'calls', 'missed', 'peers', 'people', 'agents', 'lines', 'diagnostics'],
       'ordre du menu de index.html');
   });
 
@@ -1777,6 +1778,8 @@ if (need(router, 'app/router.js', 'app/router.js')) suite('app/router.js', () =>
     }
     eq(ROUTES.find((r) => r.id === 'diagnostics').needsPeriod, false,
       'le diagnostic decrit toute la collecte, pas une fenetre de dates');
+    eq(ROUTES.find((r) => r.id === 'agents').needsPeriod, false,
+      'l’attribution est rangee par mois, pas par la barre de periode');
   });
 });
 
