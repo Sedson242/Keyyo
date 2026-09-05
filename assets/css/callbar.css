@@ -1,0 +1,182 @@
+/* =============================================================================
+   callbar.css — Barre d'appel (bas de page) et page agent.
+
+   Chargee par index.html et agent.html. Ne definit aucune couleur en dur :
+   tout vient de tokens.css. La barre est fixe ; les pages qui la portent
+   posent `body.has-callbar` pour degager la place en bas de leur contenu.
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   Barre d'appel
+   -------------------------------------------------------------------------- */
+
+.callbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 10px 14px 12px;
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -12px 30px -18px rgba(120, 70, 40, 0.25);
+}
+body.has-callbar .main { padding-bottom: 210px; }
+body.has-callbar .agent { padding-bottom: 210px; }
+
+.callbar-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+.callbar-line { font: var(--t-sm); color: var(--ink-soft); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.callbar-count {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--in-soft);
+  color: var(--in-strong);
+  font: var(--t-micro);
+  font-weight: 700;
+}
+.callbar-count[hidden] { display: none; }
+
+.callbar-body { display: grid; gap: 8px; margin-top: 8px; }
+.callbar-body[hidden] { display: none; }
+.callbar.is-collapsed { padding-bottom: 8px; }
+body.has-callbar .callbar.is-collapsed ~ * { padding-bottom: 0; }
+
+.callbar-lines { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.callbar-lines[hidden] { display: none; }
+.callbar-lines-label { font: var(--t-sm); color: var(--ink-soft); }
+
+.callbar-calls { display: grid; gap: 6px; }
+.callbar-calls:empty { display: none; }
+
+.call {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 12px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-sm);
+  border-left: 3px solid var(--line-strong);
+}
+.call--in { border-left-color: var(--in); }
+.call--out { border-left-color: var(--out); }
+.call--missed { border-left-color: var(--missed); }
+.call.is-ringing { animation: call-ring 1.6s var(--ease) infinite; }
+.call.is-live { border-left-color: var(--answered-fill); }
+@keyframes call-ring {
+  0%, 100% { box-shadow: var(--sh-sm); }
+  50% { box-shadow: 0 0 0 4px var(--in-soft); }
+}
+@media (prefers-reduced-motion: reduce) { .call.is-ringing { animation: none; } }
+
+.call-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  background: var(--surface-tint);
+  color: var(--in-strong);
+}
+.call--out .call-icon { background: var(--out-soft); color: var(--out); }
+.call--missed .call-icon { background: var(--missed-soft); color: var(--missed); }
+.call.is-live .call-icon { background: var(--answered-soft); color: var(--answered); }
+.call-icon svg { width: 15px; height: 15px; }
+
+.call-body { min-width: 0; flex: 1 1 auto; }
+.call-peer { font: var(--t-body-md); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-meta { font: var(--t-micro); color: var(--ink-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.call-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+
+.callbar-dial { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.callbar-dial .field { flex: 1 1 240px; }
+
+.callbar-picker {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-md);
+  padding: 8px;
+  max-height: min(44vh, 360px);
+  overflow-y: auto;
+}
+.callbar-picker[hidden] { display: none; }
+.pick-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 4px 8px; }
+.pick-title { font: var(--t-h3); color: var(--ink); margin-right: auto; }
+.pick-group { padding: 8px 8px 4px; font: var(--t-label); text-transform: uppercase; letter-spacing: var(--track-label); color: var(--ink-muted); }
+.pick-empty { padding: 12px 8px; font: var(--t-sm); color: var(--ink-muted); }
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--r-md);
+  text-align: left;
+}
+.pick-row:hover { background: var(--surface-sunken); }
+.pick-body { min-width: 0; flex: 1 1 auto; display: grid; gap: 1px; }
+.pick-name { font: var(--t-body-md); color: var(--ink); display: flex; align-items: center; gap: 6px; }
+.pick-sub { font: var(--t-micro); color: var(--ink-muted); }
+.pick-action { font: var(--t-sm); font-weight: 600; color: var(--in-strong); }
+
+.callbar-note { font: var(--t-micro); color: var(--ink-muted); min-height: 12px; }
+.callbar-note:empty { display: none; }
+.callbar-note.is-ok { color: var(--answered); }
+.callbar-note.is-warn { color: var(--in-strong); }
+.callbar-note.is-error { color: var(--missed); }
+
+@media (max-width: 720px) {
+  .callbar { padding: 8px 10px 10px; }
+  .call { flex-wrap: wrap; }
+  .call-actions { width: 100%; justify-content: flex-start; }
+  .callbar-line { display: none; }
+}
+
+/* -----------------------------------------------------------------------------
+   Page agent (agent.html)
+   -------------------------------------------------------------------------- */
+
+.agent {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 22px clamp(14px, 3vw, 32px) 40px;
+  display: grid;
+  gap: var(--gap-5);
+}
+.agent-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.agent-top .brand { padding: 0; }
+.agent-top .account { margin-left: auto; }
+.agent-title { font: var(--t-h1); color: var(--ink); letter-spacing: var(--track-tight); }
+.agent-sub { font: var(--t-sm); color: var(--ink-muted); margin-top: 3px; }
+.agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--gap-4); }
+.agent-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--gap-3); }
+.agent-kpi { padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface-sunken); }
+.agent-kpi-value { font: var(--t-num-lg); color: var(--ink); letter-spacing: var(--track-tight); }
+.agent-kpi-label { margin-top: 3px; font: var(--t-label); color: var(--ink-muted); }
+.agent-kpi--in .agent-kpi-value { color: var(--in-strong); }
+.agent-kpi--out .agent-kpi-value { color: var(--out); }
+.agent-kpi--ok .agent-kpi-value { color: var(--answered); }
+.agent-list { display: grid; gap: 2px; }
+.agent-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--r-md);
+}
+.agent-row:hover { background: var(--surface-sunken); }
+.agent-row svg { width: 15px; height: 15px; color: var(--ink-muted); }
+.agent-row-main { min-width: 0; font: var(--t-body-md); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-row-sub { font: var(--t-micro); color: var(--ink-muted); }
+.agent-row-metric { font: var(--t-body-md); color: var(--ink-soft); font-variant-numeric: tabular-nums; }

@@ -26,3 +26,6 @@ tmp/
 # Editeurs
 .idea/
 *.swp
+
+# Configuration locale du navigateur integre (Claude Code) : propre au poste
+.claude/launch.json

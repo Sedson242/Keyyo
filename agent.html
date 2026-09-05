@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Ma ligne Keyyo : décrocher, appeler, transférer, et voir mon activité.">
+<meta name="robots" content="noindex, nofollow">
+<title>Ma ligne — Keyyo</title>
+
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/pages.css">
+<link rel="stylesheet" href="assets/css/callbar.css">
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="modulepreload" href="app/agent.js">
+</head>
+<body class="is-gated">
+
+<!-- Bibliotheque d'icones : copie de celle de index.html, meme jeu. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="i-base" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
+  </defs>
+  <symbol id="i-monitoring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 12h4l2.5-7 4 14L16 12h5"/>
+  </symbol>
+  <symbol id="i-calls" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>
+  </symbol>
+  <symbol id="i-missed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 3l-6 6m0-6l6 6"/>
+    <path d="M14.5 15.5l-1.6 1.6a13 13 0 0 1-6-6L8.5 9.5 6.8 5.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A17.6 17.6 0 0 0 17.6 21.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+  </symbol>
+  <symbol id="i-peers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/>
+    <circle cx="9" cy="7" r="3.4"/>
+    <path d="M22 20v-1.5a4 4 0 0 0-3-3.87M16.5 3.6a4 4 0 0 1 0 6.8"/>
+  </symbol>
+  <symbol id="i-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/>
+    <circle cx="8.5" cy="7" r="3.4"/>
+    <path d="M16.5 11.5l2 2 4-4"/>
+  </symbol>
+  <symbol id="i-lines" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+    <path d="M15 3h6v6"/>
+  </symbol>
+  <symbol id="i-diagnostics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2.5a9.5 9.5 0 1 0 9.5 9.5"/>
+    <path d="M12 12l5-5"/>
+    <circle cx="12" cy="12" r="1.6"/>
+  </symbol>
+  <symbol id="i-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 3l-7 7m0-5.5V10h5.5"/>
+    <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+  </symbol>
+  <symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 10l7-7m-5.5 0H21v5.5"/>
+    <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+  </symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
+  </symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.5 2"/>
+  </symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5"/>
+    <path d="M13.7 20a2 2 0 0 1-3.4 0"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5"/><path d="M4 20h16"/>
+  </symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M21 4v4.5h-4.5"/>
+  </symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 9.5l6 6 6-6"/>
+  </symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.5 6h17M3.5 12h17M3.5 18h17"/>
+  </symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 6l12 12M18 6L6 18"/>
+  </symbol>
+  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>
+  </symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3.5l9.5 16.5H2.5z"/><path d="M12 9.5v4.5M12 17h.01"/>
+  </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6h.01"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 12.5l5 5 10-11"/>
+  </symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M3 7l9 6 9-6"/>
+  </symbol>
+  <symbol id="i-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M8.5 15h7"/>
+  </symbol>
+</svg>
+
+
+<!-- Ecran de connexion, meme coquille que index.html (rempli par app/agent.js). -->
+<div class="gate" id="gate">
+  <div class="gate-card" role="dialog" aria-labelledby="gate-title" aria-describedby="gate-text">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
+      <div>
+        <span class="brand-name">Keyyo</span>
+        <span class="brand-sub">Ma ligne</span>
+      </div>
+    </div>
+    <h1 class="gate-title" id="gate-title">Connexion</h1>
+    <p class="gate-text" id="gate-text">Vérification de la session…</p>
+    <div class="gate-actions" id="gate-actions"></div>
+    <p class="gate-foot" id="gate-foot"></p>
+  </div>
+</div>
+
+<div class="agent" id="app" aria-hidden="true">
+  <div id="agent-root" hidden></div>
+
+  <header class="agent-top">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
+      <div>
+        <span class="brand-name">Keyyo</span>
+        <span class="brand-sub">Ma ligne</span>
+      </div>
+    </div>
+    <div>
+      <h1 class="agent-title" id="agent-hello">Bonjour</h1>
+      <p class="agent-sub">Décrochez, appelez, transférez depuis la barre en bas de page. <span id="agent-updated"></span></p>
+    </div>
+    <div class="account" id="account">
+      <span class="avatar avatar--sm" id="account-initials" aria-hidden="true">–</span>
+      <span class="account-text">
+        <span class="account-name" id="account-name">Connexion…</span>
+        <span class="account-sub" id="account-sub"></span>
+      </span>
+      <a class="btn btn--ghost btn--sm" id="link-supervision" href="/" hidden>Supervision</a>
+      <button class="btn btn--icon" id="btn-refresh" type="button" aria-label="Rafraîchir mon activité" title="Rafraîchir">
+        <svg aria-hidden="true"><use href="#i-refresh"/></svg>
+      </button>
+      <a class="btn btn--ghost btn--sm" id="btn-logout" href="/api/auth?action=logout" title="Se déconnecter">Déconnexion</a>
+    </div>
+  </header>
+
+  <div class="agent-grid">
+    <section id="agent-line" aria-label="Ma ligne"></section>
+    <section id="agent-colleagues" aria-label="Mes collègues"></section>
+  </div>
+
+  <section id="agent-activity" aria-label="Mon activité"></section>
+  <section id="agent-recent" aria-label="Derniers faits"></section>
+</div>
+
+<!-- Barre d'appel, montee par app/callbar.js -->
+<div id="callbar"></div>
+
+<!-- Messages ephemeres -->
+<div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+
+<noscript>
+  <div class="notice notice--error" style="margin:20px">
+    <svg><use href="#i-alert"/></svg>
+    <div><span class="notice-title">JavaScript est requis.</span> Cette page pilote votre ligne Keyyo dans le navigateur.</div>
+  </div>
+</noscript>
+
+<script type="module" src="app/agent.js"></script>
+</body>
+</html>

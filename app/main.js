@@ -28,6 +28,9 @@
 import * as router from './router.js';
 import * as alerts from './alerts.js';
 import * as session from './session.js';
+import * as cti from './cti.js';
+import * as callbar from './callbar.js';
+import { getProfile } from './api.js';
 import {
   state, setFilter, subscribe, load, status,
   getRows, filtered, getLines, lineByCsi, labelOf, callbackAnalysis,
@@ -949,10 +952,39 @@ export function boot() {
 
   session.resolve().then(function (s) {
     if (s.state !== 'ready') { showGate(s); return; }
-    if (!session.isDirection()) { showGate({ state: 'agent', user: s.user, message: '' }); return; }
+    if (!session.isDirection()) {
+      // Un agent a sa propre page : on l'y emmene, l'ecran ci-dessous ne
+      // servant que si la navigation echoue.
+      showGate({ state: 'agent', user: s.user, message: '' });
+      try { window.location.replace('/agent.html'); } catch (err) { /* l'ecran reste */ }
+      return;
+    }
     hideGate();
     startApp();
   });
+}
+
+/**
+ * Barre d'appel de la direction : meme ligne, memes actions que la page
+ * agent. Les noms viennent du store (annuaire + lignes), les collegues du
+ * profil. Une ligne qui ne s'ouvre pas ne bloque rien : la barre le dit.
+ */
+function startCallbar() {
+  const host = qs('#callbar');
+  if (!host) return;
+  try {
+    callbar.init({ host, labelOf, toast: alerts.toast });
+  } catch (err) {
+    console.error('[main] barre d\'appel non montee :', err);
+    return;
+  }
+  cti.start();
+  getProfile().then(function (p) {
+    if (p && Array.isArray(p.colleagues)) callbar.setColleagues(p.colleagues);
+  }).catch(function (err) {
+    console.warn('[main] profil indisponible, pas de liste de collegues :', err);
+  });
+  document.addEventListener('keyyo:unauthenticated', function () { cti.stop(); });
 }
 
 /**
@@ -993,6 +1025,7 @@ function startApp() {
   });
 
   startPoll();
+  startCallbar();
 }
 
 // Le script est charge en module : il s'execute apres l'analyse du document,

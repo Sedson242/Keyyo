@@ -12,6 +12,13 @@ Microsoft de l'organisation (Entra ID) ; les routes de données refusent toute
 requête sans session, et l'application est fermée tant que la connexion n'est
 pas configurée.
 
+**Chaque agent a sa page** (`agent.html`) : sa ligne Keyyo pilotée depuis le
+navigateur — décrocher, appeler, transférer à un collègue ou à un manager —,
+la durée de sonnerie de chaque appel, et son activité du mois (appels pris,
+émis et vers qui). Ces faits alimentent un **journal d'attribution** : c'est
+le seul moyen de savoir *qui* a pris un appel, puisqu'aucune API Keyyo ne le
+dit — trois lignes de site sont partagées par 56 terminaux.
+
 ---
 
 ## Ce que fait l'outil
@@ -53,13 +60,15 @@ exportées par chaque module. Une divergence entre ce document et le code est un
 bug à corriger.
 
 ```
-index.html          coquille : écran de connexion, menu, barre de période, sections vides
+index.html          supervision (direction) : écran de connexion, menu, barre de période, barre d'appel
+agent.html          page agent : ma ligne, mes collègues, mon activité, barre d'appel
 selftest.html       page de vérification (voir plus bas)
-app/                front — main, session, router, store, api, dom, ui, charts, format, alerts, pages/
-api/                fonctions serverless — auth, calls, team, directory, health, sync, oauth
-                    (+ _auth, _config, _keyyo, _archive, _collect)
-shared/             noyau pur partagé — phone, time, schema, cdr, identity, roles
-assets/css/         tokens, base, components, pages
+app/                front — main, agent, session, cti, callbar, journal, router, store, api, dom, ui, charts, format, alerts, pages/
+api/                fonctions serverless — auth, me, cti-token, events, calls, team, directory, health, sync, oauth
+                    (+ _auth, _journal, _config, _keyyo, _archive, _collect)
+shared/             noyau pur partagé — phone, time, schema, cdr, identity, roles, journal
+vendor/             bibliothèques tierces versionnées (Keyyo CTI, SockJS) — voir vendor/README.md
+assets/css/         tokens, base, components, pages, callbar
 tests/run.js        harnais exécuté par selftest.html
 docs/               ARCHITECTURE.md (contrat), MAPPING-IDENTITES.md
 ```
@@ -167,6 +176,10 @@ harnais — c'est le rôle de la page Diagnostic, en conditions réelles.
 | `GET /api/health` | direction | état global et liste de contrôles |
 | `GET /api/sync` | direction ou cron | déclenche une collecte, cible du cron |
 | `GET /api/oauth` | direction | mise en service : obtient un refresh token portant les bons scopes |
+| `GET /api/me` | connecté | ma ligne, mes collègues et les managers, avec un numéro chacun |
+| `POST /api/cti-token` | connecté | jeton CSI (1 h) pour piloter la ligne depuis le navigateur |
+| `POST /api/events` | connecté | écrit des faits dans le journal d'attribution, au nom de la session |
+| `GET /api/events` | connecté | relit le journal : sa partition, ou tout le mois pour la direction (`scope=all`) |
 
 Toute route de données commence par le garde `requireRole` de `api/_auth.js`,
 qui applique la politique de `shared/roles.js` : `503` tant que la connexion
@@ -196,8 +209,15 @@ complet, `?month=AAAA-MM` remplit un mois précis, `?debug=1` détaille
   valeur par défaut n'est codée en dur, et `configSummary` ne rapporte que la
   **présence** d'un secret, jamais sa valeur.
 - Une politique de sécurité de contenu stricte est posée par `vercel.json` :
-  scripts et connexions limités à l'origine du site, aucun script en ligne,
+  scripts limités à l'origine du site (la bibliothèque CTI de Keyyo est donc
+  **versionnée** dans `vendor/`), connexions limitées à l'origine et à
+  `ws.keyyo.com` (le WebSocket de la téléphonie), aucun script en ligne,
   intégration dans une iframe interdite.
+- Les écritures (`/api/events`, `/api/cti-token`) exigent un en-tête que seul
+  un script de notre origine peut poser, en plus du cookie `SameSite=Lax`.
+- Le journal d'attribution est écrit par le serveur seul, dans une partition
+  par personne nommée par empreinte, avec l'adresse de la **session** : une
+  page ne peut pas écrire au nom d'une autre.
 - Tout contenu venant de l'API — noms, numéros, messages d'erreur — traverse le
   gabarit `html` de `app/dom.js`, qui échappe. Le harnais vérifie cet échappement
   brique par brique.

@@ -501,6 +501,52 @@ export function resolveLineIdentities(input) {
 }
 
 /**
+ * Equipe de chaque ligne : les contacts d'annuaire qui portent un numero de la
+ * ligne, AVEC leurs numeros et numeros abreges. C'est la meme regle que la
+ * regle 4 de `resolveLineIdentities`, exposee a part pour les usages qui ont
+ * besoin des numeros (transferer un appel a un collegue) et pas seulement des
+ * noms.
+ *
+ * @param {VoipLine[]} voipLines
+ * @param {DirectoryContact[]} contacts
+ * @returns {Array<{csi: string, members: Array<{name: string, email: string|null, numbers: string[], speedNumbers: string[], contact: DirectoryContact}>}>}
+ */
+export function lineTeams(voipLines, contacts) {
+  /** @type {Map<string, DirectoryContact[]>} */
+  const byNumber = new Map();
+  for (const c of contacts || []) {
+    for (const n of c.numbers || []) {
+      const k = toE164(n);
+      if (!k || k === 'anonymous') continue;
+      const list = byNumber.get(k);
+      if (list) { if (list.indexOf(c) < 0) list.push(c); } else byNumber.set(k, [c]);
+    }
+  }
+  return (voipLines || []).map((line) => {
+    /** @type {DirectoryContact[]} */
+    const members = [];
+    const lineNumbers = [line.csi, line.formattedCsi, line.presentedNumber]
+      .map((n) => toE164(n)).filter((n) => n && n !== 'anonymous');
+    for (const num of lineNumbers) {
+      const hits = byNumber.get(num);
+      if (!hits || !hits.length) continue;
+      for (const c of hits) if (members.indexOf(c) < 0) members.push(c);
+      break;
+    }
+    return {
+      csi: String(line.csi),
+      members: members.map((c) => ({
+        name: nameOf(c),
+        email: isEmail(c.email) ? String(c.email).toLowerCase() : null,
+        numbers: (c.numbers || []).map((n) => toE164(n)).filter((n) => n && n !== 'anonymous'),
+        speedNumbers: (c.speedNumbers || []).map((n) => String(n || '').replace(/\D/g, '')).filter(Boolean),
+        contact: c,
+      })),
+    };
+  });
+}
+
+/**
  * Mots qui designent un service, jamais une personne. Un terminal nomme
  * « Accueil » ou « Poste 101 » ne doit pas fabriquer un collaborateur.
  */

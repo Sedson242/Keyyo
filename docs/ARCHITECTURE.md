@@ -141,8 +141,10 @@ export function nameFromEmail(email): { first, last, local }
 export function firstNameFromEmail(email): string|null
 export function nameSimilarity(a, b): number         // 0..1
 export const NAME_MATCH_THRESHOLD: number            // 0.6
-export function resolveLineIdentities(input): Array<VoipLine & {person, candidates}>
+export function resolveLineIdentities(input): Array<VoipLine & {person, candidates, team, shared}>
         // input : { voipLines, directoryContacts?, emailAccounts?, overrides? }
+export function lineTeams(voipLines, contacts): Array<{csi, members: [{name, email, numbers, speedNumbers}]}>
+        // l'équipe de chaque ligne AVEC les numéros (transfert à un collègue)
 export function lineLabel(line): string
 export function initialsOf(label): string
 export function parseLineEmails(raw): Record<string, string>
@@ -179,6 +181,34 @@ ne fait que cacher les menus.
 | `/api/calls`, `/api/team`, `/api/health`, `/api/sync`, `/api/oauth` | ✔ | — |
 | `/api/directory`, `/api/me`, `/api/cti-token`, `/api/events` | ✔ | ✔ |
 
+### `shared/journal.js` — le journal d'attribution
+```js
+export const EVENT_TYPES: string[]        // dial, answer, claim, transfer, hangup, observed
+export const JOURNAL_VERSION: number       // 1
+export const DIR_IN, DIR_OUT: string
+export function eventId(e): string         // stable : observed:<csi>:<callref>, <type>:<email>:<csi>:<callref>
+export function normalizeEvent(raw, ctx): object|null   // ctx : { email, now? } — l'adresse vient du contexte, JAMAIS du brut
+export function isValidEvent(e): boolean
+export function mergeEvents(...lists): any[]           // dédoublonne par id, premier vu gagne, ordre chronologique
+export function monthOf(unix): string                  // 'AAAA-MM' en UTC : la partition
+export function summarize(events, opts?): { agents[], calls, period }   // opts : { email? }
+```
+
+**Le seul endroit où un appel est relié à une personne.** Aucune API Keyyo ne
+dit qui a pris un appel ; la seule source est notre application, parce que
+l'action y passe par une interface où la personne est authentifiée. Un
+événement est un **fait** immuable : `dial` (a composé), `answer` (a décroché
+depuis l'application), `claim` (déclare avoir pris l'appel au téléphone),
+`transfer`, `hangup`, et `observed` (son navigateur a vu un appel de la ligne
+se terminer, avec la **durée de sonnerie** mesurée par le CTI — plusieurs
+navigateurs le rapportent, `mergeEvents` n'en garde qu'un).
+
+`summarize` rend, à côté des comptes par personne (`taken` = `answer` +
+`claim` sans double compte, `dialed`, `transferred`, sonnerie moyenne,
+destinataires), ce que le journal **ne sait pas** : `calls.unattributed`, les
+appels décrochés par on ne sait qui. Une statistique partielle ne doit jamais
+avoir l'air complète.
+
 ---
 
 ## 4. `api/` — fonctions serverless
@@ -197,6 +227,9 @@ export function readParams(req): Record<string, string>
 export function flag(raw): boolean                    // `?force` sans valeur = actif
 export function sendJson(res, status, body, cacheControl?): void
 export function rejectNonGet(req, res, route): boolean
+export function rejectNonPost(req, res, route): boolean
+export function rejectCrossSite(req, res): boolean    // exige X-Requested-With: keyyo + corps JSON
+export async function readJsonBody(req, opts?): Promise<any>   // borné (256 Ko par défaut)
 export function errorMessage(err): string             // borné à 500 caractères
 ```
 `Config` : `{ base, tokenUrl, clientId, clientSecret, refreshToken, staticToken,
@@ -249,12 +282,29 @@ si la connexion n'est pas configurée (l'application est fermée, pas en panne),
 `Vary: Cookie` sur les succès. `/api/sync` accepte en plus le porteur
 `CRON_SECRET` du cron Vercel.
 
+### `api/_journal.js` — stockage du journal sur Vercel Blob
+```js
+export const JOURNAL_ROOT: string                     // 'keyyo/journal/'
+export function journalEnabled(): boolean             // = archiveEnabled()
+export function userKey(email): string                // empreinte SHA-256 courte, jamais l'adresse
+export function partitionPath(month, key): string     // keyyo/journal/<AAAA-MM>/<clé>.json
+export async function appendEvents(email, month, events): Promise<{written, total, added}>
+export async function readUserMonth(email, month): Promise<any[]>
+export async function readMonth(month): Promise<{events, partitions}>
+```
+**Une partition par personne et par mois, un seul écrivain** (la personne, via
+ses propres requêtes) : pas de course entre fonctions serverless. Lecture pour
+la direction : lister le préfixe du mois, charger les partitions en parallèle.
+
 ### `api/_keyyo.js`
 ```js
 export async function getAccessToken(cfg): Promise<string>     // OAuth2 refresh_token, cache mémoire
 export async function keyyoGet(cfg, token, path, params?, opts?): Promise<any>
 export async function keyyoGetAll(cfg, token, path, params?, opts?): Promise<any[]>
                                      // suit _links.next puis limit/offset
+export async function keyyoPost(cfg, token, path, body?, opts?): Promise<any>   // SANS reprise
+export async function mintCsiToken(cfg, token, csi, opts?): Promise<{token, expiresAt, domainMasks}>
+                                     // POST /services/:csi/csi_token — scope cti_admin, 1 h
 export async function fetchServices(cfg, token, type?, opts?): Promise<any[]>
 export async function fetchVoipLines(cfg, token, opts?): Promise<VoipLine[]>
 export async function fetchEmailAccounts(cfg, token, opts?): Promise<EmailAccount[]>
@@ -299,6 +349,26 @@ export async function collect(opts): Promise<CollectResult>
 | `GET /api/health` | direction | `{ status: 'ok'\|'empty'\|'error', calls, period, lines, checks[], elapsedMs }` |
 | `GET /api/sync` | direction ou cron | `{ ok, at, store, period, warnings }` — cible du cron |
 | `GET /api/oauth` | direction, si `KEYYO_OAUTH_SETUP=1` | page HTML : refresh token Keyyo avec `cti_admin` |
+| `GET /api/me` | connecté | `{ user, line, lines[], colleagues[], managers[], journal, warnings }` — ma ligne, mes collègues avec un numéro chacun |
+| `POST /api/cti-token` | connecté | `{ csi, number, token, expiresAt, line, lines[] }` — jeton CSI (1 h) ; `409` + `lines` si aucune ligne rattachée |
+| `POST /api/events` | connecté | `{ accepted, rejected, byMonth }` — écrit dans la partition de la session |
+| `GET /api/events` | connecté (`scope=all` : direction) | `{ month, scope, events[], partitions, summary }` |
+
+Les écritures (`POST`) exigent l'en-tête `X-Requested-With: keyyo` et un
+corps JSON (`rejectCrossSite`), en plus du cookie `SameSite=Lax`.
+
+### Téléphonie — `api/cti-token.js`
+
+Le navigateur pilote la ligne par l'API CTI de Keyyo, qui s'ouvre avec un
+**jeton CSI** : lié à une ligne, valable une heure, frappé par une écriture
+Manager (`cti_admin`) avec les identifiants du compte — qui restent donc côté
+serveur. La ligne servie est celle dont l'annuaire Keyyo rattache l'adresse de
+la personne (`lineTeams`) ; `csi` dans le corps force une autre ligne du
+compte ; sans ligne rattachée ni demandée, `409` avec la liste pour que la
+page fasse choisir.
+
+Le domaine du site doit être déclaré sur l'application Keyyo : le jeton porte
+des `domain_masks`.
 
 ### Connexion — `api/auth.js`
 
@@ -457,9 +527,15 @@ export async function getTeam(): Promise<any>
 export async function getDirectory(): Promise<any>
 export async function getHealth(): Promise<any>
 export async function getMe(): Promise<any>        // /api/auth?action=me, jamais mis en cache
+export async function getProfile(opts?): Promise<any>        // /api/me
+export async function postCtiToken(opts?): Promise<any>      // { csi? }
+export async function postEvents(events, opts?): Promise<any> // { keepalive? }
+export async function getEvents(opts?): Promise<any>         // { month?, scope? }
 export async function postSync(opts?): Promise<any>
 export class ApiError extends Error { status; body }
 ```
+Une écriture (`body`) part en JSON avec `X-Requested-With: keyyo` ; les
+écritures ne sont jamais fusionnées entre elles.
 Un `401` reçu sur n'importe quelle route (sauf `getMe`) émet
 `document.dispatchEvent(new CustomEvent('keyyo:unauthenticated'))` : la
 coquille remet l'écran de connexion.
@@ -478,6 +554,59 @@ export function forget(): void
 `SessionState` : `{ state: 'ready'|'anonymous'|'unconfigured'|'error', user, message }`
 avec `user` : `{ email, name, role, roleLabel, expiresAt }`. Le navigateur ne
 détient aucun jeton ; le rôle n'est ici qu'un confort d'affichage.
+
+### `app/cti.js` — pilotage de la ligne
+```js
+export function subscribe(fn): () => void
+export function snapshot(): { status, message, line, lines, number, connected, calls[], active }
+export async function start(opts?): Promise<void>  // { csi? } — jeton CSI, bibliothèque, session
+export function stop(): void
+export function chooseLine(csi): Promise<void>
+export async function dial(number): Promise<void>
+export async function answer(callref): Promise<void>
+export async function hangup(callref): Promise<void>
+export async function transfer(callref, number, opts?): Promise<void>   // { supervised? }
+export function claim(callref): void               // « c'est moi qui ai répondu »
+```
+`status` ∈ `idle` \| `loading` \| `connecting` \| `connected` \| `disconnected`
+\| `error` \| `needs-line`. Chaque appel de `calls[]` porte `dir`, `peer`,
+`state` (`SETUP` \| `CONNECT` \| `RELEASE` \| `MISSED`), `ring`, `duration`,
+`answered`, `mine`, `claimed`. Chaque action réussie **écrit un fait** dans le
+journal ; chaque fin d'appel de la ligne écrit un `observed`. Le jeton est
+renouvelé cinq minutes avant expiration ; une coupure restaure la session.
+
+La bibliothèque Keyyo CTI est **versionnée** (`vendor/keyyo-cti-1.1.js`, voir
+`vendor/README.md`) et chargée à la demande depuis notre origine ; la CSP
+n'ouvre `connect-src` qu'à `ws.keyyo.com`.
+
+### `app/journal.js` — file d'envoi
+```js
+export function subscribe(fn): () => void
+export function record(event): void                // part au prochain envoi
+export async function flush(opts?): Promise<void>  // { final? } — keepalive à la fermeture
+export function status(): { pending, enabled, lastError, dropped, sent, lastSentAt }
+export function month(opts?): Promise<any>         // relecture ({ month?, scope? })
+export function init(): void                       // pagehide / visibilitychange
+```
+
+### `app/callbar.js` — la barre d'appel
+```js
+export function init(opts): void                   // { host, labelOf?, colleagues?, toast? }
+export function setColleagues(list): void
+export function setLabelOf(fn): void
+```
+Bande fixe en bas de page (`assets/css/callbar.css`) : état de la ligne,
+appels en cours avec sonnerie puis durée, appels terminés récents, champ
+d'appel, choix de collègues et de managers pour appeler ou transférer. Ne
+calcule rien : repeint l'instantané de `app/cti.js`.
+
+### `app/agent.js` — la page agent (`agent.html`)
+```js
+export function boot(): void                       // ne s'amorce que si #agent-root est présent
+```
+Ma ligne (`/api/me`), mes collègues, mon activité du mois (`/api/events`,
+`scope=me`) : appels pris, émis et vers qui, transferts, sonnerie moyenne, et
+les derniers faits. Un agent connecté sur `index.html` y est redirigé.
 
 ### `app/router.js`
 ```js

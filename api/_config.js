@@ -287,6 +287,79 @@ export function rejectNonGet(req, res, route) {
 }
 
 /**
+ * Rejette toute methode autre que POST. Pendant de `rejectNonGet` pour les
+ * routes qui ECRIVENT (journal, jeton CSI) : un GET n'y a rien a faire, et un
+ * lien ou une image ne doit pas pouvoir les declencher.
+ * @param {any} req
+ * @param {any} res
+ * @param {string} route
+ * @returns {boolean}
+ */
+export function rejectNonPost(req, res, route) {
+  const m = String((req && req.method) || 'GET').toUpperCase();
+  if (m === 'POST') return false;
+  res.setHeader('Allow', 'POST');
+  sendJson(res, 405, {
+    error: 'Methode ' + m + ' non autorisee',
+    hint: 'Cette route ecrit : utiliser POST ' + route + '.',
+  }, 'no-store');
+  return true;
+}
+
+/**
+ * Garde anti-CSRF des routes qui ecrivent. Le cookie de session est en
+ * SameSite=Lax, ce qui exclut deja les envois de formulaire depuis un autre
+ * site ; on exige EN PLUS un en-tete que seul un script de notre origine peut
+ * poser (`X-Requested-With`), et un corps JSON. Une page tierce ne peut faire
+ * ni l'un ni l'autre sans CORS, que nous n'ouvrons pas.
+ * @param {any} req
+ * @param {any} res
+ * @returns {boolean} vrai si la reponse a deja ete ecrite (requete refusee).
+ */
+export function rejectCrossSite(req, res) {
+  const h = (req && req.headers) || {};
+  const marker = String(h['x-requested-with'] || '').toLowerCase();
+  const type = String(h['content-type'] || '').toLowerCase();
+  if (marker === 'keyyo' && type.indexOf('application/json') === 0) return false;
+  sendJson(res, 403, {
+    error: 'Requete refusee',
+    hint: 'Les ecritures exigent l\'en-tete « X-Requested-With: keyyo » et un corps JSON.',
+  }, 'no-store');
+  return true;
+}
+
+/**
+ * Lit et analyse un corps JSON. Sur Vercel, `req.body` est deja analyse quand
+ * l'en-tete Content-Type est JSON ; sinon on lit le flux. Borne en taille :
+ * un journal ne s'envoie pas par megaoctets.
+ * @param {any} req
+ * @param {{limit?: number}} [opts]
+ * @returns {Promise<any>} objet, ou `null` si vide/illisible.
+ */
+export async function readJsonBody(req, opts) {
+  const limit = Math.max(1024, Number(opts && opts.limit) || 256 * 1024);
+  if (req && req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'object') return req.body;
+    if (typeof req.body === 'string') {
+      try { return req.body.length <= limit ? JSON.parse(req.body) : null; } catch { return null; }
+    }
+  }
+  if (!req || typeof req.on !== 'function') return null;
+  const text = await new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size <= limit) chunks.push(chunk);
+    });
+    req.on('end', () => resolve(size <= limit ? Buffer.concat(chunks).toString('utf8') : ''));
+    req.on('error', () => resolve(''));
+  });
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+/**
  * Message d'erreur exploitable, borne en longueur pour ne pas noyer la reponse.
  * @param {unknown} err
  * @returns {string}

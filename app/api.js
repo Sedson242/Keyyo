@@ -126,9 +126,16 @@ function describeHttpError(status, body, url) {
 
 /**
  * Execute reellement la requete : timeout, analyse JSON, erreur explicite.
+ *
+ * Une ECRITURE (`opts.body`) part en JSON avec l'en-tete `X-Requested-With:
+ * keyyo` : c'est ce que le serveur exige pour distinguer un script de notre
+ * origine d'un formulaire poste depuis un autre site (voir api/_config.js
+ * #rejectCrossSite). `keepalive` laisse la requete partir pendant que la page
+ * se ferme — utile pour vider le journal d'attribution.
+ *
  * @param {string} method
  * @param {string} url
- * @param {{timeoutMs?: number, noCache?: boolean}} opts
+ * @param {{timeoutMs?: number, noCache?: boolean, body?: any, keepalive?: boolean}} opts
  * @returns {Promise<any>}
  */
 async function execute(method, url, opts) {
@@ -154,16 +161,27 @@ async function execute(method, url, opts) {
     /** @type {Response} */
     let res;
     try {
-      res = await fetch(url, {
+      /** @type {Record<string, string>} */
+      const headers = { Accept: 'application/json' };
+      /** @type {RequestInit} */
+      const init = {
         method,
-        headers: { Accept: 'application/json' },
+        headers,
         credentials: 'same-origin',
         // Seul un rafraichissement force ignore le cache HTTP : le reste du temps,
         // laisser le navigateur reutiliser la reponse du CDN est exactement ce
         // qu'on veut d'un tableau de bord sonde toutes les minutes.
         cache: opts.noCache ? 'no-store' : 'default',
         signal: controller.signal,
-      });
+      };
+      if (opts.body !== undefined) {
+        headers['Content-Type'] = 'application/json';
+        headers['X-Requested-With'] = 'keyyo';
+        init.body = JSON.stringify(opts.body);
+        init.cache = 'no-store';
+      }
+      if (opts.keepalive) init.keepalive = true;
+      res = await fetch(url, init);
     } catch (err) {
       if (isAbort(err)) throw timeoutError(err);
       throw new ApiError(
@@ -242,6 +260,10 @@ function request(path, opts) {
   const method = (o.method || 'GET').toUpperCase();
   const url = buildUrl(path, o.params);
   const key = method + ' ' + url;
+
+  // Deux ecritures vers la meme URL ne sont pas la meme requete : on ne les
+  // fusionne jamais. Seules les lectures se partagent.
+  if (method !== 'GET') return execute(method, url, o);
 
   const pending = inflight.get(key);
   if (pending) return pending;
@@ -362,6 +384,64 @@ export async function getHealth(opts) {
  */
 export async function getMe() {
   return request('/auth', { params: { action: 'me' }, noCache: true, timeoutMs: 15000 });
+}
+
+/**
+ * Profil de travail de la personne connectee : sa ligne, ses collegues et les
+ * managers avec un numero pour chacun.
+ * @param {{force?: boolean, timeoutMs?: number}} [opts]
+ * @returns {Promise<any>} `{ user, line, lines, colleagues, managers, journal, warnings }`
+ */
+export async function getProfile(opts) {
+  const o = opts || {};
+  return request('/me', { noCache: !!o.force, timeoutMs: o.timeoutMs });
+}
+
+/**
+ * Frappe un jeton CSI pour ouvrir une session CTI sur une ligne. ECRITURE :
+ * chaque appel consomme une frappe cote Keyyo, on ne l'appelle qu'a
+ * l'ouverture et avant l'expiration.
+ * @param {{csi?: string, timeoutMs?: number}} [opts] `csi` force une ligne.
+ * @returns {Promise<any>} `{ csi, number, token, expiresAt, line, lines }`
+ *          409 (ApiError) avec `body.lines` quand aucune ligne n'est rattachee.
+ */
+export async function postCtiToken(opts) {
+  const o = opts || {};
+  return request('/cti-token', {
+    method: 'POST',
+    body: o.csi ? { csi: String(o.csi) } : {},
+    timeoutMs: o.timeoutMs,
+  });
+}
+
+/**
+ * Envoie des evenements au journal d'attribution.
+ * @param {any[]} events
+ * @param {{keepalive?: boolean, timeoutMs?: number}} [opts]
+ * @returns {Promise<any>} `{ accepted, rejected, byMonth }`
+ */
+export async function postEvents(events, opts) {
+  const o = opts || {};
+  return request('/events', {
+    method: 'POST',
+    body: { events: Array.isArray(events) ? events : [] },
+    keepalive: !!o.keepalive,
+    timeoutMs: o.timeoutMs,
+  });
+}
+
+/**
+ * Relit le journal d'attribution d'un mois.
+ * @param {{month?: string, scope?: 'me'|'all', timeoutMs?: number}} [opts]
+ * @returns {Promise<any>} `{ month, scope, events, partitions, summary }`
+ */
+export async function getEvents(opts) {
+  const o = opts || {};
+  /** @type {Record<string, unknown>} */
+  const params = {};
+  if (o.month) params.month = monthParam(o.month);
+  if (o.scope === 'all') params.scope = 'all';
+  return request('/events', { params, noCache: true, timeoutMs: o.timeoutMs });
 }
 
 /**

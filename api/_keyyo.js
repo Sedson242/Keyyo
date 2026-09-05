@@ -379,6 +379,132 @@ export async function keyyoGet(cfg, token, path, params, opts) {
 }
 
 /**
+ * POST sur un chemin de l'API, SANS reprise : une ecriture rejouee pourrait
+ * produire deux effets. Meme lecture d'erreur que `requestJson`.
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token
+ * @param {string} path
+ * @param {Record<string, any>|null} [body]  encode en formulaire, ou vide.
+ * @param {{timeoutMs?: number, deadline?: number}} [opts]
+ * @returns {Promise<any>}
+ */
+export async function keyyoPost(cfg, token, path, body, opts) {
+  const o = opts || {};
+  const url = buildUrl(cfg, path, null);
+  const deadline = Number(o.deadline) || 0;
+  const remaining = deadline ? deadline - Date.now() : Number.POSITIVE_INFINITY;
+  if (remaining <= DEADLINE_MARGIN_MS) throw budgetError('appel ' + shortUrl(url) + ' non lance');
+  const timeoutMs = Math.max(1000, Math.min(Number(o.timeoutMs) || DEFAULT_TIMEOUT_MS, remaining - DEADLINE_MARGIN_MS));
+
+  const form = new URLSearchParams();
+  for (const k of Object.keys(body || {})) {
+    const v = /** @type {any} */ (body)[k];
+    if (v != null && v !== '') form.set(k, String(v));
+  }
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res = null;
+  let text = '';
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+      signal: ctrl.signal,
+    });
+    text = await res.text();
+  } catch (err) {
+    const aborted = err && /** @type {any} */ (err).name === 'AbortError';
+    throw enrich(
+      new Error('Appel Keyyo POST ' + shortUrl(url) + ' impossible : '
+        + (aborted ? 'delai de ' + timeoutMs + ' ms depasse' : shortText(err)) + '.'),
+      0, '', 'Reseau ou delai : verifier la disponibilite de api.keyyo.com.',
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const statusReason = headerOf(res, 'x-status-reason');
+  if (res.ok) {
+    if (!text) return {};
+    try { return JSON.parse(text); } catch (err) {
+      throw enrich(new Error('Reponse Keyyo illisible sur POST ' + shortUrl(url) + ' : JSON invalide.'),
+        res.status, statusReason, 'Reponse recue : ' + shortText(text));
+    }
+  }
+  throw enrich(
+    new Error('Keyyo a repondu ' + res.status + ' sur POST ' + shortUrl(url)
+      + (statusReason ? ' (' + statusReason + ')' : '') + (text ? ' — ' + shortText(text) : '')),
+    res.status, statusReason,
+    res.status === 403 || res.status === 401
+      ? "Le jeton Keyyo ne porte pas le scope cti_admin : refaire l'autorisation via /api/oauth (voir .env.example, section 7)."
+      : hintForStatus(res.status),
+  );
+}
+
+/**
+ * Frappe un jeton CSI, la cle d'une session CTI sur une ligne. Ecriture,
+ * scope `cti_admin`, duree de vie annoncee d'une heure.
+ *
+ * Type documente `CSIToken` : `result` (« success », sinon echec), `token`,
+ * `domain_masks` (domaines autorises a utiliser le jeton — le domaine du site
+ * doit etre declare sur l'application Keyyo), `timestamp` (expiration, Unix
+ * secondes). La reponse peut arriver nue ou enveloppee en HAL sous
+ * `_embedded.CSIToken[0]` : les deux formes sont lues. En cas d'echec, les
+ * cles recues sont citees pour que le diagnostic soit immediat.
+ *
+ * @param {import('./_config.js').Config} cfg
+ * @param {string} token   jeton d'acces Keyyo (Manager).
+ * @param {string} csi     ligne.
+ * @param {{deadline?: number}} [opts]
+ * @returns {Promise<{token: string, expiresAt: number, domainMasks: string[], keys: string[]}>}
+ */
+export async function mintCsiToken(cfg, token, csi, opts) {
+  const id = str(csi);
+  if (!id) throw new Error('mintCsiToken : CSI manquant.');
+  const payload = await keyyoPost(cfg, token, '/services/' + encodeURIComponent(id) + '/csi_token', null, opts);
+
+  /** @type {any} */
+  let obj = payload && typeof payload === 'object' ? payload : {};
+  const embedded = obj._embedded && typeof obj._embedded === 'object' ? obj._embedded : null;
+  if (embedded) {
+    for (const k of Object.keys(embedded)) {
+      const v = embedded[k];
+      const first = Array.isArray(v) ? v[0] : v;
+      if (first && typeof first === 'object') { obj = first; break; }
+    }
+  }
+  const result = str(obj.result).toLowerCase();
+  if (result && result !== 'success') {
+    throw new Error('Keyyo n\'a pas pu generer de jeton CSI pour la ligne ' + id + ' (result = ' + result + ').');
+  }
+  const candidates = [obj.token, obj.csi_token, obj.access_token];
+  let found = '';
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) { found = c.trim(); break; }
+  }
+  if (!found) {
+    throw new Error('Keyyo a repondu sans jeton CSI reconnaissable. Cles recues : '
+      + Object.keys(obj).join(', ') + '.');
+  }
+  const stamp = Number(obj.timestamp);
+  const expiresAt = Number.isFinite(stamp) && stamp > 1e9
+    ? (stamp > 1e11 ? stamp : stamp * 1000)
+    : Date.now() + 3600 * 1000;
+  return {
+    token: found,
+    expiresAt,
+    domainMasks: Array.isArray(obj.domain_masks) ? obj.domain_masks.map((d) => str(d)).filter(Boolean) : [],
+    keys: Object.keys(obj),
+  };
+}
+
+/**
  * GET pagine : suit `_links.next.href` tant qu'il existe, sinon avance par
  * `limit`/`offset`. Plafonne par `cfg.maxPages` — une pagination cassee cote
  * API ne doit pas boucler indefiniment dans une fonction serverless.

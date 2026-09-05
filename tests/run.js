@@ -156,15 +156,21 @@ const CONTRACT = [
   ['../shared/time.js', ['DEFAULT_TZ', 'safeTz', 'parseTimestamp', 'isPlausibleDate', 'localParts', 'toKeyyoDate', 'isoDaysAgo', 'todayIso', 'monthSlices', 'nextDay', 'daysBetween']],
   ['../shared/schema.js', ['SCHEMA_VERSION', 'FIELDS', 'F', 'ROW_LENGTH', 'isMissed', 'isIncoming', 'isOutgoing', 'rowKey', 'toObject', 'fromObject', 'isValidRow']],
   ['../shared/cdr.js', ['normalizeCdr', 'extractRecords', 'nextLink']],
-  ['../shared/identity.js', ['capitalizeName', 'normalizeName', 'nameTokens', 'isEmail', 'nameFromEmail', 'firstNameFromEmail', 'nameSimilarity', 'NAME_MATCH_THRESHOLD', 'resolveLineIdentities', 'lineLabel', 'initialsOf', 'parseLineEmails', 'isPhoneCsi', 'formatCsi']],
+  ['../shared/identity.js', ['capitalizeName', 'normalizeName', 'nameTokens', 'isEmail', 'nameFromEmail', 'firstNameFromEmail', 'nameSimilarity', 'NAME_MATCH_THRESHOLD', 'resolveLineIdentities', 'lineTeams', 'lineLabel', 'initialsOf', 'parseLineEmails', 'isPhoneCsi', 'formatCsi']],
   ['../shared/roles.js', ['ROLE_DIRECTION', 'ROLE_AGENT', 'ROLES', 'POLICY', 'parseEmailList', 'roleFromClaims', 'allowedRoles', 'canAccess', 'isDirection', 'roleLabel']],
+  ['../shared/journal.js', ['EVENT_TYPES', 'JOURNAL_VERSION', 'DIR_IN', 'DIR_OUT', 'eventId', 'normalizeEvent', 'isValidEvent', 'mergeEvents', 'monthOf', 'summarize']],
 
   ['../app/format.js', ['fmtInt', 'fmtPct', 'fmtDuration', 'fmtDurationShort', 'fmtHms', 'fmtDate', 'fmtDateLong', 'fmtDayShort', 'fmtTime', 'fmtMonth', 'fmtClock', 'fmtRelative', 'WEEKDAYS', 'pluralize']],
   ['../app/dom.js', ['esc', 'h', 'html', 'raw', 'mount', 'qs', 'qsa', 'on', 'icon']],
   ['../app/charts.js', ['barChart', 'areaChart', 'donutChart', 'heatmap', 'sparkline', 'attachChartTips']],
   ['../app/ui.js', ['card', 'sectionHead', 'kpi', 'statbar', 'table', 'tag', 'avatar', 'avatarStack', 'meter', 'split', 'rankRow', 'empty', 'notice', 'skeleton', 'toolbar']],
-  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'postSync', 'ApiError']],
+  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'postSync', 'ApiError']],
   ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'roleLabel', 'loginUrl', 'forget']],
+  ['../app/journal.js', ['subscribe', 'record', 'flush', 'status', 'month', 'init']],
+  ['../app/cti.js', ['subscribe', 'snapshot', 'start', 'stop', 'chooseLine', 'dial', 'answer', 'hangup', 'transfer', 'claim']],
+  ['../app/callbar.js', ['init', 'setColleagues', 'setLabelOf']],
+  // agent.js ne s'amorce que si #agent-root est present : importable ici.
+  ['../app/agent.js', ['boot']],
   ['../app/store.js', ['state', 'setFilter', 'subscribe', 'getRows', 'filtered', 'getLines', 'lineByCsi', 'nameOf', 'labelOf', 'stats', 'byDay', 'byMonth', 'byHour', 'byWeekday', 'heatMatrix', 'byLine', 'byPeer', 'callbackAnalysis', 'trend', 'load', 'status']],
   ['../app/router.js', ['ROUTES', 'start', 'go', 'current']],
   ['../app/alerts.js', ['init', 'check', 'toast', 'renderCenter', 'unreadCount', 'markAllRead']],
@@ -218,7 +224,9 @@ const schema = NS['../shared/schema.js'];
 const cdr = NS['../shared/cdr.js'];
 const identity = NS['../shared/identity.js'];
 const roles = NS['../shared/roles.js'];
+const journalMod = NS['../shared/journal.js'];
 const sessionMod = NS['../app/session.js'];
+const ctiMod = NS['../app/cti.js'];
 const format = NS['../app/format.js'];
 const dom = NS['../app/dom.js'];
 const charts = NS['../app/charts.js'];
@@ -978,6 +986,121 @@ if (need(roles, 'shared/roles.js', 'shared/roles.js')) suite('shared/roles.js', 
 });
 
 // -----------------------------------------------------------------------------
+//  6 bis-2. shared/journal.js — le journal d'attribution
+// -----------------------------------------------------------------------------
+
+if (need(journalMod, 'shared/journal.js', 'shared/journal.js')) suite('shared/journal.js', () => {
+  const { normalizeEvent, eventId, isValidEvent, mergeEvents, monthOf, summarize, EVENT_TYPES } = journalMod;
+  const NOW = 1_800_000_000;   // 2027-01-15, secondes
+  const ctx = { email: 'Agent@Bios.fr', now: NOW };
+
+  test('l’adresse vient TOUJOURS du contexte, jamais de l’evenement', () => {
+    const e = normalizeEvent({ type: 'dial', to: '06 12 34 56 78', email: 'autre@bios.fr', csi: '33253359565' }, ctx);
+    ok(e, 'evenement accepte');
+    eq(e.email, 'agent@bios.fr');
+    eq(e.to, '0612345678');
+    eq(e.ts, NOW, 'sans ts : maintenant');
+    eq(e.dir, '', 'sens absent -> vide');
+  });
+
+  test('les types inconnus et les faits incomplets sont rejetes', () => {
+    eq(normalizeEvent({ type: 'peek', callref: 'x' }, ctx), null);
+    eq(normalizeEvent({ type: 'observed', csi: '33253359565' }, ctx), null, 'observe sans callref');
+    eq(normalizeEvent({ type: 'answer' }, ctx), null, 'answer sans callref');
+    eq(normalizeEvent({ type: 'dial' }, ctx), null, 'dial sans numero');
+    eq(normalizeEvent({ type: 'dial', to: '0612345678' }, { email: '', now: NOW }), null, 'sans adresse');
+    eq(normalizeEvent(null, ctx), null);
+    eq(EVENT_TYPES.length, 6);
+  });
+
+  test('un horodatage aberrant est ramene a maintenant, un horodatage en ms est converti', () => {
+    const far = normalizeEvent({ type: 'dial', to: '0612345678', ts: 100 }, ctx);
+    eq(far.ts, NOW);
+    const ms = normalizeEvent({ type: 'dial', to: '0612345678', ts: (NOW - 60) * 1000 }, ctx);
+    eq(ms.ts, NOW - 60);
+  });
+
+  test('l’identifiant est stable : deux navigateurs qui observent le meme appel produisent le meme', () => {
+    const a = normalizeEvent({ type: 'observed', csi: '33253359565', callref: 'c1', dir: 'in', peer: '+33612345678', ring: 12, answered: true }, ctx);
+    const b = normalizeEvent({ type: 'observed', csi: '33253359565', callref: 'c1', dir: 'in', peer: '+33612345678', ring: 12, answered: true }, { email: 'collegue@bios.fr', now: NOW });
+    eq(a.id, b.id);
+    eq(eventId(a), 'observed:33253359565:c1');
+    const x = normalizeEvent({ type: 'answer', csi: '33253359565', callref: 'c1' }, ctx);
+    const y = normalizeEvent({ type: 'answer', csi: '33253359565', callref: 'c1' }, { email: 'collegue@bios.fr', now: NOW });
+    ok(x.id !== y.id, 'une action est nominative : un identifiant par personne');
+  });
+
+  test('mergeEvents deduplique par identifiant, premier vu gagne, ordre chronologique', () => {
+    const a = normalizeEvent({ type: 'observed', csi: '1', callref: 'c1', ts: NOW - 10, ring: 5 }, ctx);
+    const a2 = normalizeEvent({ type: 'observed', csi: '1', callref: 'c1', ts: NOW - 10, ring: 99 }, ctx);
+    const b = normalizeEvent({ type: 'dial', to: '0612345678', ts: NOW - 20 }, ctx);
+    const merged = mergeEvents([a], [a2, b]);
+    eq(merged.length, 2);
+    eq(merged[0].type, 'dial', 'le plus ancien d’abord');
+    eq(merged[1].ring, 5, 'la premiere version est conservee');
+    eqDeep(mergeEvents([{ type: 'dial' }], null), [], 'les invalides sont ecartes');
+    ok(isValidEvent(a) && !isValidEvent({ type: 'dial' }));
+  });
+
+  test('monthOf partitionne en UTC', () => {
+    eq(monthOf(NOW), '2027-01');
+    eq(monthOf(1_700_000_000), '2023-11');
+  });
+
+  test('summarize compte par personne et dit ce qu’il ne sait pas', () => {
+    const me = 'agent@bios.fr';
+    const other = 'collegue@bios.fr';
+    const ev = [
+      // Appel c1 : entrant, decroche par moi depuis l'application apres 8 s.
+      normalizeEvent({ type: 'observed', csi: '1', callref: 'c1', dir: 'in', peer: '+33611111111', ring: 8, duration: 120, answered: true, ts: NOW - 500 }, { email: other, now: NOW }),
+      normalizeEvent({ type: 'answer', csi: '1', callref: 'c1', dir: 'in', peer: '+33611111111', ring: 8, ts: NOW - 490 }, { email: me, now: NOW }),
+      // Meme appel declare pris ensuite : ne compte qu'une fois.
+      normalizeEvent({ type: 'claim', csi: '1', callref: 'c1', dir: 'in', peer: '+33611111111', ring: 8, duration: 120, answered: true, ts: NOW - 300 }, { email: me, now: NOW }),
+      // Appel c2 : entrant decroche par quelqu'un, personne ne l'a declare.
+      normalizeEvent({ type: 'observed', csi: '1', callref: 'c2', dir: 'in', peer: '+33622222222', ring: 20, duration: 30, answered: true, ts: NOW - 400 }, { email: me, now: NOW }),
+      // Appel c3 : manque apres 25 s.
+      normalizeEvent({ type: 'observed', csi: '1', callref: 'c3', dir: 'in', peer: '+33633333333', ring: 25, duration: 0, answered: false, ts: NOW - 200 }, { email: me, now: NOW }),
+      // Deux appels emis par moi, un par un collegue.
+      normalizeEvent({ type: 'dial', to: '0644444444', ts: NOW - 150 }, { email: me, now: NOW }),
+      normalizeEvent({ type: 'dial', to: '0644444444', ts: NOW - 140 }, { email: me, now: NOW }),
+      normalizeEvent({ type: 'dial', to: '0655555555', ts: NOW - 130 }, { email: other, now: NOW }),
+      // Un transfert est une action nominative : il porte sur c1, deja attribue.
+      normalizeEvent({ type: 'transfer', csi: '1', callref: 'c1', to: '4012', ts: NOW - 100 }, { email: other, now: NOW }),
+    ];
+    const s = summarize(ev);
+    eq(s.agents.length, 2);
+    const mine = s.agents.find((a) => a.email === me);
+    eq(mine.taken, 1, 'answer + claim du meme appel = 1 pris');
+    eq(mine.answered, 1);
+    eq(mine.claimed, 1);
+    eq(mine.dialed, 2);
+    eq(mine.ringCount, 1);
+    eq(mine.ringTotal, 8);
+    eq(mine.talkTotal, 120, 'la duree vient de l’observation');
+    eqDeep(mine.callees, [{ to: '0644444444', count: 2 }]);
+    const his = s.agents.find((a) => a.email === other);
+    eq(his.transferred, 1);
+    eq(his.dialed, 1);
+
+    eq(s.calls.observed, 3);
+    eq(s.calls.answered, 2);
+    eq(s.calls.missed, 1);
+    eq(s.calls.attributed, 1, 'c1 a une action nominative');
+    eq(s.calls.unattributed, 1, 'c2 a ete decroche par on ne sait qui — et c’est dit');
+    eq(s.calls.ringAnsweredTotal, 28);
+    eq(s.calls.ringAnsweredCount, 2);
+    eq(s.calls.ringMissedTotal, 25);
+    eq(s.period.min, NOW - 500);
+    eq(s.period.max, NOW - 100);
+
+    const only = summarize(ev, { email: me });
+    eq(only.agents.length, 1);
+    eq(only.agents[0].email, me);
+    eq(only.calls.observed, 3, 'les observations restent globales');
+  });
+});
+
+// -----------------------------------------------------------------------------
 //  6 ter. app/session.js — sans reseau, on ne teste que le pur
 // -----------------------------------------------------------------------------
 
@@ -1000,6 +1123,62 @@ if (need(sessionMod, 'app/session.js', 'app/session.js')) suite('app/session.js'
     eq(current().state, 'anonymous');
     eq(current().user, null);
     eq(isDirection(), false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+//  6 quater. app/cti.js — l'instantane a vide, sans ouvrir de session
+// -----------------------------------------------------------------------------
+
+if (need(ctiMod, 'app/cti.js', 'app/cti.js')) suite('app/cti.js', () => {
+  const { snapshot, claim, dial } = ctiMod;
+
+  test('a vide : ligne fermee, aucun appel, rien de connecte', () => {
+    const s = snapshot();
+    eq(s.status, 'idle');
+    eq(s.connected, false);
+    eq(s.active, 0);
+    eqDeep(s.calls, []);
+  });
+
+  test('une action sans session est refusee net, sans toucher au reseau', () => {
+    throws(() => claim('inconnu'), 'declarer un appel inconnu');
+    const p = dial('0612345678');
+    ok(p && typeof p.then === 'function', 'dial rend une promesse');
+    // Elle est rejetee (ligne fermee) : on l'absorbe pour ne pas polluer la console.
+    p.catch(() => {});
+  });
+});
+
+// -----------------------------------------------------------------------------
+//  6 quinquies. shared/identity.js#lineTeams — l'equipe d'une ligne, avec numeros
+// -----------------------------------------------------------------------------
+
+if (need(identity, 'shared/identity.js (lineTeams)', 'shared/identity.js')) suite('shared/identity.js (lineTeams)', () => {
+  const { lineTeams } = identity;
+
+  test('les contacts qui portent le numero de la ligne forment son equipe, avec leurs postes', () => {
+    const lines = [{ csi: '33253359565', name: 'BIOS ABE' }, { csi: '33175433361', name: 'BIOS TNR' }];
+    const contacts = [
+      { firstName: 'Sonia', lastName: 'RAKOTO', email: 'Sonia@bios.fr', numbers: ['02 53 35 95 65'], speedNumbers: ['4012'] },
+      { firstName: 'Paul', lastName: 'ANDRIA', email: '', numbers: ['0253359565', '06 11 22 33 44'], speedNumbers: [] },
+      { firstName: 'Client', lastName: 'EXTERNE', email: 'x@client.fr', numbers: ['0699999999'], speedNumbers: [] },
+    ];
+    const teams = lineTeams(lines, contacts);
+    eq(teams.length, 2);
+    eq(teams[0].csi, '33253359565');
+    eq(teams[0].members.length, 2, 'deux contacts portent le numero de la ligne ABE');
+    eq(teams[0].members[0].name, 'Sonia RAKOTO');
+    eq(teams[0].members[0].email, 'sonia@bios.fr');
+    eqDeep(teams[0].members[0].speedNumbers, ['4012']);
+    eqDeep(teams[0].members[1].numbers, ['+33253359565', '+33611223344']);
+    eq(teams[0].members[1].email, null);
+    eq(teams[1].members.length, 0, 'personne sur TNR');
+  });
+
+  test('sans contact ni ligne, rien ne casse', () => {
+    eqDeep(lineTeams([], []), []);
+    eq(lineTeams([{ csi: '1' }], null)[0].members.length, 0);
   });
 });
 
