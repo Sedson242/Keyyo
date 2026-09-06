@@ -75,8 +75,21 @@ const COMMAND_TIMEOUT_MS = 12000;
  * @property {number} seenAt      millisecondes locales de la derniere notification
  */
 
-/** @type {{status: string, message: string, line: any, lines: any[], number: string, expiresAt: number, user: any, plugins: Array<{name: string, enabled: boolean}>, pluginsError: string}} */
-let _state = { status: 'idle', message: '', line: null, lines: [], number: '', expiresAt: 0, user: null, plugins: [], pluginsError: '' };
+/** @type {{status: string, message: string, line: any, lines: any[], number: string, expiresAt: number, user: any, plugins: Array<{name: string, enabled: boolean}>, pluginsError: string, registrations: Array<{userAgent: string, ip: string}>, registrationsError: string}} */
+let _state = { status: 'idle', message: '', line: null, lines: [], number: '', expiresAt: 0, user: null, plugins: [], pluginsError: '', registrations: [], registrationsError: '' };
+
+/** Cle de la preference « decroche automatique de mon poste ». */
+const AUTO_ANSWER_KEY = 'keyyo.cti.autoAnswer';
+
+/**
+ * Decroche automatique du poste de l'agent quand il appelle ou transfere.
+ * C'est le comportement par defaut de Keyyo ; certains postes ne le savent
+ * pas et Keyyo refuse alors l'action — d'ou un reglage, memorise sur le poste.
+ * @returns {boolean}
+ */
+export function autoAnswer() {
+  try { return localStorage.getItem(AUTO_ANSWER_KEY) !== '0'; } catch (err) { return true; }
+}
 
 /** @type {any} instance Keyyo.CTI */
 let _cti = null;
@@ -143,6 +156,9 @@ export function snapshot() {
     expiresAt: _state.expiresAt,
     plugins: _state.plugins,
     pluginsError: _state.pluginsError,
+    registrations: _state.registrations,
+    registrationsError: _state.registrationsError,
+    autoAnswer: autoAnswer(),
     connected: _state.status === 'connected',
     calls,
     active: calls.filter((c) => c.state === 'SETUP' || c.state === 'CONNECT').length,
@@ -214,6 +230,8 @@ export async function start(opts) {
     _state.user = grant.user || null;
     _state.plugins = Array.isArray(grant.plugins) ? grant.plugins : [];
     _state.pluginsError = String(grant.pluginsError || '');
+    _state.registrations = Array.isArray(grant.registrations) ? grant.registrations : [];
+    _state.registrationsError = String(grant.registrationsError || '');
     if (!_token) throw new Error('Le serveur n\'a pas rendu de jeton CSI.');
   } catch (err) {
     if (err instanceof ApiError && err.status === 409 && err.body && Array.isArray(err.body.lines)) {
@@ -257,6 +275,21 @@ export function stop() {
 export function chooseLine(csi) {
   stop();
   return start({ csi: String(csi) });
+}
+
+/**
+ * Regle le decroche automatique du poste, sur la session courante et pour
+ * les suivantes (preference memorisee sur ce poste).
+ * @param {boolean} on
+ * @returns {Promise<void>}
+ */
+export async function setAutoAnswer(on) {
+  const value = !!on;
+  try { localStorage.setItem(AUTO_ANSWER_KEY, value ? '1' : '0'); } catch (err) { /* stockage indisponible */ }
+  if (_cti && _state.status === 'connected') {
+    await command(function (cb) { _cti.set_auto_answer(value, cb); });
+  }
+  emit();
 }
 
 /**
@@ -336,7 +369,8 @@ function connect(restore) {
 
   try {
     if (restore && _sessionId) _cti.restore_session(_token, _sessionId, done);
-    else _cti.create_session(_token, done);
+    else if (autoAnswer()) _cti.create_session(_token, done);
+    else _cti.create_session(_token, false, done);
   } catch (err) {
     setStatus('error', messageOf(err));
     scheduleReconnect(false);

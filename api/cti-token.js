@@ -171,6 +171,23 @@ export default async function handler(req, res) {
       }
     }
 
+    // Terminaux actuellement enregistres sur la ligne (sip_records : IP, agent
+    // utilisateur, MAC). Un appel sortant par le CTI fait d'abord decrocher un
+    // poste de la ligne : sans aucun enregistrement, il n'y a rien a faire
+    // sonner, et Keyyo repond « Cannot treat action ».
+    /** @type {Array<{userAgent: string, ip: string}>} */
+    let registrations = [];
+    let registrationsError = '';
+    try {
+      const raw = await keyyoGetAll(cfg, token, '/services/' + encodeURIComponent(line.csi) + '/sip_records', {}, { deadline });
+      registrations = raw.filter((r) => r && typeof r === 'object').map((r) => ({
+        userAgent: String(r.user_agent || r.userAgent || r.agent || ''),
+        ip: String(r.ip || r.ip_address || r.address || ''),
+      }));
+    } catch (err) {
+      registrationsError = errorMessage(err);
+    }
+
     res.setHeader('Vary', 'Cookie');
     sendJson(res, 200, {
       csi: line.csi,
@@ -181,6 +198,8 @@ export default async function handler(req, res) {
       plugins,
       pluginsError,
       pluginAction,
+      registrations,
+      registrationsError,
       line,
       lines,
       user: { email: session.email, name: session.name, role: session.role },

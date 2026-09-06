@@ -324,6 +324,19 @@ function paintSide() {
   } else if (snap.pluginsError) {
     parts.push(html`<div class="ag-line-sub">Plugins CTI illisibles : ${snap.pluginsError}</div>`);
   }
+  // Terminaux enregistres : sans poste, rien ne peut sonner ni composer.
+  if (snap.registrations && snap.registrations.length) {
+    const agents = snap.registrations.map((r) => r.userAgent).filter(Boolean);
+    parts.push(html`<div class="ag-line-sub">${fmtInt(snap.registrations.length)} ${pluralize(snap.registrations.length, 'terminal enregistré', 'terminaux enregistrés')} sur la ligne${agents.length ? ' : ' + Array.from(new Set(agents)).slice(0, 3).join(', ') + (agents.length > 3 ? '…' : '') : ''}.</div>`);
+  } else if (snap.line && !snap.registrationsError && snap.status === 'connected') {
+    parts.push(html`<div class="ag-line-msg">Aucun terminal enregistré sur cette ligne : Keyyo n’a aucun poste à faire sonner, ni pour appeler ni pour décrocher. Ouvrir Keyyo Phone sur ce PC.</div>`);
+  }
+  if (snap.status === 'connected') {
+    parts.push(html`<button class="switch" type="button" data-act="auto-answer" aria-pressed="${snap.autoAnswer ? 'true' : 'false'}" title="Quand j’appelle ou transfère depuis l’application, mon poste décroche tout seul. À couper si Keyyo refuse l’action.">
+      <span class="switch-track" aria-hidden="true"></span>
+      <span>Décroché automatique de mon poste</span>
+    </button>`);
+  }
   if (snap.status === 'needs-line' || (snap.status === 'error' && snap.lines.length > 1 && !snap.line)) {
     parts.push(html`<div class="ag-line-sub">${snap.status === 'needs-line' ? snap.message : 'Choisir une ligne :'}</div>`);
     parts.push(html`<div class="ag-line-actions">${snap.lines.map((l) => raw(html`<button class="btn btn--sm" type="button" data-choose-line="${l.csi}">${l.label}${l.members ? raw(html` <span class="faint">(${l.members})</span>`) : ''}</button>`))}</div>`);
@@ -774,6 +787,11 @@ function wire() {
     if (act === 'enable-plugin') {
       const name = el.getAttribute('data-name') || '';
       run('plugin', function () { return cti.enablePlugin(name); }, 'Plugin « ' + name + ' » activé, ligne rouverte.');
+      return;
+    }
+    if (act === 'auto-answer') {
+      const next = el.getAttribute('aria-pressed') !== 'true';
+      run('auto', function () { return cti.setAutoAnswer(next); }, next ? 'Décroché automatique activé.' : 'Décroché automatique coupé : votre poste sonnera d’abord.');
       return;
     }
     if (act === 'answer') { run(ref, function () { return cti.answer(ref); }, 'Appel décroché.'); return; }

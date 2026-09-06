@@ -167,7 +167,7 @@ const CONTRACT = [
   ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'postSync', 'ApiError']],
   ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'roleLabel', 'loginUrl', 'forget']],
   ['../app/journal.js', ['subscribe', 'record', 'flush', 'status', 'month', 'init']],
-  ['../app/cti.js', ['subscribe', 'snapshot', 'start', 'stop', 'chooseLine', 'enablePlugin', 'dial', 'answer', 'reject', 'hangup', 'transfer', 'claim']],
+  ['../app/cti.js', ['subscribe', 'snapshot', 'start', 'stop', 'chooseLine', 'enablePlugin', 'autoAnswer', 'setAutoAnswer', 'dial', 'answer', 'reject', 'hangup', 'transfer', 'claim']],
   ['../app/callbar.js', ['init', 'setColleagues', 'setLabelOf']],
   // agent.js ne s'amorce que si #agent-root est present : importable ici.
   ['../app/agent.js', ['boot']],
