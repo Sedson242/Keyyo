@@ -22,7 +22,7 @@ import {
   readConfig, sendJson, rejectNonPost, rejectCrossSite, readJsonBody, errorMessage,
 } from './_config.js';
 import { requireRole } from './_auth.js';
-import { getAccessToken, fetchVoipLines, fetchDirectoryContacts, mintCsiToken } from './_keyyo.js';
+import { getAccessToken, fetchVoipLines, fetchDirectoryContacts, mintCsiToken, keyyoGetAll } from './_keyyo.js';
 import { lineTeams, lineLabel, formatCsi } from '../shared/identity.js';
 import { toE164 } from '../shared/phone.js';
 
@@ -107,6 +107,25 @@ export default async function handler(req, res) {
     const productionHost = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim();
     const minted = await mintCsiToken(cfg, token, line.csi, { deadline, domains: [requestHost, productionHost] });
 
+    // Plugins CTI de la ligne. Keyyo conditionne certaines actions (appeler,
+    // decrocher...) a des plugins actives ; « Cannot treat action » cote CTI
+    // en est le symptome typique. On les liste pour que la page les montre —
+    // lecture seule, et tolerante : leur absence n'empeche pas la session.
+    /** @type {Array<{name: string, enabled: boolean}>} */
+    let plugins = [];
+    let pluginsError = '';
+    try {
+      const raw = await keyyoGetAll(cfg, token, '/services/' + encodeURIComponent(line.csi) + '/cti_plugins', {}, { deadline });
+      plugins = raw
+        .filter((p) => p && typeof p === 'object' && p.name)
+        .map((p) => ({
+          name: String(p.name),
+          enabled: p.enabled === true || p.enabled === 1 || String(p.enabled).toLowerCase() === 'true' || String(p.enabled) === '1',
+        }));
+    } catch (err) {
+      pluginsError = errorMessage(err);
+    }
+
     res.setHeader('Vary', 'Cookie');
     sendJson(res, 200, {
       csi: line.csi,
@@ -114,6 +133,8 @@ export default async function handler(req, res) {
       token: minted.token,
       expiresAt: new Date(minted.expiresAt).toISOString(),
       domainMasks: minted.domainMasks,
+      plugins,
+      pluginsError,
       line,
       lines,
       user: { email: session.email, name: session.name, role: session.role },

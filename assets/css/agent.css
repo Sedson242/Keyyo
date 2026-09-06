@@ -96,6 +96,7 @@
 .ag-line-number { font: var(--t-sm); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .ag-line-sub { font: var(--t-micro); color: var(--ink-muted); }
 .ag-line-msg { font: var(--t-sm); color: var(--missed); overflow-wrap: anywhere; }
+.ag-line-off { color: var(--missed); font-weight: 600; }
 .ag-line-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 
 .ag-newcall { width: 100%; padding: 11px 14px; font-size: 14px; }

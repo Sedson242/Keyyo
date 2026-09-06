@@ -75,8 +75,8 @@ const COMMAND_TIMEOUT_MS = 12000;
  * @property {number} seenAt      millisecondes locales de la derniere notification
  */
 
-/** @type {{status: string, message: string, line: any, lines: any[], number: string, expiresAt: number, user: any}} */
-let _state = { status: 'idle', message: '', line: null, lines: [], number: '', expiresAt: 0, user: null };
+/** @type {{status: string, message: string, line: any, lines: any[], number: string, expiresAt: number, user: any, plugins: Array<{name: string, enabled: boolean}>, pluginsError: string}} */
+let _state = { status: 'idle', message: '', line: null, lines: [], number: '', expiresAt: 0, user: null, plugins: [], pluginsError: '' };
 
 /** @type {any} instance Keyyo.CTI */
 let _cti = null;
@@ -141,6 +141,8 @@ export function snapshot() {
     number: _state.number,
     user: _state.user,
     expiresAt: _state.expiresAt,
+    plugins: _state.plugins,
+    pluginsError: _state.pluginsError,
     connected: _state.status === 'connected',
     calls,
     active: calls.filter((c) => c.state === 'SETUP' || c.state === 'CONNECT').length,
@@ -210,6 +212,8 @@ export async function start(opts) {
     _state.number = String(grant.number || '').replace(/\D/g, '');
     _state.expiresAt = Date.parse(String(grant.expiresAt || '')) || (Date.now() + 3600000);
     _state.user = grant.user || null;
+    _state.plugins = Array.isArray(grant.plugins) ? grant.plugins : [];
+    _state.pluginsError = String(grant.pluginsError || '');
     if (!_token) throw new Error('Le serveur n\'a pas rendu de jeton CSI.');
   } catch (err) {
     if (err instanceof ApiError && err.status === 409 && err.body && Array.isArray(err.body.lines)) {
@@ -537,7 +541,14 @@ function mark(callref, patch) {
 export async function dial(number) {
   requireConnected();
   const to = toKeyyoNumber(number);
-  await command(function (cb) { _cti.dial(to, cb); });
+  try {
+    await command(function (cb) { _cti.dial(to, cb); });
+  } catch (err) {
+    // « Cannot treat action » est la reponse brute de Keyyo : on dit vers quoi
+    // et depuis quelle ligne, sinon le message ne renseigne personne.
+    throw new Error('Keyyo refuse l’appel vers ' + to + ' depuis la ligne '
+      + (_state.line ? _state.line.label : _state.number) + ' : ' + messageOf(err) + '.');
+  }
   journal.record({
     type: 'dial',
     csi: _state.line ? _state.line.csi : '',

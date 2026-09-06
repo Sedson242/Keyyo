@@ -312,6 +312,15 @@ function paintSide() {
     parts.push(html`<div class="ag-line-msg">${snap.message || 'La ligne ne répond pas.'}</div>`);
     parts.push(html`<div class="ag-line-actions"><button class="btn btn--sm" type="button" data-act="retry-line">Réessayer</button></div>`);
   }
+  // Plugins CTI de la ligne, tels que Keyyo les declare : un plugin eteint
+  // explique souvent un « Cannot treat action ».
+  if (snap.plugins && snap.plugins.length) {
+    const off = snap.plugins.filter((p) => !p.enabled);
+    parts.push(html`<div class="ag-line-sub">Plugins CTI : ${snap.plugins.map((p) => raw(html`<span class="${p.enabled ? '' : 'ag-line-off'}">${p.name}${p.enabled ? ' ✓' : ' ✗'}</span> `))}</div>`);
+    if (off.length) parts.push(html`<div class="ag-line-sub">${off.length === 1 ? 'Un plugin est éteint' : off.length + ' plugins sont éteints'} : à activer dans la console Keyyo (Téléphonie › CTI) si les appels sont refusés.</div>`);
+  } else if (snap.pluginsError) {
+    parts.push(html`<div class="ag-line-sub">Plugins CTI illisibles : ${snap.pluginsError}</div>`);
+  }
   if (snap.status === 'needs-line' || (snap.status === 'error' && snap.lines.length > 1 && !snap.line)) {
     parts.push(html`<div class="ag-line-sub">${snap.status === 'needs-line' ? snap.message : 'Choisir une ligne :'}</div>`);
     parts.push(html`<div class="ag-line-actions">${snap.lines.map((l) => raw(html`<button class="btn btn--sm" type="button" data-choose-line="${l.csi}">${l.label}${l.members ? raw(html` <span class="faint">(${l.members})</span>`) : ''}</button>`))}</div>`);
