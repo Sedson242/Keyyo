@@ -159,7 +159,7 @@ function paint(snap) {
     lines.hidden = !choose;
     if (choose) {
       mount(lines, html`<span class="callbar-lines-label">${snap.message || 'Choisir la ligne à piloter :'}</span>
-        ${snap.lines.map((l) => html`<button class="btn btn--sm" type="button" data-choose-line="${l.csi}">${l.label}${l.members ? html` <span class="faint">(${l.members})</span>` : ''}</button>`)}`);
+        ${snap.lines.map((l) => raw(html`<button class="btn btn--sm" type="button" data-choose-line="${l.csi}">${l.label}${l.members ? raw(html` <span class="faint">(${l.members})</span>`) : ''}</button>`))}`);
     }
   }
 
@@ -211,7 +211,7 @@ function callCard(c) {
   return html`<div class="call call--${tone}${ringing ? ' is-ringing' : ''}${live ? ' is-live' : ''}" data-callref="${c.callref}">
     <span class="call-icon" aria-hidden="true">${raw(icon(missed ? 'missed' : (c.dir === 'in' ? 'in' : 'out')))}</span>
     <div class="call-body">
-      <div class="call-peer">${label}${number && number !== label ? html` <span class="faint">${number}</span>` : ''}</div>
+      <div class="call-peer">${label}${number && number !== label ? raw(html` <span class="faint">${number}</span>`) : ''}</div>
       <div class="call-meta">${meta}</div>
     </div>
     <div class="call-actions">${raw(buttons.join(''))}</div>
@@ -236,7 +236,7 @@ function paintPicker() {
   const row = (c) => html`<button class="pick-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}">
     <span class="avatar avatar--sm" aria-hidden="true">${initials(c.name)}</span>
     <span class="pick-body">
-      <span class="pick-name">${c.name}${c.manager ? html` <span class="tag tag--ok"><span class="tag-dot" aria-hidden="true"></span>Manager</span>` : ''}</span>
+      <span class="pick-name">${c.name}${c.manager ? raw(html` <span class="tag tag--ok"><span class="tag-dot" aria-hidden="true"></span>Manager</span>`) : ''}</span>
       <span class="pick-sub">${formatNumber(c.number) || c.number} · ${c.numberKind}${c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : ''}</span>
     </span>
     <span class="pick-action">${transfer ? 'Transférer' : 'Appeler'}</span>
@@ -244,14 +244,14 @@ function paintPicker() {
 
   mount(panel, html`<div class="pick-head">
       <span class="pick-title">${transfer ? 'Transférer l’appel à…' : 'Appeler un collègue'}</span>
-      ${transfer ? html`<label class="field field--grow" for="cb-transfer-number">${raw(icon('phone'))}<input id="cb-transfer-number" type="tel" inputmode="tel" autocomplete="off" placeholder="ou un numéro"></label>
-        <button class="btn btn--sm" type="button" id="cb-transfer-go">Transférer</button>` : ''}
+      ${transfer ? raw(html`<label class="field field--grow" for="cb-transfer-number">${raw(icon('phone'))}<input id="cb-transfer-number" type="tel" inputmode="tel" autocomplete="off" placeholder="ou un numéro"></label>
+        <button class="btn btn--sm" type="button" id="cb-transfer-go">Transférer</button>`) : ''}
       <label class="field" for="cb-search">${raw(icon('search'))}<input id="cb-search" type="search" autocomplete="off" placeholder="Rechercher" value="${_query}"></label>
       <button class="btn btn--icon btn--ghost" type="button" id="cb-pick-close" aria-label="Fermer">${raw(icon('close'))}</button>
     </div>
-    ${managers.length ? html`<p class="pick-group">Managers</p>${managers.map((c) => raw(row(c)))}` : ''}
-    ${others.length ? html`<p class="pick-group">Collègues</p>${others.map((c) => raw(row(c)))}` : ''}
-    ${!list.length ? html`<p class="pick-empty">Aucun collègue ne correspond.</p>` : ''}`);
+    ${managers.length ? raw(html`<p class="pick-group">Managers</p>${managers.map((c) => raw(row(c)))}`) : ''}
+    ${others.length ? raw(html`<p class="pick-group">Collègues</p>${others.map((c) => raw(row(c)))}`) : ''}
+    ${!list.length ? raw(html`<p class="pick-empty">Aucun collègue ne correspond.</p>`) : ''}`);
 
   const search = /** @type {HTMLInputElement|null} */ (qs('#cb-search', panel));
   if (search && document.activeElement !== search && !q) search.focus();

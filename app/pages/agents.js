@@ -111,7 +111,7 @@ function monthBar(wanted) {
   const j = journal();
   return html`<div class="toolbar">
     <div class="segmented" role="group" aria-label="Mois">
-      ${months.map((m) => html`<button type="button" data-journal-month="${m}" class="${m === wanted ? 'is-active' : ''}">${fmtMonth(m)}</button>`)}
+      ${months.map((m) => raw(html`<button type="button" data-journal-month="${m}" class="${m === wanted ? 'is-active' : ''}">${fmtMonth(m)}</button>`))}
     </div>
     <span class="toolbar-spacer"></span>
     <span class="periodbar-info">${j.at && j.month === wanted ? 'Journal lu ' + fmtRelative(j.at) + (j.partitions ? ' · ' + fmtInt(j.partitions) + ' ' + pluralize(j.partitions, 'personne', 'personnes') : '') : ''}</span>
@@ -184,7 +184,7 @@ function agentsCard(agents) {
     const ring = a.ringCount ? Math.round(a.ringTotal / a.ringCount) : 0;
     return [
       html`<div class="row"><span>${raw(avatar(name, { size: 'sm' }))}</span><div><div class="strong">${name}</div><div class="faint" style="font: var(--t-micro)">${a.email}</div></div></div>`,
-      html`<span class="tnum">${fmtInt(a.taken)}</span>${a.claimed ? html` <span class="faint" title="dont déclarés pris au téléphone">(${fmtInt(a.claimed)} déclarés)</span>` : ''}`,
+      html`<span class="tnum">${fmtInt(a.taken)}</span>${a.claimed ? raw(html` <span class="faint" title="dont déclarés pris au téléphone">(${fmtInt(a.claimed)} déclarés)</span>`) : ''}`,
       html`<span class="tnum">${fmtInt(a.dialed)}</span>`,
       html`<span class="tnum">${fmtInt(a.transferred)}</span>`,
       html`<span class="tnum">${ring ? fmtDurationShort(ring) : '—'}</span>`,
@@ -225,10 +225,10 @@ function calleesCard(agents) {
   }
   const list = Array.from(acc.entries()).sort((x, y) => y[1].count - x[1].count).slice(0, CALLEES_MAX);
   const body = list.length
-    ? html`<div class="feed">${list.map(([to, e]) => html`<div class="feed-item" style="color: var(--ink)">
+    ? html`<div class="feed">${list.map(([to, e]) => raw(html`<div class="feed-item" style="color: var(--ink)">
         <div class="feed-title" style="color: var(--ink)">${labelOf(to)} <span class="faint">${formatNumber(to)}</span></div>
         <div class="feed-meta" style="color: var(--ink-muted)">${fmtInt(e.count)} ${pluralize(e.count, 'appel', 'appels')} · ${Array.from(e.who).join(', ')}</div>
-      </div>`)}</div>`
+      </div>`))}</div>`
     : empty('Aucun appel émis depuis l’application', 'Les numéros composés depuis la barre d’appel apparaîtront ici.');
   return card({ title: 'Vers qui on appelle', sub: 'Depuis l’application, ce mois-ci', body: raw(body) });
 }
@@ -244,7 +244,7 @@ function methodCard(c, j) {
   return card({
     title: 'Comment lire ces chiffres',
     body: raw(html`<div class="stack">
-      ${items.map(([label, value, tone]) => html`<div class="row" style="justify-content: space-between"><span>${label}</span>${raw(tag(value, /** @type {any} */ (tone)))}</div>`)}
+      ${items.map(([label, value, tone]) => raw(html`<div class="row" style="justify-content: space-between"><span>${label}</span>${raw(tag(value, /** @type {any} */ (tone)))}</div>`))}
       <p class="faint" style="font: var(--t-sm); margin-top: 8px">Aucune API Keyyo ne dit qui a décroché : trois lignes de site sont partagées par toute l’équipe. Seules les actions faites dans l’application — décrocher, appeler, transférer, « c’est moi qui ai répondu » — relient un appel à une personne. Plus les agents passent par la barre d’appel, plus cette vue est complète.</p>
     </div>`),
   });

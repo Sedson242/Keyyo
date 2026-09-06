@@ -1,9 +1,10 @@
 /* =============================================================================
-   callbar.css — Barre d'appel (bas de page) et page agent.
+   callbar.css — Barre d'appel (bas de page) de la supervision.
 
-   Chargee par index.html et agent.html. Ne definit aucune couleur en dur :
-   tout vient de tokens.css. La barre est fixe ; les pages qui la portent
-   posent `body.has-callbar` pour degager la place en bas de leur contenu.
+   Chargee par index.html. La page agent a sa propre trame (agent.css). Ne
+   definit aucune couleur en dur : tout vient de tokens.css. La barre est
+   fixe ; la page qui la porte pose `body.has-callbar` pour degager la place
+   en bas de son contenu.
    ============================================================================= */
 
 /* -----------------------------------------------------------------------------
@@ -26,7 +27,6 @@
   box-shadow: 0 -12px 30px -18px rgba(120, 70, 40, 0.25);
 }
 body.has-callbar .main { padding-bottom: 210px; }
-body.has-callbar .agent { padding-bottom: 210px; }
 
 .callbar-head {
   display: flex;
@@ -142,41 +142,3 @@ body.has-callbar .callbar.is-collapsed ~ * { padding-bottom: 0; }
   .callbar-line { display: none; }
 }
 
-/* -----------------------------------------------------------------------------
-   Page agent (agent.html)
-   -------------------------------------------------------------------------- */
-
-.agent {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 22px clamp(14px, 3vw, 32px) 40px;
-  display: grid;
-  gap: var(--gap-5);
-}
-.agent-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.agent-top .brand { padding: 0; }
-.agent-top .account { margin-left: auto; }
-.agent-title { font: var(--t-h1); color: var(--ink); letter-spacing: var(--track-tight); }
-.agent-sub { font: var(--t-sm); color: var(--ink-muted); margin-top: 3px; }
-.agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--gap-4); }
-.agent-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--gap-3); }
-.agent-kpi { padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface-sunken); }
-.agent-kpi-value { font: var(--t-num-lg); color: var(--ink); letter-spacing: var(--track-tight); }
-.agent-kpi-label { margin-top: 3px; font: var(--t-label); color: var(--ink-muted); }
-.agent-kpi--in .agent-kpi-value { color: var(--in-strong); }
-.agent-kpi--out .agent-kpi-value { color: var(--out); }
-.agent-kpi--ok .agent-kpi-value { color: var(--answered); }
-.agent-list { display: grid; gap: 2px; }
-.agent-row {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 8px;
-  border-radius: var(--r-md);
-}
-.agent-row:hover { background: var(--surface-sunken); }
-.agent-row svg { width: 15px; height: 15px; color: var(--ink-muted); }
-.agent-row-main { min-width: 0; font: var(--t-body-md); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-row-sub { font: var(--t-micro); color: var(--ink-muted); }
-.agent-row-metric { font: var(--t-body-md); color: var(--ink-soft); font-variant-numeric: tabular-nums; }

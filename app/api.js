@@ -97,7 +97,13 @@ function describeHttpError(status, body, url) {
   const fromBody = body && typeof body === 'object'
     ? (body.error || body.message || (body.warning && String(body.warning)) || '')
     : '';
-  if (fromBody) return String(fromBody);
+  // Le `hint` dit POURQUOI et QUOI FAIRE : sans lui, « Jeton CTI indisponible »
+  // laisse l'utilisateur devant un mur. On le joint au titre.
+  const hint = body && typeof body === 'object' && body.hint ? String(body.hint).trim() : '';
+  if (fromBody) {
+    const title = String(fromBody).trim();
+    return hint && hint !== title ? title.replace(/[.:]\s*$/, '') + ' : ' + hint : title;
+  }
 
   if (status === 401) {
     return 'Session absente ou expirée (401) : reconnectez-vous.';

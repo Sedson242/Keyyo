@@ -11,8 +11,7 @@
 <link rel="stylesheet" href="assets/css/tokens.css">
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/components.css">
-<link rel="stylesheet" href="assets/css/pages.css">
-<link rel="stylesheet" href="assets/css/callbar.css">
+<link rel="stylesheet" href="assets/css/agent.css">
 
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="modulepreload" href="app/agent.js">
@@ -20,6 +19,7 @@
 <body class="is-gated">
 
 <!-- Bibliotheque d'icones : copie de celle de index.html, meme jeu. -->
+     ========================================================================= -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <defs>
     <g id="i-base" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
@@ -107,7 +107,6 @@
   <symbol id="i-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M8.5 15h7"/>
   </symbol>
-</svg>
 
 
 <!-- Ecran de connexion, meme coquille que index.html (rempli par app/agent.js). -->
@@ -127,10 +126,14 @@
   </div>
 </div>
 
-<div class="agent" id="app" aria-hidden="true">
+<!-- =========================================================================
+     Trois colonnes : moi et ma ligne / la liste / le detail.
+     Tout ce qui est dynamique est ecrit par app/agent.js.
+     ========================================================================= -->
+<div class="ag" id="app" aria-hidden="true">
   <div id="agent-root" hidden></div>
 
-  <header class="agent-top">
+  <aside class="ag-side">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
       <div>
@@ -138,35 +141,69 @@
         <span class="brand-sub">Ma ligne</span>
       </div>
     </div>
-    <div>
-      <h1 class="agent-title" id="agent-hello">Bonjour</h1>
-      <p class="agent-sub">Décrochez, appelez, transférez depuis la barre en bas de page. <span id="agent-updated"></span></p>
-    </div>
-    <div class="account" id="account">
-      <span class="avatar avatar--sm" id="account-initials" aria-hidden="true">–</span>
-      <span class="account-text">
-        <span class="account-name" id="account-name">Connexion…</span>
-        <span class="account-sub" id="account-sub"></span>
+
+    <button class="ag-user" type="button" data-view="activity" title="Mon activité">
+      <span id="ag-user-avatar"></span>
+      <span style="min-width:0">
+        <span class="ag-user-name" id="ag-user-name">Connexion…</span>
+        <span class="ag-user-role" id="ag-user-role"></span>
       </span>
-      <a class="btn btn--ghost btn--sm" id="link-supervision" href="/" hidden>Supervision</a>
-      <button class="btn btn--icon" id="btn-refresh" type="button" aria-label="Rafraîchir mon activité" title="Rafraîchir">
-        <svg aria-hidden="true"><use href="#i-refresh"/></svg>
+    </button>
+
+    <nav class="ag-nav" aria-label="Navigation">
+      <button class="ag-nav-item is-active" type="button" data-tab="calls">
+        <svg aria-hidden="true"><use href="#i-calls"/></svg>Appels
+        <span class="ag-nav-badge" id="ag-nav-live" hidden>0</span>
       </button>
-      <a class="btn btn--ghost btn--sm" id="btn-logout" href="/api/auth?action=logout" title="Se déconnecter">Déconnexion</a>
+      <button class="ag-nav-item" type="button" data-tab="people">
+        <svg aria-hidden="true"><use href="#i-peers"/></svg>Collègues
+      </button>
+      <button class="ag-nav-item" type="button" data-view="activity">
+        <svg aria-hidden="true"><use href="#i-monitoring"/></svg>Mon activité
+      </button>
+    </nav>
+
+    <div>
+      <p class="ag-side-title">Ma ligne</p>
+      <div class="ag-line" id="ag-line">
+        <div class="ag-line-head"><span class="ag-dot" aria-hidden="true"></span><span class="ag-line-name">Ma ligne</span></div>
+      </div>
     </div>
-  </header>
 
-  <div class="agent-grid">
-    <section id="agent-line" aria-label="Ma ligne"></section>
-    <section id="agent-colleagues" aria-label="Mes collègues"></section>
-  </div>
+    <button class="btn btn--accent ag-newcall" id="ag-newcall" type="button" disabled>
+      <svg aria-hidden="true"><use href="#i-out"/></svg>Nouvel appel
+    </button>
 
-  <section id="agent-activity" aria-label="Mon activité"></section>
-  <section id="agent-recent" aria-label="Derniers faits"></section>
+    <div class="ag-side-foot">
+      <a class="btn btn--ghost btn--sm" id="link-supervision" href="/" hidden>
+        <svg aria-hidden="true"><use href="#i-monitoring"/></svg>Supervision
+      </a>
+      <button class="btn btn--ghost btn--sm" id="btn-refresh" type="button" title="Rafraîchir mon activité">
+        <svg aria-hidden="true"><use href="#i-refresh"/></svg>Rafraîchir
+      </button>
+      <a class="btn btn--ghost btn--sm" id="btn-logout" href="/api/auth?action=logout" title="Se déconnecter">
+        <svg aria-hidden="true"><use href="#i-close"/></svg>Déconnexion
+      </a>
+    </div>
+  </aside>
+
+  <section class="ag-list" aria-label="Liste">
+    <div class="ag-list-head">
+      <h1 class="ag-list-title"><span id="ag-list-title-text">Appels</span></h1>
+      <div id="ag-list-filters"></div>
+    </div>
+    <div class="ag-list-body" id="ag-list"></div>
+  </section>
+
+  <section class="ag-main" id="ag-main" aria-label="Détail"></section>
 </div>
 
-<!-- Barre d'appel, montee par app/callbar.js -->
-<div id="callbar"></div>
+<!-- Fenetre d'appel (sombre) et sa pastille reduite -->
+<div class="call-popup" id="call-popup" hidden></div>
+<button class="call-pill" id="call-pill" type="button" hidden></button>
+
+<!-- Composeur : nouvel appel, ou transfert -->
+<div class="ag-dialer" id="ag-dialer" hidden></div>
 
 <!-- Messages ephemeres -->
 <div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>

@@ -571,6 +571,19 @@ export async function answer(callref) {
 }
 
 /**
+ * Rejette un appel entrant qui sonne : Keyyo l'envoie sur la messagerie de la
+ * ligne. Pas de fait nominatif : personne ne l'a pris.
+ * @param {string} callref
+ */
+export async function reject(callref) {
+  requireConnected();
+  const call = liveCall(callref);
+  if (!call) throw new Error('Cet appel n\'est plus en cours.');
+  await command(function (cb) { call.reject(cb); });
+  emit();
+}
+
+/**
  * Raccroche un appel.
  * @param {string} callref
  */
