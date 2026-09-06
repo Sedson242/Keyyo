@@ -85,7 +85,9 @@
   display: grid;
   gap: 6px;
 }
-.ag-line-head { display: flex; align-items: center; gap: 8px; }
+.ag-line-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.ag-line-head .ag-line-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-line-state { font: var(--t-micro); color: var(--ink-muted); white-space: nowrap; }
 .ag-dot { width: 9px; height: 9px; border-radius: var(--r-pill); background: var(--ink-faint); flex: 0 0 auto; }
 .ag-dot--ok { background: var(--answered-fill); box-shadow: 0 0 0 3px var(--answered-soft); }
 .ag-dot--busy { background: var(--in); animation: pulse 1.6s var(--ease) infinite; }
@@ -93,7 +95,7 @@
 .ag-line-name { font: var(--t-body-md); color: var(--ink); }
 .ag-line-number { font: var(--t-sm); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .ag-line-sub { font: var(--t-micro); color: var(--ink-muted); }
-.ag-line-msg { font: var(--t-sm); color: var(--missed); }
+.ag-line-msg { font: var(--t-sm); color: var(--missed); overflow-wrap: anywhere; }
 .ag-line-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 
 .ag-newcall { width: 100%; padding: 11px 14px; font-size: 14px; }

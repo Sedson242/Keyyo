@@ -100,7 +100,12 @@ export default async function handler(req, res) {
       }
     }
 
-    const minted = await mintCsiToken(cfg, token, line.csi, { deadline });
+    // Domaines autorises a utiliser le jeton : celui par lequel la page est
+    // arrivee, et le domaine de production annonce par Vercel s'il differe.
+    const h = req.headers || {};
+    const requestHost = String(h['x-forwarded-host'] || h.host || '').split(',')[0].trim();
+    const productionHost = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim();
+    const minted = await mintCsiToken(cfg, token, line.csi, { deadline, domains: [requestHost, productionHost] });
 
     res.setHeader('Vary', 'Cookie');
     sendJson(res, 200, {

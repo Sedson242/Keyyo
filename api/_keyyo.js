@@ -384,8 +384,10 @@ export async function keyyoGet(cfg, token, path, params, opts) {
  * @param {import('./_config.js').Config} cfg
  * @param {string} token
  * @param {string} path
- * @param {Record<string, any>|null} [body]  encode en formulaire, ou vide.
- * @param {{timeoutMs?: number, deadline?: number}} [opts]
+ * @param {Record<string, any>|null} [body]  encode en formulaire (un tableau
+ *        devient `cle[]=v1&cle[]=v2`, la convention PHP de l'API), ou en JSON
+ *        avec `opts.json`.
+ * @param {{timeoutMs?: number, deadline?: number, json?: boolean}} [opts]
  * @returns {Promise<any>}
  */
 export async function keyyoPost(cfg, token, path, body, opts) {
@@ -396,10 +398,20 @@ export async function keyyoPost(cfg, token, path, body, opts) {
   if (remaining <= DEADLINE_MARGIN_MS) throw budgetError('appel ' + shortUrl(url) + ' non lance');
   const timeoutMs = Math.max(1000, Math.min(Number(o.timeoutMs) || DEFAULT_TIMEOUT_MS, remaining - DEADLINE_MARGIN_MS));
 
-  const form = new URLSearchParams();
-  for (const k of Object.keys(body || {})) {
-    const v = /** @type {any} */ (body)[k];
-    if (v != null && v !== '') form.set(k, String(v));
+  let payload = '';
+  let contentType = 'application/x-www-form-urlencoded';
+  if (o.json) {
+    payload = JSON.stringify(body || {});
+    contentType = 'application/json';
+  } else {
+    const form = new URLSearchParams();
+    for (const k of Object.keys(body || {})) {
+      const v = /** @type {any} */ (body)[k];
+      if (v == null || v === '') continue;
+      if (Array.isArray(v)) { for (const item of v) if (item != null && item !== '') form.append(k + '[]', String(item)); }
+      else form.set(k, String(v));
+    }
+    payload = form.toString();
   }
 
   const ctrl = new AbortController();
@@ -412,9 +424,9 @@ export async function keyyoPost(cfg, token, path, body, opts) {
       headers: {
         Authorization: 'Bearer ' + token,
         Accept: 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': contentType,
       },
-      body: form.toString(),
+      body: payload,
       signal: ctrl.signal,
     });
     text = await res.text();
@@ -458,16 +470,38 @@ export async function keyyoPost(cfg, token, path, body, opts) {
  * `_embedded.CSIToken[0]` : les deux formes sont lues. En cas d'echec, les
  * cles recues sont citees pour que le diagnostic soit immediat.
  *
+ * `domain_masks` est OBLIGATOIRE — verifie en production : sans lui, Keyyo
+ * repond 400 « Missing parameter "domain_masks" ». C'est la liste des
+ * domaines depuis lesquels le jeton pourra ouvrir une session CTI : on y met
+ * le domaine du site. Le parametre part d'abord en formulaire (convention
+ * PHP `domain_masks[]`) ; si Keyyo le refuse encore pour ce meme motif, on
+ * retente en JSON, l'autre encodage plausible.
+ *
  * @param {import('./_config.js').Config} cfg
  * @param {string} token   jeton d'acces Keyyo (Manager).
  * @param {string} csi     ligne.
- * @param {{deadline?: number}} [opts]
+ * @param {{deadline?: number, domains?: string[]}} [opts]
  * @returns {Promise<{token: string, expiresAt: number, domainMasks: string[], keys: string[]}>}
  */
 export async function mintCsiToken(cfg, token, csi, opts) {
+  const o = opts || {};
   const id = str(csi);
   if (!id) throw new Error('mintCsiToken : CSI manquant.');
-  const payload = await keyyoPost(cfg, token, '/services/' + encodeURIComponent(id) + '/csi_token', null, opts);
+  const domains = uniqueStrings(o.domains || []).map((d) => d.replace(/^https?:\/\//, '').replace(/[/:].*$/, '').toLowerCase()).filter(Boolean);
+  if (!domains.length) throw new Error('mintCsiToken : aucun domaine a autoriser (domain_masks).');
+  const path = '/services/' + encodeURIComponent(id) + '/csi_token';
+
+  let payload;
+  try {
+    payload = await keyyoPost(cfg, token, path, { domain_masks: domains }, { deadline: o.deadline });
+  } catch (err) {
+    const e = /** @type {any} */ (err);
+    if (Number(e.status) === 400 && /domain_masks/i.test(String(e.message || ''))) {
+      payload = await keyyoPost(cfg, token, path, { domain_masks: domains }, { deadline: o.deadline, json: true });
+    } else {
+      throw err;
+    }
+  }
 
   /** @type {any} */
   let obj = payload && typeof payload === 'object' ? payload : {};

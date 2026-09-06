@@ -305,7 +305,7 @@ function paintSide() {
   else { dot += ' ag-dot--bad'; state = snap.status === 'idle' ? 'fermée' : 'indisponible'; }
 
   const parts = [];
-  parts.push(html`<div class="ag-line-head"><span class="${dot}" aria-hidden="true"></span><span class="ag-line-name">${line ? line.label : 'Ma ligne'}</span><span class="ag-line-sub" style="margin-left:auto">${state}</span></div>`);
+  parts.push(html`<div class="ag-line-head"><span class="${dot}" aria-hidden="true"></span><span class="ag-line-name">${line ? line.label : 'Ma ligne'}</span><span class="ag-line-state">${state}</span></div>`);
   if (line && line.number) parts.push(html`<div class="ag-line-number">${line.number}</div>`);
   if (line && line.members) parts.push(html`<div class="ag-line-sub">${fmtInt(line.members)} ${pluralize(line.members, 'personne partage', 'personnes partagent')} cette ligne : un appel entrant sonne pour toute l’équipe.</div>`);
   if (snap.status === 'error' || snap.status === 'disconnected') {
@@ -368,7 +368,11 @@ function paintList() {
     const snap = cti.snapshot();
     mount(body, html`<div class="ag-empty">${raw(empty(
       snap.connected ? 'Aucun appel pour l’instant' : 'La ligne n’est pas connectée',
-      snap.connected ? 'Les appels de votre ligne apparaîtront ici dès qu’ils sonneront.' : (snap.message || 'Dès que la ligne sera connectée, ses appels s’afficheront ici.'),
+      snap.connected
+        ? 'Les appels de votre ligne apparaîtront ici dès qu’ils sonneront.'
+        : (snap.status === 'error' || snap.status === 'disconnected'
+          ? 'La raison est indiquée sous « Ma ligne », à gauche.'
+          : 'Dès que la ligne sera connectée, ses appels s’afficheront ici.'),
     ))}</div>`);
     return;
   }
