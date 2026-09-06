@@ -20,6 +20,12 @@ la durée de sonnerie de chaque appel, et son activité du mois (appels pris,
 le seul moyen de savoir *qui* a pris un appel, puisqu'aucune API Keyyo ne le
 dit — trois lignes de site sont partagées par 56 terminaux.
 
+**Keyyo Phone reste ouvert sur le PC**, réduit, avec le casque : l'API CTI de
+Keyyo est une télécommande, pas un téléphone. Elle pilote le poste enregistré
+sur la ligne et remonte ses événements ; la voix ne passe jamais par le
+navigateur. L'application est l'interface de travail, Keyyo Phone le moteur
+audio.
+
 ---
 
 ## Ce que fait l'outil

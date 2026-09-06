@@ -308,6 +308,7 @@ function paintSide() {
   parts.push(html`<div class="ag-line-head"><span class="${dot}" aria-hidden="true"></span><span class="ag-line-name">${line ? line.label : 'Ma ligne'}</span><span class="ag-line-state">${state}</span></div>`);
   if (line && line.number) parts.push(html`<div class="ag-line-number">${line.number}</div>`);
   if (line && line.members) parts.push(html`<div class="ag-line-sub">${fmtInt(line.members)} ${pluralize(line.members, 'personne partage', 'personnes partagent')} cette ligne : un appel entrant sonne pour toute l’équipe.</div>`);
+  parts.push(html`<div class="ag-line-sub">Keyyo Phone doit rester ouvert sur ce PC (réduit suffit) : c’est lui qui porte la voix et le casque. Cette page le pilote.</div>`);
   if (snap.status === 'error' || snap.status === 'disconnected') {
     parts.push(html`<div class="ag-line-msg">${snap.message || 'La ligne ne répond pas.'}</div>`);
     parts.push(html`<div class="ag-line-actions"><button class="btn btn--sm" type="button" data-act="retry-line">Réessayer</button></div>`);
