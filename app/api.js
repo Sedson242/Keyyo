@@ -407,15 +407,21 @@ export async function getProfile(opts) {
  * Frappe un jeton CSI pour ouvrir une session CTI sur une ligne. ECRITURE :
  * chaque appel consomme une frappe cote Keyyo, on ne l'appelle qu'a
  * l'ouverture et avant l'expiration.
- * @param {{csi?: string, timeoutMs?: number}} [opts] `csi` force une ligne.
- * @returns {Promise<any>} `{ csi, number, token, expiresAt, line, lines }`
+ * @param {{csi?: string, enablePlugin?: string, timeoutMs?: number}} [opts]
+ *        `csi` force une ligne ; `enablePlugin` demande l'activation d'un
+ *        plugin CTI de la ligne (seul `websocket` est accepte par le serveur).
+ * @returns {Promise<any>} `{ csi, number, token, expiresAt, plugins, pluginAction, line, lines }`
  *          409 (ApiError) avec `body.lines` quand aucune ligne n'est rattachee.
  */
 export async function postCtiToken(opts) {
   const o = opts || {};
+  /** @type {Record<string, string>} */
+  const body = {};
+  if (o.csi) body.csi = String(o.csi);
+  if (o.enablePlugin) body.enablePlugin = String(o.enablePlugin);
   return request('/cti-token', {
     method: 'POST',
-    body: o.csi ? { csi: String(o.csi) } : {},
+    body,
     timeoutMs: o.timeoutMs,
   });
 }

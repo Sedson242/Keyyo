@@ -259,6 +259,28 @@ export function chooseLine(csi) {
   return start({ csi: String(csi) });
 }
 
+/**
+ * Demande au serveur d'activer un plugin CTI de la ligne (seul `websocket`
+ * est accepte), puis rouvre la session : un plugin active ne vaut que pour
+ * les sessions suivantes.
+ * @param {string} name
+ * @returns {Promise<{name: string, ok: boolean, error: string}>}
+ */
+export async function enablePlugin(name) {
+  const csi = (_state.line && _state.line.csi) || _csiWanted || undefined;
+  const grant = await postCtiToken({ csi, enablePlugin: String(name) });
+  _state.plugins = Array.isArray(grant.plugins) ? grant.plugins : _state.plugins;
+  const action = grant.pluginAction || { name: String(name), ok: false, error: 'Aucune réponse du serveur.' };
+  if (!action.ok) {
+    emit();
+    throw new Error('Activation de « ' + action.name + ' » refusée : ' + (action.error || 'raison inconnue'));
+  }
+  // Nouveau jeton recu : on repart dessus, avec une session neuve.
+  stop();
+  await start({ csi });
+  return action;
+}
+
 function clearTimers() {
   if (_tick) { window.clearInterval(_tick); _tick = 0; }
   if (_refreshTimer) { window.clearTimeout(_refreshTimer); _refreshTimer = 0; }

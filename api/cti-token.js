@@ -22,7 +22,16 @@ import {
   readConfig, sendJson, rejectNonPost, rejectCrossSite, readJsonBody, errorMessage,
 } from './_config.js';
 import { requireRole } from './_auth.js';
-import { getAccessToken, fetchVoipLines, fetchDirectoryContacts, mintCsiToken, keyyoGetAll } from './_keyyo.js';
+import { getAccessToken, fetchVoipLines, fetchDirectoryContacts, mintCsiToken, keyyoGetAll, keyyoPost } from './_keyyo.js';
+
+/**
+ * Plugins CTI que l'application accepte d'activer elle-meme. `websocket` est
+ * le canal de la bibliotheque CTI de Keyyo : sans lui, la session s'ouvre
+ * mais toute action repond « Cannot treat action » (verifie en production).
+ * Les autres plugins (`custom`, `delos`...) sont des integrations tierces :
+ * on les montre, on n'y touche pas.
+ */
+const PLUGINS_ALLOWED = ['websocket'];
 import { lineTeams, lineLabel, formatCsi } from '../shared/identity.js';
 import { toE164 } from '../shared/phone.js';
 
@@ -39,6 +48,13 @@ export default async function handler(req, res) {
   try {
     const body = (await readJsonBody(req)) || {};
     const wanted = String(body.csi == null ? '' : body.csi).replace(/\D/g, '');
+    const enablePlugin = String(body.enablePlugin == null ? '' : body.enablePlugin).trim().toLowerCase();
+    if (enablePlugin && PLUGINS_ALLOWED.indexOf(enablePlugin) < 0) {
+      return sendJson(res, 400, {
+        error: 'Plugin non pris en charge',
+        hint: 'Seul le plugin « ' + PLUGINS_ALLOWED.join(' », « ') + ' » peut être activé depuis l\'application.',
+      }, 'no-store');
+    }
 
     const cfg = readConfig();
     const deadline = Date.now() + Math.min(cfg.budgetMs, 20000);
@@ -111,19 +127,48 @@ export default async function handler(req, res) {
     // decrocher...) a des plugins actives ; « Cannot treat action » cote CTI
     // en est le symptome typique. On les liste pour que la page les montre —
     // lecture seule, et tolerante : leur absence n'empeche pas la session.
+    const pluginsPath = '/services/' + encodeURIComponent(line.csi) + '/cti_plugins';
+    /** @returns {Promise<Array<{name: string, enabled: boolean}>>} */
+    const listPlugins = async () => (await keyyoGetAll(cfg, token, pluginsPath, {}, { deadline }))
+      .filter((p) => p && typeof p === 'object' && p.name)
+      .map((p) => ({
+        name: String(p.name),
+        enabled: p.enabled === true || p.enabled === 1 || String(p.enabled).toLowerCase() === 'true' || String(p.enabled) === '1',
+      }));
+
     /** @type {Array<{name: string, enabled: boolean}>} */
     let plugins = [];
     let pluginsError = '';
     try {
-      const raw = await keyyoGetAll(cfg, token, '/services/' + encodeURIComponent(line.csi) + '/cti_plugins', {}, { deadline });
-      plugins = raw
-        .filter((p) => p && typeof p === 'object' && p.name)
-        .map((p) => ({
-          name: String(p.name),
-          enabled: p.enabled === true || p.enabled === 1 || String(p.enabled).toLowerCase() === 'true' || String(p.enabled) === '1',
-        }));
+      plugins = await listPlugins();
     } catch (err) {
       pluginsError = errorMessage(err);
+    }
+
+    // Activation demandee par l'utilisateur (bouton « Activer » de la page) :
+    // ecriture Keyyo, scope cti_admin. On tente le formulaire `enabled=1`,
+    // puis le JSON si Keyyo reclame un autre encodage, et on relit l'etat.
+    /** @type {{name: string, ok: boolean, error: string}|null} */
+    let pluginAction = null;
+    if (enablePlugin) {
+      const known = plugins.find((p) => p.name.toLowerCase() === enablePlugin);
+      if (known && known.enabled) {
+        pluginAction = { name: enablePlugin, ok: true, error: '' };
+      } else {
+        const path = pluginsPath + '/' + encodeURIComponent(enablePlugin);
+        try {
+          try {
+            await keyyoPost(cfg, token, path, { enabled: 1 }, { deadline });
+          } catch (err) {
+            if (Number(/** @type {any} */ (err).status) === 400) await keyyoPost(cfg, token, path, { enabled: true }, { deadline, json: true });
+            else throw err;
+          }
+          pluginAction = { name: enablePlugin, ok: true, error: '' };
+        } catch (err) {
+          pluginAction = { name: enablePlugin, ok: false, error: errorMessage(err) };
+        }
+        try { plugins = await listPlugins(); } catch (err) { pluginsError = errorMessage(err); }
+      }
     }
 
     res.setHeader('Vary', 'Cookie');
@@ -135,6 +180,7 @@ export default async function handler(req, res) {
       domainMasks: minted.domainMasks,
       plugins,
       pluginsError,
+      pluginAction,
       line,
       lines,
       user: { email: session.email, name: session.name, role: session.role },

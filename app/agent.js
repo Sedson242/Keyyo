@@ -315,9 +315,12 @@ function paintSide() {
   // Plugins CTI de la ligne, tels que Keyyo les declare : un plugin eteint
   // explique souvent un « Cannot treat action ».
   if (snap.plugins && snap.plugins.length) {
-    const off = snap.plugins.filter((p) => !p.enabled);
+    const ws = snap.plugins.find((p) => String(p.name).toLowerCase() === 'websocket');
     parts.push(html`<div class="ag-line-sub">Plugins CTI : ${snap.plugins.map((p) => raw(html`<span class="${p.enabled ? '' : 'ag-line-off'}">${p.name}${p.enabled ? ' ✓' : ' ✗'}</span> `))}</div>`);
-    if (off.length) parts.push(html`<div class="ag-line-sub">${off.length === 1 ? 'Un plugin est éteint' : off.length + ' plugins sont éteints'} : à activer dans la console Keyyo (Téléphonie › CTI) si les appels sont refusés.</div>`);
+    if (ws && !ws.enabled) {
+      parts.push(html`<div class="ag-line-msg">Le plugin « websocket » est éteint : Keyyo refuse alors toute action (appeler, décrocher). Il faut l’activer sur cette ligne.</div>`);
+      parts.push(html`<div class="ag-line-actions"><button class="btn btn--accent btn--sm" type="button" data-act="enable-plugin" data-name="websocket"${_busy === 'plugin' ? ' disabled' : ''}>Activer « websocket »</button></div>`);
+    }
   } else if (snap.pluginsError) {
     parts.push(html`<div class="ag-line-sub">Plugins CTI illisibles : ${snap.pluginsError}</div>`);
   }
@@ -768,6 +771,11 @@ function wire() {
     const ref = el.getAttribute('data-ref') || '';
     const number = el.getAttribute('data-number') || '';
     if (act === 'retry-line') { run('line', function () { return cti.start(); }); return; }
+    if (act === 'enable-plugin') {
+      const name = el.getAttribute('data-name') || '';
+      run('plugin', function () { return cti.enablePlugin(name); }, 'Plugin « ' + name + ' » activé, ligne rouverte.');
+      return;
+    }
     if (act === 'answer') { run(ref, function () { return cti.answer(ref); }, 'Appel décroché.'); return; }
     if (act === 'reject') { run(ref, function () { return cti.reject(ref); }, 'Appel rejeté.'); return; }
     if (act === 'hangup') { run(ref, function () { return cti.hangup(ref); }); return; }
