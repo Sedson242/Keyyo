@@ -7,23 +7,96 @@
 //  suivantes ne redemandent que les derniers jours et fusionnent.
 //
 //  Chemin STABLE (`addRandomSuffix: false`, `allowOverwrite: true`) : on veut
-//  une seule URL, ecrasee a chaque sauvegarde, et non une collection de blobs.
-//  `cacheControlMaxAge: 0` parce qu'une archive relue depuis un cache CDN
-//  ferait perdre la derniere synchronisation.
+//  un seul objet, ecrase a chaque sauvegarde, et non une collection de blobs.
 //
-//  Sans BLOB_READ_WRITE_TOKEN, tout fonctionne en mode direct, sans memoire :
-//  c'est le seul mode degrade acceptable, et il est signale a l'utilisateur.
+//  DEUX FACONS DE RELIER UN STORE, verifiees sur le projet reel :
+//    - par OIDC (la connexion actuelle de Vercel) : le projet recoit
+//      BLOB_STORE_ID, et le SDK s'authentifie lui-meme avec le jeton OIDC
+//      que Vercel injecte dans chaque fonction. Aucun secret a poser.
+//    - par jeton (ancienne connexion) : BLOB_READ_WRITE_TOKEN.
+//  Le store peut etre PRIVE (recommande : l'archive est nominative) ; les
+//  blobs se lisent alors par `get`, jamais par leur URL. BLOB_ACCESS force
+//  l'acces (`private` par defaut avec BLOB_STORE_ID, `public` sinon).
+//
+//  Sans store relie, tout fonctionne en mode direct, sans memoire : c'est le
+//  seul mode degrade acceptable, et il est signale a l'utilisateur.
 // =============================================================================
 
-import { put, list } from '@vercel/blob';
+import { put, get } from '@vercel/blob';
 import { SCHEMA_VERSION, F, rowKey, isValidRow } from '../shared/schema.js';
 
 /** Chemin stable de l'archive dans le store Blob. */
 export const ARCHIVE_PATH = 'keyyo/history.json';
 
-/** @returns {boolean} vrai si un store Blob est utilisable. */
+/** @param {string} name @returns {string} */
+function env(name) {
+  return typeof process !== 'undefined' && process.env ? String(process.env[name] || '').trim() : '';
+}
+
+/** @returns {boolean} vrai si un store Blob est relie (OIDC ou jeton). */
 export function archiveEnabled() {
-  return !!(typeof process !== 'undefined' && process.env && String(process.env.BLOB_READ_WRITE_TOKEN || '').trim());
+  return !!(env('BLOB_STORE_ID') || env('BLOB_READ_WRITE_TOKEN'));
+}
+
+/**
+ * Mode d'acces des blobs de ce projet.
+ * @returns {'private'|'public'}
+ */
+export function blobAccess() {
+  const forced = env('BLOB_ACCESS').toLowerCase();
+  if (forced === 'private' || forced === 'public') return forced;
+  return env('BLOB_STORE_ID') ? 'private' : 'public';
+}
+
+/**
+ * Lit un objet JSON du store. `null` s'il n'existe pas ; jette si le store
+ * repond mais que l'objet est illisible.
+ * @param {string} pathname
+ * @returns {Promise<any|null>}
+ */
+export async function readBlobJson(pathname) {
+  if (!archiveEnabled()) return null;
+  let result;
+  try {
+    result = await get(pathname, { access: blobAccess() });
+  } catch (err) {
+    const msg = reason(err);
+    if (/not.?found|404|does not exist/i.test(msg)) return null;
+    throw new Error('Lecture Blob impossible (' + pathname + ') : ' + msg
+      + '. Verifier que le store est bien relie au projet (BLOB_STORE_ID) et redeploye.');
+  }
+  if (!result || !result.stream) return null;
+  try {
+    return await new Response(result.stream).json();
+  } catch (err) {
+    throw new Error('Objet Blob ' + pathname + ' present mais illisible : ' + reason(err));
+  }
+}
+
+/**
+ * Ecrit un objet JSON dans le store, a un chemin stable.
+ * @param {string} pathname
+ * @param {any} obj
+ * @returns {Promise<void>}
+ */
+export async function writeBlobJson(pathname, obj) {
+  const access = blobAccess();
+  /** @type {any} */
+  const options = {
+    access,
+    contentType: 'application/json',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+  };
+  // Un objet public relu depuis un cache CDN ferait perdre la derniere
+  // sauvegarde ; en prive, la lecture passe par le SDK, sans cache.
+  if (access === 'public') options.cacheControlMaxAge = 0;
+  try {
+    await put(pathname, JSON.stringify(obj), options);
+  } catch (err) {
+    throw new Error('Ecriture Blob impossible (' + pathname + ') : ' + reason(err)
+      + ". Verifier que le store est relie au projet et que l'acces (BLOB_ACCESS) correspond a son type.");
+  }
 }
 
 /** @param {unknown} err @returns {string} */
@@ -50,35 +123,14 @@ function plainObject(v) {
 export async function loadArchive() {
   if (!archiveEnabled()) return null;
 
-  let blobs = [];
-  try {
-    const res = await list({ prefix: ARCHIVE_PATH, limit: 100 });
-    blobs = (res && res.blobs) || [];
-  } catch (err) {
-    throw new Error(
-      "Archive Blob illisible (list " + ARCHIVE_PATH + ') : ' + reason(err)
-      + '. Verifier que BLOB_READ_WRITE_TOKEN est valide et que le store Blob est bien relie au projet.',
-    );
-  }
-
-  let hit = null;
-  for (const b of blobs) {
-    if (b && b.pathname === ARCHIVE_PATH) { hit = b; break; }
-  }
-  if (!hit || !hit.url) return null;                 // premier remplissage
-
   /** @type {any} */
   let payload = null;
   try {
-    const res = await fetch(hit.url, { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    payload = await res.json();
+    payload = await readBlobJson(ARCHIVE_PATH);
   } catch (err) {
-    throw new Error(
-      'Archive Blob ' + ARCHIVE_PATH + ' telechargeable mais illisible : ' + reason(err)
-      + '. Elle sera reconstruite au prochain rebalayage complet (?full=1).',
-    );
+    throw new Error(reason(err) + ' L\'archive sera reconstruite au prochain rebalayage complet (?full=1).');
   }
+  if (!payload) return null;                          // premier remplissage
 
   if (!payload || typeof payload !== 'object') return null;
   if (Number(payload.version) !== SCHEMA_VERSION) return null;   // format perime
@@ -110,28 +162,13 @@ export async function saveArchive(payload) {
   if (!archiveEnabled()) return false;
 
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
-  const body = JSON.stringify({
+  await writeBlobJson(ARCHIVE_PATH, {
     version: SCHEMA_VERSION,
     savedAt: new Date().toISOString(),
     rows,
     coverage: plainObject(payload && payload.coverage),
   });
-
-  try {
-    await put(ARCHIVE_PATH, body, {
-      access: 'public',
-      contentType: 'application/json',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      cacheControlMaxAge: 0,
-    });
-    return true;
-  } catch (err) {
-    throw new Error(
-      "Ecriture de l'archive Blob impossible (" + ARCHIVE_PATH + ') : ' + reason(err)
-      + ". Verifier que BLOB_READ_WRITE_TOKEN autorise l'ecriture sur ce store.",
-    );
-  }
+  return true;
 }
 
 /**

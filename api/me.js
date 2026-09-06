@@ -96,7 +96,7 @@ export default async function handler(req, res) {
 
     if (!contacts.length) warnings.push('Annuaire vide : aucun collegue a proposer pour un transfert.');
     if (!journalEnabled()) {
-      warnings.push('Aucun store Blob relie : le journal d\'attribution (vos appels pris, emis, transferes) ne sera pas conserve.');
+      warnings.push('Aucun store Blob relié au projet : le journal d\'attribution (vos appels pris, émis, transférés) ne sera pas conservé.');
     }
 
     res.setHeader('Vary', 'Cookie');

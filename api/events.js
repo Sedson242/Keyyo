@@ -45,7 +45,8 @@ export default async function handler(req, res) {
     return sendJson(res, 503, {
       error: 'Journal indisponible',
       enabled: false,
-      hint: 'Aucun store Blob relie (BLOB_READ_WRITE_TOKEN absent) : le journal d\'attribution ne peut ni s\'ecrire ni se lire.',
+      hint: 'Aucun store Blob relié au projet : le journal d\'attribution ne peut ni s\'écrire ni se lire. '
+        + 'Relier un store Blob (Storage → Connect) puis redéployer.',
     }, 'no-store');
   }
 

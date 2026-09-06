@@ -153,10 +153,9 @@ export function readConfig(env) {
     lineEmails: parseLineEmails(e.KEYYO_LINE_EMAILS),
     cronSecret: text(e.CRON_SECRET, ''),
     // Exactement le meme verdict que `archiveEnabled()` de _archive.js, qui
-    // decide du comportement reel. Il n'y a rien a « forcer » : le SDK
-    // @vercel/blob exige de toute facon ce jeton, et un drapeau qui dirait
-    // « archive active » sans jeton ne ferait que mentir a la page Diagnostic.
-    blobEnabled: !!text(e.BLOB_READ_WRITE_TOKEN, ''),
+    // decide du comportement reel : un store relie par OIDC (BLOB_STORE_ID,
+    // la connexion actuelle de Vercel) ou par jeton (BLOB_READ_WRITE_TOKEN).
+    blobEnabled: !!(text(e.BLOB_STORE_ID, '') || text(e.BLOB_READ_WRITE_TOKEN, '')),
   };
 }
 

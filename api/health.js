@@ -254,9 +254,9 @@ export default async function handler(req, res) {
     if (!archiveEnabled()) {
       return {
         level: 'warn',
-        message: 'Aucun magasin Blob relié (BLOB_READ_WRITE_TOKEN absent) : l\'outil fonctionne '
-          + 'en mode direct, sans mémoire. L\'API Keyyo ayant une fenêtre glissante, '
-          + 'l\'historique ancien sera perdu. Créer un store Blob et le relier au projet.',
+        message: 'Aucun store Blob relié au projet (ni BLOB_STORE_ID ni BLOB_READ_WRITE_TOKEN) : l\'outil '
+          + 'fonctionne en mode direct, sans mémoire. L\'API Keyyo ayant une fenêtre glissante, '
+          + 'l\'historique ancien sera perdu. Créer un store Blob, le relier au projet, redéployer.',
         value: null,
       };
     }

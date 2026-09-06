@@ -103,7 +103,7 @@ défaut utilisables :
 | `KEYYO_RETENTION_DAYS` | purge de l'archive, `0` = jamais |
 | `KEYYO_LINE_EMAILS` | forçage manuel ligne → collaborateur |
 | `CRON_SECRET` | protège `/api/sync` |
-| `BLOB_READ_WRITE_TOKEN` | injecté par Vercel en reliant un store Blob |
+| `BLOB_STORE_ID` | injecté par Vercel en reliant un store Blob (OIDC) ; `BLOB_READ_WRITE_TOKEN` reste accepté |
 | `KEYYO_OAUTH_SETUP` | ouvre `/api/oauth` le temps d'obtenir un jeton, `404` sinon |
 | `KEYYO_OAUTH_REDIRECT` | URI de redirection fixe, si la déduction ne convient pas |
 | `ENTRA_TENANT_ID` | **obligatoire** — locataire Microsoft Entra |
@@ -126,10 +126,10 @@ toute personne du locataire est « agent » ; la direction se déclare alors par
 section 8. Tant que ces variables manquent, l'application affiche « Application
 fermée » et ne sert aucune donnée.
 
-**4. Créer le store Blob.** *Storage > Create Database > Blob*, puis relier le
-store au projet. `BLOB_READ_WRITE_TOKEN` est alors injecté automatiquement. Sans
-lui, l'application fonctionne mais **sans mémoire**, et le pied de la barre
-latérale l'affiche.
+**4. Créer le store Blob.** *Storage > Create Database > Blob* (privé), puis
+relier le store au projet et redéployer. Vercel injecte `BLOB_STORE_ID` et le
+SDK s'authentifie par OIDC. Sans store, l'application fonctionne mais **sans
+mémoire** ni journal d'attribution, et le pied de la barre latérale l'affiche.
 
 **5. Déployer**, puis ouvrir la page **Diagnostic** : elle indique le mode
 d'authentification retenu, les lignes détectées, les mois collectés et les lignes

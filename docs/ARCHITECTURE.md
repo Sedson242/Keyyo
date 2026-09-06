@@ -320,11 +320,17 @@ sans rien renvoyer.
 ### `api/_archive.js`
 ```js
 export const ARCHIVE_PATH: string                     // 'keyyo/history.json'
-export function archiveEnabled(): boolean
+export function archiveEnabled(): boolean             // BLOB_STORE_ID (OIDC) ou BLOB_READ_WRITE_TOKEN
+export function blobAccess(): 'private'|'public'      // BLOB_ACCESS, sinon private avec BLOB_STORE_ID
+export async function readBlobJson(pathname): Promise<any|null>   // par le SDK (`get`), jamais par URL
+export async function writeBlobJson(pathname, obj): Promise<void>
 export async function loadArchive(): Promise<{version, savedAt, rows, coverage}|null>
 export async function saveArchive(payload): Promise<boolean>
 export function mergeRows(oldRows, freshRows, opts?): { rows, added, updated }
 ```
+Le store est **privé** et relié par **OIDC** (`@vercel/blob` ≥ 2, Node ≥ 20) :
+aucun jeton à poser, aucune URL publique. `_journal.js` réutilise
+`readBlobJson` / `writeBlobJson`.
 `coverage` : `{ [YYYY-MM]: { count, syncedAt } }` — sert à savoir quels mois
 sont déjà collectés et à reprendre un remplissage interrompu.
 
