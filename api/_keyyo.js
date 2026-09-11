@@ -9,6 +9,16 @@
 //    - pagination      _links.next.href, sinon limit/offset
 //    - call_detail     date_start / date_end au format « YYYY-MM-DD HH:MM »,
 //                      date_end EXCLUSIVE
+//    - PARAMETRES      les parametres de requete d'une collection se passent
+//                      dans un TABLEAU `filters` : `?filters[date_start]=…`.
+//                      C'est le « parameter-value array » de la documentation,
+//                      et c'est ainsi que le client PHP officiel de Keyyo les
+//                      encode (Resource.php : http_build_query(['filters' =>
+//                      $parameters])). Passes a plat (`?date_start=…`), ils
+//                      sont IGNORES sans erreur et Keyyo rend sa fenetre par
+//                      defaut — verifie en production : une demande d'aout
+//                      rendait 80 appels de septembre, et `?type=` sur
+//                      /services ne filtrait rien.
 //
 //  Aucun jeton n'est jamais journalise ni renvoye : les messages d'erreur ne
 //  citent que le chemin appele et la raison donnee par Keyyo.
@@ -154,9 +164,10 @@ async function refreshAccessToken(cfg, entry) {
  * Construit une URL absolue. Accepte un chemin relatif (`/services`) ou une
  * URL complete (lien de pagination HAL).
  *
- * La query est encodee a la main plutot que via URLSearchParams : celui-ci
- * encode l'espace en `+`, alors que `date_start` vaut « YYYY-MM-DD HH:MM » et
- * doit partir en `%20`.
+ * Chaque parametre part dans le tableau `filters` (voir l'en-tete du
+ * fichier) : `filters[date_start]=…`. La query est encodee a la main plutot
+ * que via URLSearchParams : celui-ci encode l'espace en `+`, alors que
+ * `date_start` vaut « YYYY-MM-DD HH:MM » et doit partir en `%20`.
  *
  * @param {import('./_config.js').Config} cfg
  * @param {string} pathOrUrl
@@ -174,7 +185,7 @@ function buildUrl(cfg, pathOrUrl, params) {
     for (const k of Object.keys(params)) {
       const v = params[k];
       if (v == null || v === '') continue;
-      parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(String(v)));
+      parts.push('filters%5B' + encodeURIComponent(k) + '%5D=' + encodeURIComponent(String(v)));
     }
   }
   if (!parts.length) return url;
@@ -565,6 +576,10 @@ export async function keyyoGetAll(cfg, token, path, params, opts) {
   let offset = 0;
   let pages = 0;
   let truncated = false;
+  /** Taille de page REELLE, apprise sur la premiere page : Keyyo peut servir moins que `limit`. */
+  let pageSize = 0;
+  /** Empreinte de la page precedente, pour detecter un `offset` ignore (meme page rendue en boucle). */
+  let lastFingerprint = '';
   let url = buildUrl(cfg, path, Object.assign({}, baseParams, { limit, offset }));
 
   while (url) {
@@ -574,10 +589,20 @@ export async function keyyoGetAll(cfg, token, path, params, opts) {
     const payload = await requestJson(cfg, token, url, o);
     pages++;
     const records = extractRecords(payload);
+
+    // Une page identique a la precedente signifie que l'offset n'est pas
+    // honore : continuer ne ferait que dupliquer. On s'arrete, en le disant.
+    const fingerprint = records.length + ':' + fingerprintOf(records);
+    if (records.length && fingerprint === lastFingerprint) { truncated = true; break; }
+    lastFingerprint = fingerprint;
+
     for (let i = 0; i < records.length; i++) out.push(records[i]);
+    if (!pageSize) pageSize = records.length;
 
     const link = nextLink(payload);
-    const hasMoreByCount = records.length >= limit;
+    // Il reste peut-etre des pages si celle-ci est pleine — au sens de la
+    // taille que Keyyo sert reellement, pas seulement de `limit`.
+    const hasMoreByCount = records.length > 0 && records.length >= Math.min(limit, pageSize || limit);
 
     if (pages >= maxPages) {
       truncated = !!link || hasMoreByCount;
@@ -604,6 +629,21 @@ export async function keyyoGetAll(cfg, token, path, params, opts) {
     o.stats.truncated = truncated;
   }
   return out;
+}
+
+/**
+ * Empreinte courte d'une page : identifiants (ou horodatages) du premier et
+ * du dernier enregistrement. Deux pages consecutives identiques trahissent un
+ * `offset` ignore par le serveur.
+ * @param {any[]} records
+ * @returns {string}
+ */
+function fingerprintOf(records) {
+  const idOf = (r) => (r && typeof r === 'object'
+    ? String(r.call_id || r.id || r.uid || r.csi || r.start_time || '')
+    : '');
+  if (!records.length) return '';
+  return idOf(records[0]) + '|' + idOf(records[records.length - 1]);
 }
 
 /**
