@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { getMe, ApiError } from './api.js';
-import { isDirection as roleIsDirection, roleLabel as labelOfRole } from '../shared/roles.js';
+import { isDirection as roleIsDirection, isAdmin as roleIsAdmin, roleLabel as labelOfRole } from '../shared/roles.js';
 
 /** Adresse de connexion. Une NAVIGATION, pas un fetch : le serveur redirige vers Microsoft. */
 export const LOGIN_URL = '/api/auth?action=login';
@@ -86,9 +86,14 @@ export function current() {
   return _current;
 }
 
-/** @returns {boolean} vrai si la personne connectee est de la direction. */
+/** @returns {boolean} vrai si la personne connectee supervise (direction ou administrateur). */
 export function isDirection() {
   return _current.state === 'ready' && !!_current.user && roleIsDirection(_current.user.role);
+}
+
+/** @returns {boolean} vrai si la personne connectee administre les acces. */
+export function isAdmin() {
+  return _current.state === 'ready' && !!_current.user && roleIsAdmin(_current.user.role);
 }
 
 /** @returns {string} libelle du role de la personne connectee, ou ''. */

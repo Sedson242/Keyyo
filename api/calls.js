@@ -45,7 +45,7 @@ export default async function handler(req, res) {
   if (rejectNonGet(req, res, '/api/calls')) return;
   // Donnees nominatives de toute l'equipe : direction seulement. Le garde
   // ecrit lui-meme la reponse de refus (voir shared/roles.js pour la politique).
-  if (!requireRole(req, res, '/api/calls')) return;
+  if (!await requireRole(req, res, '/api/calls')) return;
 
   const params = readParams(req);
   const force = flag(params.force);

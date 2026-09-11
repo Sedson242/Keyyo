@@ -3,8 +3,10 @@
 //  ni DOM. Importe a l'identique par le back (qui applique la politique) et
 //  par le front (qui n'affiche que ce que la politique autorise).
 //
-//  DEUX ROLES, PAS PLUS.
+//  TROIS ROLES, PAS PLUS.
 //
+//    admin      administre : tout ce que fait la direction, plus la gestion
+//               des acces (membres, roles, lignes, routage) dans l'application.
 //    direction  supervise : voit les appels de tout le monde, les identites,
 //               le diagnostic, et peut declencher une collecte.
 //    agent      travaille : voit sa propre activite, passe et transfere des
@@ -15,23 +17,27 @@
 //  l'inscrire ici la rend inaccessible — c'est voulu, on prefere un 403 a une
 //  fuite. Le back est le seul juge ; le front ne fait que cacher les menus.
 //
-//  D'OU VIENT LE ROLE. De l'identite Microsoft Entra, par deux chemins :
-//    1. le claim `roles` du jeton d'identite, rempli par les « app roles »
-//       declares sur l'application Entra et attribues aux personnes ;
-//    2. a defaut, une liste d'adresses de direction posee en variable
-//       d'environnement (AUTH_DIRECTION_EMAILS), pour demarrer sans avoir a
-//       configurer les app roles.
+//  D'OU VIENT LE ROLE. De trois sources, dans cet ordre (voir shared/access.js
+//  pour la regle complete) :
+//    1. le claim `roles` du jeton d'identite Entra, rempli par les « app
+//       roles » declares sur l'application et attribues aux personnes ;
+//    2. la configuration d'acces geree dans l'application par un
+//       administrateur (membres, roles, lignes, routage) ;
+//    3. a defaut, une liste d'adresses de direction posee en variable
+//       d'environnement (AUTH_DIRECTION_EMAILS), l'amorce du premier jour.
 //  Toute personne authentifiee du locataire est au moins `agent` : ce sont
 //  les employes, et la page agent ne montre que leur propre activite.
 // =============================================================================
 
+/** @type {'admin'} */
+export const ROLE_ADMIN = 'admin';
 /** @type {'direction'} */
 export const ROLE_DIRECTION = 'direction';
 /** @type {'agent'} */
 export const ROLE_AGENT = 'agent';
 
 /** Les roles, du plus au moins privilegie. */
-export const ROLES = Object.freeze([ROLE_DIRECTION, ROLE_AGENT]);
+export const ROLES = Object.freeze([ROLE_ADMIN, ROLE_DIRECTION, ROLE_AGENT]);
 
 /**
  * Valeurs d'app role Entra reconnues, apres normalisation (minuscules, sans
@@ -39,10 +45,17 @@ export const ROLES = Object.freeze([ROLE_DIRECTION, ROLE_AGENT]);
  * @type {Record<string, string>}
  */
 const ENTRA_ROLE_VALUES = Object.freeze({
+  admin: ROLE_ADMIN,
+  administrateur: ROLE_ADMIN,
   direction: ROLE_DIRECTION,
   manager: ROLE_DIRECTION,
   agent: ROLE_AGENT,
 });
+
+/** Roles qui supervisent (donnees nominatives de toute l'equipe). */
+const SUPERVISORS = Object.freeze([ROLE_ADMIN, ROLE_DIRECTION]);
+/** Tout le monde, une fois connecte. */
+const EVERYONE = Object.freeze([ROLE_ADMIN, ROLE_DIRECTION, ROLE_AGENT]);
 
 /**
  * Politique d'acces : route -> roles autorises. Une route absente est fermee.
@@ -50,17 +63,19 @@ const ENTRA_ROLE_VALUES = Object.freeze({
  * @type {Readonly<Record<string, ReadonlyArray<string>>>}
  */
 export const POLICY = Object.freeze({
+  // Administration : qui a acces a quoi, et le routage des appels.
+  '/api/access': Object.freeze([ROLE_ADMIN]),
   // Supervision : donnees nominatives de toute l'equipe.
-  '/api/calls': Object.freeze([ROLE_DIRECTION]),
-  '/api/team': Object.freeze([ROLE_DIRECTION]),
-  '/api/health': Object.freeze([ROLE_DIRECTION]),
-  '/api/sync': Object.freeze([ROLE_DIRECTION]),
-  '/api/oauth': Object.freeze([ROLE_DIRECTION]),
+  '/api/calls': SUPERVISORS,
+  '/api/team': SUPERVISORS,
+  '/api/health': SUPERVISORS,
+  '/api/sync': SUPERVISORS,
+  '/api/oauth': SUPERVISORS,
   // Outils de travail : chaque agent y a droit.
-  '/api/directory': Object.freeze([ROLE_DIRECTION, ROLE_AGENT]),
-  '/api/me': Object.freeze([ROLE_DIRECTION, ROLE_AGENT]),
-  '/api/cti-token': Object.freeze([ROLE_DIRECTION, ROLE_AGENT]),
-  '/api/events': Object.freeze([ROLE_DIRECTION, ROLE_AGENT]),
+  '/api/directory': EVERYONE,
+  '/api/me': EVERYONE,
+  '/api/cti-token': EVERYONE,
+  '/api/events': EVERYONE,
 });
 
 /**
@@ -98,28 +113,46 @@ export function parseEmailList(raw) {
  *
  * @param {{roles?: unknown, email?: unknown, preferred_username?: unknown}} claims
  * @param {{directionEmails?: string[]}} [opts]
- * @returns {'direction'|'agent'}
+ * @returns {'admin'|'direction'|'agent'}
  */
 export function roleFromClaims(claims, opts) {
+  return roleAndSourceFromClaims(claims, opts).role;
+}
+
+/**
+ * Comme `roleFromClaims`, en disant aussi D'OU vient le role : `entra` (app
+ * role), `env` (AUTH_DIRECTION_EMAILS) ou `none` (agent par defaut). Le back
+ * le range dans la session, pour que la configuration d'acces sache si elle
+ * peut retirer un role (jamais un role pose par Entra).
+ * @param {{roles?: unknown, email?: unknown, preferred_username?: unknown}} claims
+ * @param {{directionEmails?: string[], adminEmails?: string[]}} [opts]
+ * @returns {{role: 'admin'|'direction'|'agent', source: 'entra'|'env'|'none'}}
+ */
+export function roleAndSourceFromClaims(claims, opts) {
   const c = claims && typeof claims === 'object' ? claims : {};
   const o = opts || {};
 
   // 1. App roles Entra. Le claim est un tableau de chaines ; on tolere une
-  //    chaine seule, que certains gabarits produisent.
+  //    chaine seule, que certains gabarits produisent. Le plus eleve gagne.
   const rawRoles = Array.isArray(c.roles) ? c.roles : (c.roles ? [c.roles] : []);
   let best = '';
   for (const r of rawRoles) {
     const mapped = ENTRA_ROLE_VALUES[fold(r)];
-    if (mapped === ROLE_DIRECTION) return ROLE_DIRECTION;
-    if (mapped && !best) best = mapped;
+    if (!mapped) continue;
+    if (!best || ROLES.indexOf(mapped) < ROLES.indexOf(best)) best = mapped;
   }
+  if (best === ROLE_ADMIN || best === ROLE_DIRECTION) return { role: /** @type {any} */ (best), source: 'entra' };
 
-  // 2. Liste d'adresses de direction.
+  // 2. Listes d'adresses en variables d'environnement : l'amorce du premier
+  //    jour (AUTH_ADMIN_EMAILS pour le premier administrateur, qui gere
+  //    ensuite tout le monde depuis l'application ; AUTH_DIRECTION_EMAILS).
   const email = fold(c.email || c.preferred_username);
+  const admins = Array.isArray(o.adminEmails) ? o.adminEmails : [];
+  if (email && admins.indexOf(email) >= 0) return { role: ROLE_ADMIN, source: 'env' };
   const list = Array.isArray(o.directionEmails) ? o.directionEmails : [];
-  if (email && list.indexOf(email) >= 0) return ROLE_DIRECTION;
+  if (email && list.indexOf(email) >= 0) return { role: ROLE_DIRECTION, source: 'env' };
 
-  return best || ROLE_AGENT;
+  return { role: ROLE_AGENT, source: best ? 'entra' : 'none' };
 }
 
 /**
@@ -145,9 +178,20 @@ export function canAccess(route, role) {
   return allowedRoles(route).indexOf(r) >= 0;
 }
 
-/** @param {unknown} role @returns {boolean} */
+/**
+ * Supervise-t-on avec ce role ? Vrai pour la direction ET les
+ * administrateurs : l'administration inclut la supervision.
+ * @param {unknown} role
+ * @returns {boolean}
+ */
 export function isDirection(role) {
-  return String(role == null ? '' : role) === ROLE_DIRECTION;
+  const r = String(role == null ? '' : role);
+  return r === ROLE_DIRECTION || r === ROLE_ADMIN;
+}
+
+/** @param {unknown} role @returns {boolean} */
+export function isAdmin(role) {
+  return String(role == null ? '' : role) === ROLE_ADMIN;
 }
 
 /**
@@ -157,6 +201,7 @@ export function isDirection(role) {
  */
 export function roleLabel(role) {
   const r = String(role == null ? '' : role);
+  if (r === ROLE_ADMIN) return 'Administrateur';
   if (r === ROLE_DIRECTION) return 'Direction';
   if (r === ROLE_AGENT) return 'Agent';
   return 'Sans rôle';

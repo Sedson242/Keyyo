@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<meta name="description" content="Ma ligne Keyyo : décrocher, appeler, transférer, et voir mon activité.">
+<meta name="description" content="Administration : membres, rôles, lignes et routage des appels.">
 <meta name="robots" content="noindex, nofollow">
-<title>Ma ligne — Keyyo</title>
+<title>Administration — Keyyo</title>
 
 <link rel="stylesheet" href="assets/css/tokens.css">
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/components.css">
-<link rel="stylesheet" href="assets/css/agent.css">
+<link rel="stylesheet" href="assets/css/admin.css">
 
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="modulepreload" href="app/agent.js">
+<link rel="modulepreload" href="app/admin.js">
 </head>
 <body class="is-gated">
 
@@ -108,14 +108,13 @@
   </symbol>
 </svg>
 
-<!-- Ecran de connexion, meme coquille que index.html (rempli par app/agent.js). -->
 <div class="gate" id="gate">
   <div class="gate-card" role="dialog" aria-labelledby="gate-title" aria-describedby="gate-text">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
       <div>
         <span class="brand-name">Keyyo</span>
-        <span class="brand-sub">Ma ligne</span>
+        <span class="brand-sub">Administration</span>
       </div>
     </div>
     <h1 class="gate-title" id="gate-title">Connexion</h1>
@@ -125,98 +124,47 @@
   </div>
 </div>
 
-<!-- =========================================================================
-     Trois colonnes : moi et ma ligne / la liste / le detail.
-     Tout ce qui est dynamique est ecrit par app/agent.js.
-     ========================================================================= -->
-<div class="ag" id="app" aria-hidden="true">
-  <div id="agent-root" hidden></div>
+<div class="adm" id="app" aria-hidden="true">
+  <div id="admin-root" hidden></div>
 
-  <aside class="ag-side">
+  <header class="adm-top">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
       <div>
         <span class="brand-name">Keyyo</span>
-        <span class="brand-sub">Ma ligne</span>
+        <span class="brand-sub">Administration</span>
       </div>
     </div>
-
-    <button class="ag-user" type="button" data-view="activity" title="Mon activité">
-      <span id="ag-user-avatar"></span>
-      <span style="min-width:0">
-        <span class="ag-user-name" id="ag-user-name">Connexion…</span>
-        <span class="ag-user-role" id="ag-user-role"></span>
-      </span>
-    </button>
-
-    <nav class="ag-nav" aria-label="Navigation">
-      <button class="ag-nav-item is-active" type="button" data-tab="calls">
-        <svg aria-hidden="true"><use href="#i-calls"/></svg>Appels
-        <span class="ag-nav-badge" id="ag-nav-live" hidden>0</span>
-      </button>
-      <button class="ag-nav-item" type="button" data-tab="people">
-        <svg aria-hidden="true"><use href="#i-peers"/></svg>Collègues
-      </button>
-      <button class="ag-nav-item" type="button" data-view="activity">
-        <svg aria-hidden="true"><use href="#i-monitoring"/></svg>Mon activité
-      </button>
-    </nav>
-
     <div>
-      <p class="ag-side-title">Ma ligne</p>
-      <div class="ag-line" id="ag-line">
-        <div class="ag-line-head"><span class="ag-dot" aria-hidden="true"></span><span class="ag-line-name">Ma ligne</span></div>
-      </div>
+      <h1 class="adm-title">Accès et routage</h1>
+      <p class="adm-sub">Qui a quel rôle, sur quelle ligne, et qui est présenté aux appels entrants.</p>
     </div>
-
-    <button class="btn btn--accent ag-newcall" id="ag-newcall" type="button" disabled>
-      <svg aria-hidden="true"><use href="#i-out"/></svg>Nouvel appel
-    </button>
-
-    <div class="ag-side-foot">
-      <a class="btn btn--ghost btn--sm" id="link-supervision" href="/" hidden>
-        <svg aria-hidden="true"><use href="#i-monitoring"/></svg>Supervision
-      </a>
-      <a class="btn btn--ghost btn--sm" id="link-admin" href="/admin.html" hidden>
-        <svg aria-hidden="true"><use href="#i-people"/></svg>Administration
-      </a>
-      <button class="btn btn--ghost btn--sm" id="btn-refresh" type="button" title="Rafraîchir mon activité">
-        <svg aria-hidden="true"><use href="#i-refresh"/></svg>Rafraîchir
-      </button>
-      <a class="btn btn--ghost btn--sm" id="btn-logout" href="/api/auth?action=logout" title="Se déconnecter">
-        <svg aria-hidden="true"><use href="#i-close"/></svg>Déconnexion
-      </a>
+    <div class="account" id="account">
+      <span class="avatar avatar--sm" id="account-initials" aria-hidden="true">–</span>
+      <span class="account-text">
+        <span class="account-name" id="account-name">Connexion…</span>
+        <span class="account-sub" id="account-sub"></span>
+      </span>
+      <a class="btn btn--ghost btn--sm" href="/">Supervision</a>
+      <a class="btn btn--ghost btn--sm" href="/agent.html">Ma ligne</a>
+      <a class="btn btn--ghost btn--sm" id="btn-logout" href="/api/auth?action=logout" title="Se déconnecter">Déconnexion</a>
     </div>
-  </aside>
+  </header>
 
-  <section class="ag-list" aria-label="Liste">
-    <div class="ag-list-head">
-      <h1 class="ag-list-title"><span id="ag-list-title-text">Appels</span></h1>
-      <div id="ag-list-filters"></div>
-    </div>
-    <div class="ag-list-body" id="ag-list"></div>
-  </section>
-
-  <section class="ag-main" id="ag-main" aria-label="Détail"></section>
+  <main id="admin-main" aria-label="Configuration"></main>
 </div>
 
-<!-- Fenetre d'appel (sombre) et sa pastille reduite -->
-<div class="call-popup" id="call-popup" hidden></div>
-<button class="call-pill" id="call-pill" type="button" hidden></button>
+<div class="adm-bar" id="admin-bar"></div>
 
-<!-- Composeur : nouvel appel, ou transfert -->
-<div class="ag-dialer" id="ag-dialer" hidden></div>
-
-<!-- Messages ephemeres -->
 <div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
 
 <noscript>
   <div class="notice notice--error" style="margin:20px">
     <svg><use href="#i-alert"/></svg>
-    <div><span class="notice-title">JavaScript est requis.</span> Cette page pilote votre ligne Keyyo dans le navigateur.</div>
+    <div><span class="notice-title">JavaScript est requis.</span></div>
   </div>
 </noscript>
 
-<script type="module" src="app/agent.js"></script>
+<script type="module" src="app/admin.js"></script>
 </body>
 </html>

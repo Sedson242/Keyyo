@@ -29,7 +29,7 @@ import { collect } from './_collect.js';
 import {
   readConfig, readParams, flag, sendJson, rejectNonGet, errorMessage,
 } from './_config.js';
-import { readAuthConfig, readSession, safeEqual } from './_auth.js';
+import { readAuthConfig, effectiveSession, safeEqual } from './_auth.js';
 import { canAccess } from '../shared/roles.js';
 
 /**
@@ -57,7 +57,7 @@ export default async function handler(req, res) {
   let byPerson = false;
   if (!byCron) {
     const auth = readAuthConfig();
-    const session = auth.configured ? readSession(req, auth) : null;
+    const session = auth.configured ? await effectiveSession(req, auth) : null;
     byPerson = !!session && canAccess('/api/sync', session.role);
   }
   if (!byCron && !byPerson) {

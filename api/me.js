@@ -17,8 +17,10 @@ import { readConfig, sendJson, rejectNonGet, errorMessage } from './_config.js';
 import { requireRole, readAuthConfig, publicUser } from './_auth.js';
 import { getAccessToken, fetchVoipLines, fetchDirectoryContacts } from './_keyyo.js';
 import { lineTeams, lineLabel, formatCsi } from '../shared/identity.js';
-import { roleLabel } from '../shared/roles.js';
+import { roleLabel, isDirection } from '../shared/roles.js';
 import { journalEnabled } from './_journal.js';
+import { loadAccess } from './_access.js';
+import { linesOf, shouldPopup, routingFor, memberOf } from '../shared/access.js';
 import { toE164 } from '../shared/phone.js';
 
 /** Cache prive et court : le profil bouge peu, mais il est nominatif. */
@@ -30,7 +32,7 @@ const CACHE_PRIVATE = 'private, max-age=120';
  */
 export default async function handler(req, res) {
   if (rejectNonGet(req, res, '/api/me')) return;
-  const session = requireRole(req, res, '/api/me');
+  const session = await requireRole(req, res, '/api/me');
   if (!session) return;
 
   try {
@@ -51,21 +53,33 @@ export default async function handler(req, res) {
 
     const me = session.email.toLowerCase();
     const teams = lineTeams(voipLines, contacts);
+    const access = await loadAccess();
     const directionSet = new Set(auth.directionEmails);
-    if (session.role === 'direction') directionSet.add(me);
+    if (isDirection(session.role)) directionSet.add(me);
+    if (access) for (const m of access.members) if (isDirection(m.role)) directionSet.add(m.email);
 
+    // Lignes de la personne : la configuration d'acces d'abord (posee par un
+    // administrateur), l'annuaire Keyyo a defaut.
+    const configured = access ? linesOf(access, me) : [];
     const lines = voipLines.map((l) => {
       const team = teams.find((t) => t.csi === String(l.csi));
+      const csi = String(l.csi);
+      const mine = configured.length ? configured.indexOf(csi) >= 0 : (!!team && team.members.some((m) => m.email === me));
       return {
-        csi: String(l.csi),
+        csi,
         label: lineLabel(Object.assign({ person: null }, l)),
         number: formatCsi(l.csi),
         e164: toE164(l.csi),
         members: team ? team.members.length : 0,
-        mine: !!team && team.members.some((m) => m.email === me),
+        mine,
+        // Routage : qui est presente a l'appel entrant de cette ligne, et
+        // moi, y suis-je ? Sans routage configure, tout le monde l'est.
+        popup: access ? shouldPopup(access, me, csi) : true,
+        routedTo: access ? routingFor(access, csi) : [],
       };
     });
     const myLines = lines.filter((l) => l.mine);
+    const member = access ? memberOf(access, me) : null;
 
     // Collegues : toute personne rattachee a une ligne du compte, sauf soi.
     // Un numero direct d'abord (numero abrege = poste), sinon la ligne du site.
@@ -107,10 +121,15 @@ export default async function handler(req, res) {
       colleagues,
       managers: colleagues.filter((c) => c.manager),
       journal: { enabled: journalEnabled() },
-      note: 'Les managers sont les adresses de AUTH_DIRECTION_EMAILS presentes dans l\'annuaire Keyyo.',
+      access: {
+        configured: !!access && access.members.length > 0,
+        member: member ? { role: member.role, lines: member.lines, popup: member.popup } : null,
+        source: configured.length ? 'configuration' : 'annuaire',
+      },
+      note: 'Les managers sont la direction et les administrateurs connus de l\'application, presents dans l\'annuaire Keyyo.',
       warnings,
       updatedAt: new Date().toISOString(),
-    }, warnings.length ? 'no-store' : CACHE_PRIVATE);
+    }, 'no-store');
   } catch (err) {
     sendJson(res, 500, {
       error: 'Profil indisponible',

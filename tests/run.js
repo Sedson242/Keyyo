@@ -157,15 +157,18 @@ const CONTRACT = [
   ['../shared/schema.js', ['SCHEMA_VERSION', 'FIELDS', 'F', 'ROW_LENGTH', 'isMissed', 'isIncoming', 'isOutgoing', 'rowKey', 'toObject', 'fromObject', 'isValidRow']],
   ['../shared/cdr.js', ['normalizeCdr', 'extractRecords', 'nextLink']],
   ['../shared/identity.js', ['capitalizeName', 'normalizeName', 'nameTokens', 'isEmail', 'nameFromEmail', 'firstNameFromEmail', 'nameSimilarity', 'NAME_MATCH_THRESHOLD', 'resolveLineIdentities', 'lineTeams', 'lineLabel', 'initialsOf', 'parseLineEmails', 'isPhoneCsi', 'formatCsi']],
-  ['../shared/roles.js', ['ROLE_DIRECTION', 'ROLE_AGENT', 'ROLES', 'POLICY', 'parseEmailList', 'roleFromClaims', 'allowedRoles', 'canAccess', 'isDirection', 'roleLabel']],
+  ['../shared/roles.js', ['ROLE_ADMIN', 'ROLE_DIRECTION', 'ROLE_AGENT', 'ROLES', 'POLICY', 'parseEmailList', 'roleFromClaims', 'roleAndSourceFromClaims', 'allowedRoles', 'canAccess', 'isDirection', 'isAdmin', 'roleLabel']],
+  ['../shared/access.js', ['ACCESS_VERSION', 'emptyAccess', 'normalizeAccess', 'memberOf', 'configRoleOf', 'linesOf', 'routingFor', 'shouldPopup', 'resolveEffectiveRole', 'upsertMember', 'removeMember', 'adminCount']],
   ['../shared/journal.js', ['EVENT_TYPES', 'JOURNAL_VERSION', 'DIR_IN', 'DIR_OUT', 'eventId', 'normalizeEvent', 'isValidEvent', 'mergeEvents', 'monthOf', 'summarize']],
 
   ['../app/format.js', ['fmtInt', 'fmtPct', 'fmtDuration', 'fmtDurationShort', 'fmtHms', 'fmtDate', 'fmtDateLong', 'fmtDayShort', 'fmtTime', 'fmtMonth', 'fmtClock', 'fmtRelative', 'WEEKDAYS', 'pluralize']],
   ['../app/dom.js', ['esc', 'h', 'html', 'raw', 'mount', 'qs', 'qsa', 'on', 'icon']],
   ['../app/charts.js', ['barChart', 'areaChart', 'donutChart', 'heatmap', 'sparkline', 'attachChartTips']],
   ['../app/ui.js', ['card', 'sectionHead', 'kpi', 'statbar', 'table', 'tag', 'avatar', 'avatarStack', 'meter', 'split', 'rankRow', 'empty', 'notice', 'skeleton', 'toolbar']],
-  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'postSync', 'ApiError']],
-  ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'roleLabel', 'loginUrl', 'forget']],
+  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'getAccess', 'postAccess', 'postSync', 'ApiError']],
+  ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'isAdmin', 'roleLabel', 'loginUrl', 'forget']],
+  // admin.js ne s'amorce que si #admin-root est present : importable ici.
+  ['../app/admin.js', ['boot']],
   ['../app/journal.js', ['subscribe', 'record', 'flush', 'status', 'month', 'init']],
   ['../app/cti.js', ['subscribe', 'snapshot', 'start', 'stop', 'chooseLine', 'enablePlugin', 'autoAnswer', 'setAutoAnswer', 'dial', 'answer', 'reject', 'hangup', 'transfer', 'claim']],
   ['../app/callbar.js', ['init', 'setColleagues', 'setLabelOf']],
@@ -225,6 +228,7 @@ const schema = NS['../shared/schema.js'];
 const cdr = NS['../shared/cdr.js'];
 const identity = NS['../shared/identity.js'];
 const roles = NS['../shared/roles.js'];
+const accessMod = NS['../shared/access.js'];
 const journalMod = NS['../shared/journal.js'];
 const sessionMod = NS['../app/session.js'];
 const ctiMod = NS['../app/cti.js'];
@@ -905,14 +909,36 @@ if (need(identity, 'shared/identity.js', 'shared/identity.js')) suite('shared/id
 
 if (need(roles, 'shared/roles.js', 'shared/roles.js')) suite('shared/roles.js', () => {
   const {
-    ROLE_DIRECTION, ROLE_AGENT, ROLES, POLICY, parseEmailList, roleFromClaims,
-    allowedRoles, canAccess, isDirection, roleLabel,
+    ROLE_ADMIN, ROLE_DIRECTION, ROLE_AGENT, ROLES, POLICY, parseEmailList, roleFromClaims,
+    roleAndSourceFromClaims, allowedRoles, canAccess, isDirection, isAdmin, roleLabel,
   } = roles;
 
-  test('deux roles, la direction d’abord', () => {
-    eqDeep(Array.from(ROLES), [ROLE_DIRECTION, ROLE_AGENT]);
+  test('trois roles, du plus au moins privilegie', () => {
+    eqDeep(Array.from(ROLES), [ROLE_ADMIN, ROLE_DIRECTION, ROLE_AGENT]);
+    eq(ROLE_ADMIN, 'admin');
     eq(ROLE_DIRECTION, 'direction');
     eq(ROLE_AGENT, 'agent');
+  });
+
+  test('l’administrateur supervise, et lui seul administre', () => {
+    eq(isDirection('admin'), true);
+    eq(isAdmin('admin'), true);
+    eq(isAdmin('direction'), false);
+    eq(canAccess('/api/access', 'admin'), true);
+    eq(canAccess('/api/access', 'direction'), false);
+    eq(canAccess('/api/calls', 'admin'), true);
+    eq(canAccess('/api/me', 'admin'), true);
+    eq(roleLabel('admin'), 'Administrateur');
+  });
+
+  test('roleAndSourceFromClaims dit d’ou vient le role', () => {
+    eqDeep(roleAndSourceFromClaims({ roles: ['Admin'] }), { role: 'admin', source: 'entra' });
+    eqDeep(roleAndSourceFromClaims({ roles: ['Direction'] }), { role: 'direction', source: 'entra' });
+    eqDeep(roleAndSourceFromClaims({ roles: ['Agent'] }), { role: 'agent', source: 'entra' });
+    eqDeep(roleAndSourceFromClaims({}), { role: 'agent', source: 'none' });
+    eqDeep(roleAndSourceFromClaims({ email: 'boss@bios.fr' }, { directionEmails: ['boss@bios.fr'] }), { role: 'direction', source: 'env' });
+    eqDeep(roleAndSourceFromClaims({ email: 'it@bios.fr' }, { adminEmails: ['it@bios.fr'], directionEmails: ['it@bios.fr'] }), { role: 'admin', source: 'env' });
+    eq(roleFromClaims({ roles: ['Admin', 'Agent'] }), 'admin', 'le plus eleve gagne');
   });
 
   test('parseEmailList tolere tous les separateurs et ecarte ce qui n’est pas une adresse', () => {
@@ -956,6 +982,7 @@ if (need(roles, 'shared/roles.js', 'shared/roles.js')) suite('shared/roles.js', 
 
   test('la supervision est reservee a la direction, l’annuaire ouvert aux agents', () => {
     eq(canAccess('/api/calls', 'direction'), true);
+    eq(canAccess('/api/access', 'agent'), false);
     eq(canAccess('/api/calls', 'agent'), false);
     eq(canAccess('/api/team', 'agent'), false);
     eq(canAccess('/api/health', 'agent'), false);
@@ -983,6 +1010,88 @@ if (need(roles, 'shared/roles.js', 'shared/roles.js')) suite('shared/roles.js', 
     eq(roleLabel('direction'), 'Direction');
     eq(roleLabel('agent'), 'Agent');
     eq(roleLabel('x'), 'Sans rôle');
+  });
+});
+
+// -----------------------------------------------------------------------------
+//  6 bis-1. shared/access.js — la configuration d'acces geree dans l'application
+// -----------------------------------------------------------------------------
+
+if (need(accessMod, 'shared/access.js', 'shared/access.js')) suite('shared/access.js', () => {
+  const {
+    normalizeAccess, emptyAccess, memberOf, configRoleOf, linesOf, routingFor, shouldPopup,
+    resolveEffectiveRole, upsertMember, removeMember, adminCount, ACCESS_VERSION,
+  } = accessMod;
+
+  const raw = {
+    version: ACCESS_VERSION,
+    members: [
+      { email: 'Boss@Bios.fr', name: 'Le Boss', role: 'admin', lines: ['33253359565', '33253359565', 'abc'], popup: true },
+      { email: 'emma@bios.fr', name: 'Emma', role: 'agent', lines: ['33175433361'], popup: false },
+      { email: 'pas une adresse', role: 'agent' },
+      { email: 'emma@bios.fr', role: 'admin' },
+      { email: 'x@bios.fr', role: 'roi' },
+    ],
+    routing: { '33175433361': { agents: ['emma@bios.fr', 'inconnu', 'Rina@bios.fr'] }, 'nope': { agents: ['a@b.fr'] } },
+  };
+
+  test('normalizeAccess ecarte ce qui est inexploitable et dedoublonne', () => {
+    const c = normalizeAccess(raw);
+    eq(c.members.length, 3);
+    eq(c.members[0].email, 'boss@bios.fr', 'adresse en minuscules');
+    eqDeep(c.members[0].lines, ['33253359565'], 'lignes dedoublonnees, sans les chiffres absents');
+    eq(c.members[1].popup, false);
+    eq(c.members[1].role, 'agent', 'le doublon ne remplace pas le premier');
+    eq(c.members[2].role, 'agent', 'un role inconnu devient agent');
+    eqDeep(Object.keys(c.routing), ['33175433361']);
+    eqDeep(c.routing['33175433361'].agents, ['emma@bios.fr', 'rina@bios.fr']);
+    eq(normalizeAccess({ version: 99, members: [{ email: 'a@b.fr' }] }).members.length, 0, 'autre version ignoree');
+    eqDeep(normalizeAccess(null), emptyAccess());
+  });
+
+  test('lecture : membre, role, lignes, routage', () => {
+    const c = normalizeAccess(raw);
+    eq(memberOf(c, 'BOSS@bios.fr').name, 'Le Boss');
+    eq(memberOf(c, 'nobody@bios.fr'), null);
+    eq(configRoleOf(c, 'boss@bios.fr'), 'admin');
+    eq(configRoleOf(c, 'nobody@bios.fr'), '');
+    eqDeep(linesOf(c, 'emma@bios.fr'), ['33175433361']);
+    eqDeep(linesOf(c, 'nobody@bios.fr'), []);
+    eqDeep(routingFor(c, '33175433361'), ['emma@bios.fr', 'rina@bios.fr']);
+    eqDeep(routingFor(c, '33253359565'), []);
+    eq(adminCount(c), 1);
+  });
+
+  test('shouldPopup : sans routage tout le monde, avec routage les nommes, jamais si le profil a coupe', () => {
+    const c = normalizeAccess(raw);
+    eq(shouldPopup(c, 'nobody@bios.fr', '33253359565'), true, 'pas de routage sur ABE');
+    eq(shouldPopup(c, 'rina@bios.fr', '33175433361'), true, 'nommee sur TNR');
+    eq(shouldPopup(c, 'nobody@bios.fr', '33175433361'), false, 'pas nommee sur TNR');
+    eq(shouldPopup(c, 'emma@bios.fr', '33175433361'), false, 'nommee mais fenetre coupee');
+  });
+
+  test('resolveEffectiveRole : Entra ne se retire pas, la configuration fait foi sinon', () => {
+    eq(resolveEffectiveRole({ sessionRole: 'direction', roleSource: 'entra', configRole: 'agent' }), 'direction');
+    eq(resolveEffectiveRole({ sessionRole: 'direction', roleSource: 'entra', configRole: 'admin' }), 'admin', 'la configuration peut completer vers le haut');
+    eq(resolveEffectiveRole({ sessionRole: 'direction', roleSource: 'env', configRole: 'agent' }), 'agent');
+    eq(resolveEffectiveRole({ sessionRole: 'agent', roleSource: 'none', configRole: 'admin' }), 'admin');
+    eq(resolveEffectiveRole({ sessionRole: 'agent', roleSource: 'none', configRole: '' }), 'agent');
+    eq(resolveEffectiveRole({ sessionRole: 'roi', roleSource: 'none', configRole: 'x' }), 'agent', 'inconnus -> agent');
+  });
+
+  test('upsertMember et removeMember rendent de nouvelles configurations', () => {
+    const c = normalizeAccess(raw);
+    const d = upsertMember(c, { email: 'New@bios.fr', name: 'New', role: 'direction', lines: ['1'] });
+    eq(c.members.length, 3, 'l’original n’est pas touche');
+    eq(d.members.length, 4);
+    eq(memberOf(d, 'new@bios.fr').role, 'direction');
+    const e = upsertMember(d, { email: 'new@bios.fr', popup: false });
+    eq(memberOf(e, 'new@bios.fr').role, 'direction', 'les champs non fournis sont conserves');
+    eq(memberOf(e, 'new@bios.fr').popup, false);
+    const f = removeMember(e, 'emma@bios.fr');
+    eq(memberOf(f, 'emma@bios.fr'), null);
+    eqDeep(routingFor(f, '33175433361'), ['rina@bios.fr'], 'sortie des routages aussi');
+    eq(upsertMember(c, { email: 'pas valide' }).members.length, 3);
   });
 });
 

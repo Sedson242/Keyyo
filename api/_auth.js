@@ -24,7 +24,9 @@
 
 import { createHmac, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { sendJson } from './_config.js';
-import { canAccess, allowedRoles, roleFromClaims, parseEmailList, ROLES } from '../shared/roles.js';
+import { canAccess, allowedRoles, roleAndSourceFromClaims, parseEmailList, ROLES } from '../shared/roles.js';
+import { configRoleOf, resolveEffectiveRole } from '../shared/access.js';
+import { loadAccess } from './_access.js';
 
 /** Nom du cookie de session. */
 export const SESSION_COOKIE = 'keyyo_session';
@@ -58,6 +60,7 @@ const MIN_SECRET_LENGTH = 32;
  * @property {'explicit'|'derived'|'none'} sessionSecretSource
  * @property {number} sessionTtlSec
  * @property {string[]} directionEmails
+ * @property {string[]} adminEmails  amorce : premiers administrateurs (AUTH_ADMIN_EMAILS)
  * @property {string} redirectUri   URI de redirection forcee, ou ''
  */
 
@@ -122,6 +125,7 @@ export function readAuthConfig(env) {
     sessionSecretSource,
     sessionTtlSec,
     directionEmails: parseEmailList(e.AUTH_DIRECTION_EMAILS),
+    adminEmails: parseEmailList(e.AUTH_ADMIN_EMAILS),
     redirectUri: text(e.AUTH_REDIRECT_URI),
   };
 }
@@ -144,6 +148,7 @@ export function authSummary(auth) {
       : (a.sessionSecretSource === 'derived' ? 'derive du secret client' : 'absent'),
     sessionTtlSec: a.sessionTtlSec,
     directionEmails: (a.directionEmails || []).length,
+    adminEmails: (a.adminEmails || []).length,
     redirectUri: a.redirectUri || '(deduite de la requete)',
   };
 }
@@ -296,7 +301,8 @@ export function appendSetCookie(res, header) {
  * @property {string} sub     identifiant stable Entra (`oid` de preference)
  * @property {string} email   adresse, en minuscules
  * @property {string} name    nom affichable
- * @property {'direction'|'agent'} role
+ * @property {'admin'|'direction'|'agent'} role   role EFFECTIF (configuration d'acces appliquee)
+ * @property {'entra'|'env'|'none'} src  d'ou vient le role porte par le cookie
  * @property {number} iat     emission, secondes Unix
  * @property {number} exp     expiration, secondes Unix
  */
@@ -312,11 +318,13 @@ export function sessionFromClaims(claims, auth, now) {
   const c = claims && typeof claims === 'object' ? claims : {};
   const t = Math.floor((now || Date.now()) / 1000);
   const email = String(c.email || c.preferred_username || c.upn || '').trim().toLowerCase();
+  const rs = roleAndSourceFromClaims(c, { directionEmails: auth.directionEmails, adminEmails: auth.adminEmails });
   return {
     sub: String(c.oid || c.sub || ''),
     email,
     name: String(c.name || email || '').trim(),
-    role: roleFromClaims(c, { directionEmails: auth.directionEmails }),
+    role: rs.role,
+    src: rs.source,
     iat: t,
     exp: t + auth.sessionTtlSec,
   };
@@ -339,14 +347,39 @@ export function readSession(req, auth, now) {
   const t = Math.floor((now || Date.now()) / 1000);
   if (!(Number(s.exp) > t)) return null;
   if (!s.email || ROLES.indexOf(String(s.role)) < 0) return null;
+  const src = String(s.src || '');
   return {
     sub: String(s.sub || ''),
     email: String(s.email),
     name: String(s.name || s.email),
-    role: /** @type {'direction'|'agent'} */ (String(s.role)),
+    role: /** @type {any} */ (String(s.role)),
+    src: /** @type {any} */ (src === 'entra' || src === 'env' ? src : 'none'),
     iat: Number(s.iat) || 0,
     exp: Number(s.exp),
   };
+}
+
+/**
+ * Session avec son role EFFECTIF : celui du cookie, corrige par la
+ * configuration d'acces geree dans l'application (shared/access.js). Relu a
+ * chaque requete (cache court) pour qu'un changement s'applique tout de
+ * suite, sans reconnexion. `null` sans session valide.
+ * @param {any} req
+ * @param {AuthConfig} auth
+ * @returns {Promise<Session|null>}
+ */
+export async function effectiveSession(req, auth) {
+  const session = readSession(req, auth);
+  if (!session) return null;
+  let configRole = '';
+  try {
+    const config = await loadAccess();
+    if (config) configRole = configRoleOf(config, session.email);
+  } catch (err) {
+    configRole = '';
+  }
+  session.role = resolveEffectiveRole({ sessionRole: session.role, roleSource: session.src, configRole });
+  return session;
 }
 
 /**
@@ -383,9 +416,10 @@ export function publicUser(session) {
 // -----------------------------------------------------------------------------
 
 /**
- * Applique la politique d'acces a une route. Renvoie la session quand l'acces
- * est accorde ; sinon, ECRIT LA REPONSE (503, 401 ou 403) et renvoie `null`.
- * Usage : `const session = requireRole(req, res, '/api/calls'); if (!session) return;`
+ * Applique la politique d'acces a une route. Renvoie la session (avec son
+ * role effectif) quand l'acces est accorde ; sinon, ECRIT LA REPONSE (503,
+ * 401 ou 403) et renvoie `null`.
+ * Usage : `const session = await requireRole(req, res, '/api/calls'); if (!session) return;`
  *
  * Les refus ne sont jamais mis en cache, et les succes portent `Vary: Cookie`
  * pour qu'un cache navigateur ne resserve pas a une session la reponse d'une
@@ -395,9 +429,9 @@ export function publicUser(session) {
  * @param {any} res
  * @param {string} route chemin exact, tel qu'inscrit dans shared/roles.js.
  * @param {AuthConfig} [auth]
- * @returns {Session|null}
+ * @returns {Promise<Session|null>}
  */
-export function requireRole(req, res, route, auth) {
+export async function requireRole(req, res, route, auth) {
   const a = auth || readAuthConfig();
 
   if (!a.configured) {
@@ -412,7 +446,7 @@ export function requireRole(req, res, route, auth) {
     return null;
   }
 
-  const session = readSession(req, a);
+  const session = await effectiveSession(req, a);
   if (!session) {
     sendJson(res, 401, {
       error: 'Authentification requise',

@@ -308,6 +308,8 @@ function paintSide() {
 
   const link = qs('#link-supervision');
   if (link) link.hidden = !session.isDirection();
+  const adminLink = qs('#link-admin');
+  if (adminLink) adminLink.hidden = !session.isAdmin();
 
   const snap = cti.snapshot();
   const badge = qs('#ag-nav-live');
@@ -328,6 +330,13 @@ function paintSide() {
   if (line && line.number) parts.push(html`<div class="ag-line-number">${line.number}</div>`);
   if (line && line.members) parts.push(html`<div class="ag-line-sub">${fmtInt(line.members)} ${pluralize(line.members, 'personne partage', 'personnes partagent')} cette ligne : un appel entrant sonne pour toute l’équipe.</div>`);
   parts.push(html`<div class="ag-line-sub">Keyyo Phone doit rester ouvert sur ce PC (réduit suffit) : c’est lui qui porte la voix et le casque. Cette page le pilote.</div>`);
+  // Routage : a qui la fenetre d'appel entrant est presentee sur cette ligne.
+  const routed = line && Array.isArray(line.routedTo) ? line.routedTo : [];
+  if (line && routed.length) {
+    parts.push(html`<div class="ag-line-sub">${line.popup
+      ? 'Les appels entrants de cette ligne vous sont présentés' + (routed.length > 1 ? ', ainsi qu’à ' + (routed.length - 1) + ' autre' + (routed.length > 2 ? 's' : '') : '') + '.'
+      : 'Les appels entrants de cette ligne sont présentés à ' + routed.length + ' autre' + (routed.length > 1 ? 's' : '') + ' : vous les voyez dans la liste, sans fenêtre.'}</div>`);
+  }
   if (snap.status === 'error' || snap.status === 'disconnected') {
     parts.push(html`<div class="ag-line-msg">${snap.message || 'La ligne ne répond pas.'}</div>`);
     parts.push(html`<div class="ag-line-actions"><button class="btn btn--sm" type="button" data-act="retry-line">Réessayer</button></div>`);
@@ -608,11 +617,30 @@ function monthLabel(ym) {
 //  Rendu : fenetre d'appel
 // -----------------------------------------------------------------------------
 
-/** @returns {CallItem|null} l'appel a mettre en avant : entrant qui sonne, sinon le premier vivant. */
+/**
+ * La fenetre d'appel entrant m'est-elle destinee ? Le routage (page
+ * Administration) peut la reserver a certaines personnes de la ligne ; les
+ * autres voient l'appel dans la liste, sans fenetre. Sans routage : oui.
+ * @returns {boolean}
+ */
+function popupAllowed() {
+  const line = cti.snapshot().line || (_profile && _profile.line) || null;
+  if (!line || !_profile || !Array.isArray(_profile.lines)) return true;
+  const known = _profile.lines.find((l) => l.csi === String(line.csi));
+  return !known || known.popup !== false;
+}
+
+/**
+ * L'appel a mettre en avant : un entrant qui sonne (s'il m'est destine),
+ * sinon le premier vivant que j'ai en main (sortant, ou en ligne).
+ * @returns {CallItem|null}
+ */
 function primaryCall() {
   const live = callItems().filter((c) => c.live);
   if (!live.length) return null;
-  return live.find((c) => c.state === 'SETUP' && c.dir === 'in') || live[0];
+  const ringingIn = live.find((c) => c.state === 'SETUP' && c.dir === 'in');
+  if (ringingIn && popupAllowed()) return ringingIn;
+  return live.find((c) => !(c.state === 'SETUP' && c.dir === 'in')) || (popupAllowed() ? live[0] : null);
 }
 
 function paintPopup() {

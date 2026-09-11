@@ -20,6 +20,13 @@ la durée de sonnerie de chaque appel, et son activité du mois (appels pris,
 le seul moyen de savoir *qui* a pris un appel, puisqu'aucune API Keyyo ne le
 dit — trois lignes de site sont partagées par 56 terminaux.
 
+**Une page Administration** (`admin.html`, administrateurs seulement) règle
+qui a quel rôle (administrateur, direction, agent), sur quelle ligne chacun
+travaille, et **qui est présenté aux appels entrants** de chaque ligne. Ce
+routage agit dans l'application (fenêtre d'appel, attribution) ; le téléphone
+Keyyo Phone, lui, sonne pour tout le site. Le premier administrateur se
+déclare par `AUTH_ADMIN_EMAILS`, ou par un app role Entra `Admin`.
+
 **Keyyo Phone reste ouvert sur le PC**, réduit, avec le casque : l'API CTI de
 Keyyo est une télécommande, pas un téléphone. Elle pilote le poste enregistré
 sur la ligne et remonte ses événements ; la voix ne passe jamais par le
@@ -117,7 +124,8 @@ défaut utilisables :
 | `ENTRA_CLIENT_SECRET` | **obligatoire** — secret client de cette inscription |
 | `SESSION_SECRET` | signe le cookie de session ; dérivé du secret client à défaut |
 | `SESSION_TTL_SECONDS` | durée d'une session, 12 h par défaut |
-| `AUTH_DIRECTION_EMAILS` | adresses de la direction, si les app roles Entra ne sont pas configurés |
+| `AUTH_ADMIN_EMAILS` | amorce : le premier administrateur, qui règle ensuite tout le monde depuis `admin.html` |
+| `AUTH_DIRECTION_EMAILS` | amorce : adresses de la direction, si les app roles Entra ne sont pas configurés |
 | `AUTH_REDIRECT_URI` | URI de redirection fixe (`https://<domaine>/api/auth`), si la déduction ne convient pas |
 
 `.env.example` documente chacune d'elles en détail, avec ses bornes et son effet.
@@ -187,6 +195,8 @@ harnais — c'est le rôle de la page Diagnostic, en conditions réelles.
 | `POST /api/cti-token` | connecté | jeton CSI (1 h) pour piloter la ligne depuis le navigateur |
 | `POST /api/events` | connecté | écrit des faits dans le journal d'attribution, au nom de la session |
 | `GET /api/events` | connecté | relit le journal : sa partition, ou tout le mois pour la direction (`scope=all`) |
+| `GET /api/access` | admin | configuration d'accès (membres, rôles, lignes, routage) et de quoi la remplir |
+| `POST /api/access` | admin | remplace la configuration entière ; refuse de laisser zéro administrateur |
 
 Toute route de données commence par le garde `requireRole` de `api/_auth.js`,
 qui applique la politique de `shared/roles.js` : `503` tant que la connexion

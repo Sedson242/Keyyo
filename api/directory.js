@@ -39,7 +39,7 @@ export default async function handler(req, res) {
   if (rejectNonGet(req, res, '/api/directory')) return;
   // Annuaire : ouvert a toute personne connectee (un agent en a besoin pour
   // nommer ses correspondants), ferme a tout le monde sinon.
-  if (!requireRole(req, res, '/api/directory')) return;
+  if (!await requireRole(req, res, '/api/directory')) return;
 
   const params = readParams(req);
   const debug = flag(params.debug);

@@ -34,6 +34,8 @@ import { getAccessToken, fetchVoipLines, fetchDirectoryContacts, mintCsiToken, k
 const PLUGINS_ALLOWED = ['websocket'];
 import { lineTeams, lineLabel, formatCsi } from '../shared/identity.js';
 import { toE164 } from '../shared/phone.js';
+import { loadAccess } from './_access.js';
+import { linesOf } from '../shared/access.js';
 
 /**
  * @param {any} req
@@ -41,7 +43,7 @@ import { toE164 } from '../shared/phone.js';
  */
 export default async function handler(req, res) {
   if (rejectNonPost(req, res, '/api/cti-token')) return;
-  const session = requireRole(req, res, '/api/cti-token');
+  const session = await requireRole(req, res, '/api/cti-token');
   if (!session) return;
   if (rejectCrossSite(req, res)) return;
 
@@ -73,9 +75,15 @@ export default async function handler(req, res) {
 
     const teams = lineTeams(voipLines, contacts);
     const me = session.email.toLowerCase();
+    // La configuration d'acces (administrateur) prime sur l'annuaire pour
+    // dire sur quelle ligne la personne travaille.
+    const access = await loadAccess();
+    const configured = access ? linesOf(access, me) : [];
     const lines = voipLines.map((l) => {
       const team = teams.find((t) => t.csi === String(l.csi));
-      const mine = !!team && team.members.some((m) => m.email === me);
+      const mine = configured.length
+        ? configured.indexOf(String(l.csi)) >= 0
+        : (!!team && team.members.some((m) => m.email === me));
       return {
         csi: String(l.csi),
         label: lineLabel(Object.assign({ person: null }, l)),

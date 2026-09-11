@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, POST');
     return sendJson(res, 405, { error: 'Methode ' + method + ' non autorisee' }, 'no-store');
   }
-  const session = requireRole(req, res, '/api/events');
+  const session = await requireRole(req, res, '/api/events');
   if (!session) return;
 
   if (!journalEnabled()) {

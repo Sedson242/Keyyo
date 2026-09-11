@@ -158,28 +158,60 @@ avec `source` ∈ `override` \| `directory_number` \| `directory_short_number` \
 
 ### `shared/roles.js`
 ```js
+export const ROLE_ADMIN: 'admin'
 export const ROLE_DIRECTION: 'direction'
 export const ROLE_AGENT: 'agent'
-export const ROLES: string[]                          // ['direction', 'agent']
+export const ROLES: string[]                          // ['admin', 'direction', 'agent']
 export const POLICY: Record<string, string[]>         // route -> roles autorisés
-export function parseEmailList(raw): string[]         // AUTH_DIRECTION_EMAILS
-export function roleFromClaims(claims, opts?): 'direction'|'agent'
-        // opts : { directionEmails? } — claim `roles` d'Entra d'abord, liste ensuite, `agent` sinon
+export function parseEmailList(raw): string[]         // AUTH_*_EMAILS
+export function roleFromClaims(claims, opts?): 'admin'|'direction'|'agent'
+export function roleAndSourceFromClaims(claims, opts?): { role, source: 'entra'|'env'|'none' }
+        // opts : { directionEmails?, adminEmails? } — claim `roles` d'Entra d'abord, listes ensuite, `agent` sinon
 export function allowedRoles(route): string[]         // [] pour une route inconnue
 export function canAccess(route, role): boolean       // REFUS PAR DÉFAUT
-export function isDirection(role): boolean
-export function roleLabel(role): string               // 'Direction' | 'Agent'
+export function isDirection(role): boolean            // vrai pour direction ET admin
+export function isAdmin(role): boolean
+export function roleLabel(role): string               // 'Administrateur' | 'Direction' | 'Agent'
 ```
 
-Deux rôles seulement. **La politique est écrite route par route et refuse par
+Trois rôles. **La politique est écrite route par route et refuse par
 défaut** : une route absente de `POLICY` n'est ouverte à personne, un rôle
 inconnu n'ouvre rien. Le back applique la politique (`api/_auth.js`), le front
 ne fait que cacher les menus.
 
-| Route | `direction` | `agent` |
-|---|:-:|:-:|
-| `/api/calls`, `/api/team`, `/api/health`, `/api/sync`, `/api/oauth` | ✔ | — |
-| `/api/directory`, `/api/me`, `/api/cti-token`, `/api/events` | ✔ | ✔ |
+| Route | `admin` | `direction` | `agent` |
+|---|:-:|:-:|:-:|
+| `/api/access` | ✔ | — | — |
+| `/api/calls`, `/api/team`, `/api/health`, `/api/sync`, `/api/oauth` | ✔ | ✔ | — |
+| `/api/directory`, `/api/me`, `/api/cti-token`, `/api/events` | ✔ | ✔ | ✔ |
+
+### `shared/access.js` — la configuration d'accès gérée dans l'application
+```js
+export const ACCESS_VERSION: number                   // 1
+export function emptyAccess(): AccessConfig
+export function normalizeAccess(raw): AccessConfig    // écarte l'inexploitable, dédoublonne
+export function memberOf(config, email): Member|null
+export function configRoleOf(config, email): string   // '' si absent
+export function linesOf(config, email): string[]
+export function routingFor(config, csi): string[]     // [] = tout le monde sur la ligne
+export function shouldPopup(config, email, csi): boolean
+export function resolveEffectiveRole({ sessionRole, roleSource, configRole }): role
+export function upsertMember(config, patch): AccessConfig      // nouvelle configuration
+export function removeMember(config, email): AccessConfig
+export function adminCount(config): number
+```
+`AccessConfig` : `{ version, updatedAt, updatedBy, members: [{ email, name, role,
+lines[], popup }], routing: { [csi]: { agents[] } } }`.
+
+**Ordre de priorité des rôles** : app role Entra (posé par l'informatique, ne
+se retire pas ici) › configuration d'accès (page Administration) ›
+`AUTH_ADMIN_EMAILS` / `AUTH_DIRECTION_EMAILS` (amorce) › `agent`. Le back
+rejoue `resolveEffectiveRole` à chaque requête (`effectiveSession`), pour
+qu'un changement s'applique sans reconnexion.
+
+**Routage** : pour chaque ligne, qui est présenté à l'appel entrant (fenêtre,
+décroché depuis l'application, attribution). Le téléphone Keyyo Phone sonne
+pour tout le site quoi qu'il arrive : le routage agit dans l'application.
 
 ### `shared/journal.js` — le journal d'attribution
 ```js
@@ -260,10 +292,21 @@ export function clearCookieHeader(name, path?): string
 export function appendSetCookie(res, header): void
 export function sessionFromClaims(claims, auth, now?): Session
 export function readSession(req, auth, now?): Session|null
+export async function effectiveSession(req, auth): Promise<Session|null>   // rôle corrigé par la configuration d'accès
 export function sessionCookieHeader(session, auth): string
 export function publicUser(session): { email, name, role, expiresAt }
-export function requireRole(req, res, route, auth?): Session|null   // écrit 503 / 401 / 403 et renvoie null
+export async function requireRole(req, res, route, auth?): Promise<Session|null>   // écrit 503 / 401 / 403 et renvoie null
 export function safeEqual(a, b): boolean              // comparaison à temps constant
+```
+`Session` porte aussi `src` (`entra` \| `env` \| `none`) : d'où vient le rôle
+du cookie, pour que la configuration sache si elle peut le retirer.
+
+### `api/_access.js` — configuration d'accès (Blob)
+```js
+export const ACCESS_PATH: string                      // 'keyyo/config/access.json'
+export function accessEnabled(): boolean
+export async function loadAccess(opts?): Promise<AccessConfig|null>   // cache mémoire 30 s
+export async function saveAccess(config, by): Promise<AccessConfig>
 ```
 `AuthConfig` : `{ configured, missing[], tenantId, clientId, clientSecret,
 authority, sessionSecret, sessionSecretSource, sessionTtlSec, directionEmails[],
@@ -359,6 +402,8 @@ export async function collect(opts): Promise<CollectResult>
 | `POST /api/cti-token` | connecté | `{ csi, number, token, expiresAt, line, lines[] }` — jeton CSI (1 h) ; `409` + `lines` si aucune ligne rattachée |
 | `POST /api/events` | connecté | `{ accepted, rejected, byMonth }` — écrit dans la partition de la session |
 | `GET /api/events` | connecté (`scope=all` : direction) | `{ month, scope, events[], partitions, summary }` |
+| `GET /api/access` | admin | `{ config, lines[], people[], me, warnings }` |
+| `POST /api/access` | admin | `{ ok, config, updatedAt }` — configuration entière ; 409 sans administrateur restant |
 
 Les écritures (`POST`) exigent l'en-tête `X-Requested-With: keyyo` et un
 corps JSON (`rejectCrossSite`), en plus du cookie `SameSite=Lax`.
@@ -607,6 +652,16 @@ Bande fixe en bas de page (`assets/css/callbar.css`) : état de la ligne,
 appels en cours avec sonnerie puis durée, appels terminés récents, champ
 d'appel, choix de collègues et de managers pour appeler ou transférer. Ne
 calcule rien : repeint l'instantané de `app/cti.js`.
+
+### `app/admin.js` — la page Administration (`admin.html`)
+```js
+export function boot(): void                       // ne s'amorce que si #admin-root est présent
+```
+Administrateurs seulement. Édite en mémoire une copie de la configuration
+d'accès (membres, rôles, lignes, fenêtre d'appel ; routage par ligne) et
+l'envoie entière à `/api/access` à l'enregistrement. Les personnes se
+prennent dans l'annuaire Keyyo (adresses rattachées aux lignes) ou par leur
+adresse.
 
 ### `app/agent.js` — la page agent (`agent.html`)
 ```js

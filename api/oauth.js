@@ -54,7 +54,7 @@ export default async function handler(req, res) {
   // Une fois la connexion Entra en place, cette route — qui affiche un
   // refresh token — n'est plus ouverte qu'a la direction. Avant, elle ne tient
   // qu'a KEYYO_OAUTH_SETUP : c'est le mode « mise en service », a refermer.
-  if (readAuthConfig().configured && !requireRole(req, res, '/api/oauth')) return;
+  if (readAuthConfig().configured && !await requireRole(req, res, '/api/oauth')) return;
 
   const params = readParams(req);
 

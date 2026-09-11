@@ -1,0 +1,45 @@
+/* =============================================================================
+   admin.css — Page Administration (admin.html).
+   ============================================================================= */
+
+.adm {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px clamp(14px, 3vw, 32px) 110px;
+  display: grid;
+  gap: var(--gap-5);
+}
+.adm-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.adm-top .brand { padding: 0; }
+.adm-top .account { margin-left: auto; }
+.adm-title { font: var(--t-h1); color: var(--ink); letter-spacing: var(--track-tight); }
+.adm-sub { font: var(--t-sm); color: var(--ink-muted); margin-top: 3px; }
+
+.adm-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.adm-check { display: inline-flex; align-items: center; gap: 6px; font: var(--t-sm); color: var(--ink-soft); white-space: nowrap; }
+.adm-check input { accent-color: var(--in); width: 15px; height: 15px; }
+
+.adm-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 16px 6px; }
+.adm-add .field { flex: 1 1 200px; }
+
+.adm-route { padding: 12px 0; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.adm-route:first-child { border-top: 0; padding-top: 0; }
+.adm-route-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.adm-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 12px clamp(14px, 3vw, 32px);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line);
+}

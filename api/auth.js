@@ -38,7 +38,7 @@
 import { createHash } from 'node:crypto';
 import { readParams, sendJson, rejectNonGet, errorMessage } from './_config.js';
 import {
-  readAuthConfig, readSession, sessionFromClaims, sessionCookieHeader, publicUser,
+  readAuthConfig, effectiveSession, sessionFromClaims, sessionCookieHeader, publicUser,
   FLOW_COOKIE, SESSION_COOKIE, seal, open, randomToken, parseCookies, b64url, b64urlDecode,
   cookieHeader, clearCookieHeader, appendSetCookie,
 } from './_auth.js';
@@ -105,7 +105,7 @@ export default async function handler(req, res) {
  * Qui est connecte. C'est la premiere requete du front : elle decide entre
  * l'ecran de connexion et l'application.
  */
-function me(req, res, auth) {
+async function me(req, res, auth) {
   if (!auth.configured) {
     return sendJson(res, 503, {
       authenticated: false,
@@ -115,7 +115,9 @@ function me(req, res, auth) {
       hint: 'Renseigner ' + (auth.missing.join(', ') || 'SESSION_SECRET') + ' dans Vercel, puis redéployer.',
     }, 'no-store');
   }
-  const session = readSession(req, auth);
+  // Role EFFECTIF : la configuration d'acces peut avoir promu ou retrograde
+  // la personne depuis l'emission du cookie.
+  const session = await effectiveSession(req, auth);
   if (!session) {
     return sendJson(res, 401, {
       authenticated: false,

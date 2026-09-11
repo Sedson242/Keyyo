@@ -457,6 +457,24 @@ export async function getEvents(opts) {
 }
 
 /**
+ * Configuration d'acces (administrateurs) : membres, roles, lignes, routage,
+ * avec les lignes du compte et les personnes de l'annuaire pour la remplir.
+ * @returns {Promise<any>} `{ config, lines, people, me, warnings }`
+ */
+export async function getAccess() {
+  return request('/access', { noCache: true, timeoutMs: 30000 });
+}
+
+/**
+ * Remplace la configuration d'acces entiere.
+ * @param {any} config `{ members: [...], routing: {...} }`
+ * @returns {Promise<any>} `{ ok, config, updatedAt }`
+ */
+export async function postAccess(config) {
+  return request('/access', { method: 'POST', body: { config }, timeoutMs: 30000 });
+}
+
+/**
  * Declenche une synchronisation immediate (meme travail que le cron).
  *
  * La route est envoyee en POST — c'est une ecriture : elle collecte chez Keyyo

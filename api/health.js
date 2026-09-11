@@ -41,7 +41,7 @@ export default async function handler(req, res) {
   if (rejectNonGet(req, res, '/api/health')) return;
   // Le diagnostic cite les lignes, les personnes et l'etat des secrets :
   // direction seulement.
-  const session = requireRole(req, res, '/api/health');
+  const session = await requireRole(req, res, '/api/health');
   if (!session) return;
 
   const params = readParams(req);

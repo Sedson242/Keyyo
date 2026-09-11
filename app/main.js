@@ -466,6 +466,8 @@ function paintAccount(st) {
   if (name) name.textContent = user ? user.name : 'Non connecté';
   if (initials) initials.textContent = user ? initialsOf(user.name) : '–';
   if (name && user) name.setAttribute('title', user.email);
+  const adminLink = qs('#link-admin');
+  if (adminLink) adminLink.hidden = !session.isAdmin();
 
   const parts = [];
   if (user) parts.push(user.roleLabel || session.roleLabel());
