@@ -122,18 +122,6 @@ function pctValue(v) {
 }
 
 /**
- * Entier de disposition borne, pour un style en ligne (largeur minimale de
- * tableau). Renvoie 0 quand la valeur n'est pas exploitable.
- * @param {unknown} v
- * @returns {number}
- */
-function pxValue(v) {
-  const n = Number(v);
-  if (!isFinite(n) || n <= 0) return 0;
-  return Math.min(4000, Math.round(n));
-}
-
-/**
  * Icone decorative : l'enveloppe porte `aria-hidden`, ce qui masque tout le
  * sous-arbre quel que soit le balisage rendu par `icon()`.
  * @param {string} name  Nom du symbole sans le prefixe (`in` -> `#i-in`).
@@ -285,7 +273,18 @@ export function statbar(items) {
 // -----------------------------------------------------------------------------
 
 /**
- * Tableau de donnees, enveloppe dans `table-wrap` (defilement horizontal).
+ * Tableau de donnees, enveloppe dans `table-wrap`.
+ *
+ * SANS DEFILEMENT HORIZONTAL : le tableau s'adapte a la place disponible.
+ * `table-wrap` est un conteneur de requete (container query, voir
+ * components.css) et chaque colonne porte une PRIORITE :
+ *   - 'core' (defaut) : toujours visible ;
+ *   - 'lg'  : masquee quand le conteneur fait moins de 900 px ;
+ *   - 'md'  : masquee quand le conteneur fait moins de 620 px.
+ * En dessous de 460 px, les lignes s'empilent : chaque cellule affiche son
+ * libelle de colonne (`data-label`) devant sa valeur, et toutes les colonnes
+ * redeviennent visibles. Une colonne qui porte le seul bouton d'action de la
+ * ligne reste donc toujours 'core'.
  *
  * IMPORTANT — SECURITE : chaque cellule de `rows` est une chaine HTML DEJA
  * SURE. Elle est inseree sans echappement, exactement comme fournie. Les pages
@@ -296,16 +295,19 @@ export function statbar(items) {
  * rendant le <tr> cliquable : le focus clavier reste ainsi atteignable.
  *
  * @param {object} opts
- * @param {Array<{key?: string, label?: string, align?: string, cls?: string}>} opts.columns
+ * @param {Array<{key?: string, label?: string, align?: string, cls?: string,
+ *         priority?: 'core'|'lg'|'md', nowrap?: boolean, breakAnywhere?: boolean}>} opts.columns
  *        `align: 'right'` (ou 'num') aligne a droite en chiffres tabulaires.
  *        `cls` est ajoute a l'en-tete ET aux cellules de la colonne
- *        (ex. 'shrink', 'strong').
+ *        (ex. 'shrink', 'strong'). `nowrap` interdit le passage a la ligne
+ *        (dates, etats courts) ; `breakAnywhere` autorise la coupure d'une
+ *        chaine insecable longue (URL, e-mail, identifiant).
  * @param {Array<Array<any>>} opts.rows  Tableau de lignes, chaque ligne etant un
  *        tableau de cellules HTML deja sures.
  * @param {any} [opts.foot]     HTML DEJA SUR, rendu dans `table-foot`.
- * @param {number} [opts.minWidth]  Largeur minimale en pixels ; validee puis
- *        posee en style en ligne, car c'est la seule facon de deroger au
- *        minimum par defaut de `.table`.
+ * @param {number} [opts.minWidth]  Ignore : conserve pour compatibilite. Un
+ *        tableau ne force plus jamais de largeur minimale, c'est ce qui
+ *        creait les defilements horizontaux.
  * @returns {string}
  */
 export function table(opts) {
@@ -314,24 +316,30 @@ export function table(opts) {
   const rows = Array.isArray(o.rows) ? o.rows : [];
   const span = columns.length > 0 ? columns.length : 1;
 
-  // Classe de colonne : l'alignement vient d'une liste blanche, `cls` de
-  // l'appelant est echappe par le gabarit.
+  // Classe de colonne : l'alignement et la priorite viennent d'une liste
+  // blanche, `cls` de l'appelant est echappe par le gabarit.
   const colCls = [];
+  const labels = [];
   for (let c = 0; c < columns.length; c++) {
     const col = columns[c] || {};
     const align = String(col.align === null || col.align === undefined ? '' : col.align);
+    const priority = String(col.priority === null || col.priority === undefined ? '' : col.priority);
     const parts = [];
     if (align === 'right' || align === 'num') parts.push('num');
+    if (priority === 'lg') parts.push('col-lg');
+    else if (priority === 'md') parts.push('col-md');
+    if (col.nowrap === true) parts.push('nowrap');
+    if (col.breakAnywhere === true) parts.push('break');
     if (has(col.cls)) parts.push(txt(col.cls));
     colCls.push(parts.join(' '));
+    labels.push(txt(col.label));
   }
 
   let head = '';
   for (let c = 0; c < columns.length; c++) {
-    const col = columns[c] || {};
     head += colCls[c]
-      ? html`<th scope="col" class="${colCls[c]}">${txt(col.label)}</th>`
-      : html`<th scope="col">${txt(col.label)}</th>`;
+      ? html`<th scope="col" class="${colCls[c]}">${labels[c]}</th>`
+      : html`<th scope="col">${labels[c]}</th>`;
   }
 
   let body = '';
@@ -344,19 +352,22 @@ export function table(opts) {
       let tds = '';
       for (let c = 0; c < count; c++) {
         const cls = c < colCls.length ? colCls[c] : '';
+        const label = c < labels.length ? labels[c] : '';
         const cell = raw(frag(cells[c]));
-        tds += cls ? html`<td class="${cls}">${cell}</td>` : html`<td>${cell}</td>`;
+        // `data-label` sert au mode empile : le libelle de colonne est repete
+        // devant chaque valeur. Il est echappe par le gabarit.
+        tds += cls
+          ? html`<td class="${cls}" data-label="${label}">${cell}</td>`
+          : html`<td data-label="${label}">${cell}</td>`;
       }
       body += html`<tr>${raw(tds)}</tr>`;
     }
   }
 
-  const min = pxValue(o.minWidth);
-  const style = min ? html` style="min-width:${min}px"` : '';
   const foot = has(o.foot) ? html`<div class="table-foot">${raw(frag(o.foot))}</div>` : '';
 
   return html`<div class="table-wrap">
-    <table class="table"${raw(style)}>
+    <table class="table">
       <thead><tr>${raw(head)}</tr></thead>
       <tbody>${raw(body)}</tbody>
     </table>

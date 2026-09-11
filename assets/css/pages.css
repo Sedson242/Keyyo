@@ -59,16 +59,18 @@
    Vues avec graphiques cote a cote
    ============================================================================= */
 
+/* `min(…, 100%)` partout : une grille auto-fit ne doit jamais imposer une
+   colonne plus large que son conteneur, sinon c'est la page qui defile. */
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--gap-5);
   align-items: start;
 }
 
 .grid-3 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: var(--gap-5);
   align-items: start;
 }
@@ -118,7 +120,7 @@
 
 .callback-cols {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--gap-5);
   align-items: start;
 }
@@ -154,7 +156,7 @@
 
 .people {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(276px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(276px, 100%), 1fr));
   gap: var(--gap-4);
 }
 
@@ -193,11 +195,14 @@
    Vue Diagnostic
    ============================================================================= */
 
-.diag { display: grid; gap: var(--gap-5); }
+/* `minmax(0, 1fr)` : la piste ne s'elargit jamais au contenu d'une carte ;
+   verifie : un message d'API avec une URL insecable elargissait toute la page. */
+.diag { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap-5); }
+.diag > * { min-width: 0; }
 
 .diag-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: var(--gap-3);
 }
 .diag-cell { padding: 13px 15px; border-radius: var(--r-lg); background: var(--surface-sunken); }
@@ -219,8 +224,9 @@
   font-family: var(--font-mono);
   font-size: 11.5px;
   line-height: 1.6;
-  overflow-x: auto;
-  white-space: pre;
+  /* Le JSON brut se replie au lieu de defiler horizontalement. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   max-height: 420px;
   overflow-y: auto;
 }
@@ -249,7 +255,7 @@
 
 .drill-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(96px, 100%), 1fr));
   gap: 10px;
   margin-bottom: var(--gap-5);
 }

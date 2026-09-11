@@ -608,7 +608,9 @@ export function card(opts): string        // { title?, sub?, action?, body, dark
 export function sectionHead(title, sub?, action?): string
 export function kpi(opts): string         // { label, value, foot?, why?, tone? }
 export function statbar(items): string    // [{ label, value, icon, tone }]
-export function table(opts): string       // { columns:[{key,label,align?,cls?}], rows:[cells[]], foot?, minWidth? }
+export function table(opts): string       // { columns:[{key,label,align?,cls?,priority?,nowrap?,breakAnywhere?}], rows:[cells[]], foot? }
+                                           // jamais de défilement horizontal : priority 'lg' masquée sous 900 px
+                                           // de conteneur, 'md' sous 620 px, lignes empilées sous 460 px
 export function tag(label, tone): string  // tone : in|out|missed|ok|neutral
 export function avatar(label, opts?): string
 export function avatarStack(labels, max?): string

@@ -538,7 +538,7 @@ function collectErrors(st) {
     columns: [
       { key: 'scope', label: 'Portée', cls: 'shrink' },
       { key: 'level', label: 'Nature', cls: 'shrink' },
-      { key: 'message', label: 'Message' },
+      { key: 'message', label: 'Message', breakAnywhere: true },
     ],
     rows,
   });
@@ -587,11 +587,13 @@ function checksSection() {
 
   const body = checks.length
     ? table({
+      // Les messages citent des URL et du JSON sans espace : ils se coupent
+      // n'importe ou plutot que d'elargir toute la page (verifie : +475 px).
       columns: [
         { key: 'label', label: 'Contrôle', cls: 'strong' },
         { key: 'level', label: 'Résultat', cls: 'shrink' },
-        { key: 'message', label: 'Message' },
-        { key: 'elapsed', label: 'Temps', align: 'right', cls: 'shrink' },
+        { key: 'message', label: 'Message', breakAnywhere: true },
+        { key: 'elapsed', label: 'Temps', align: 'right', cls: 'shrink', priority: 'md' },
       ],
       rows,
       foot,
@@ -728,8 +730,8 @@ function identitySection(st) {
     columns: [
       { key: 'line', label: 'Ligne', cls: 'strong' },
       { key: 'source', label: 'Source', cls: 'shrink' },
-      { key: 'confidence', label: 'Confiance', align: 'right', cls: 'shrink' },
-      { key: 'evidence', label: 'Indice' },
+      { key: 'confidence', label: 'Confiance', align: 'right', cls: 'shrink', priority: 'md' },
+      { key: 'evidence', label: 'Indice', breakAnywhere: true },
     ],
     rows,
     foot,
@@ -925,7 +927,7 @@ function coverageSection(st) {
       { key: 'month', label: 'Mois', cls: 'strong' },
       { key: 'state', label: 'État', cls: 'shrink' },
       { key: 'count', label: 'Appels', align: 'right', cls: 'shrink' },
-      { key: 'synced', label: 'Dernière synchro', cls: 'shrink' },
+      { key: 'synced', label: 'Dernière synchro', cls: 'shrink', priority: 'md' },
       { key: 'action', label: 'Action', cls: 'shrink' },
     ],
     rows,
@@ -991,11 +993,11 @@ function dropSection(st) {
 
   const body = table({
     columns: [
-      { key: 'reason', label: 'Raison', cls: 'strong' },
+      { key: 'reason', label: 'Raison', cls: 'strong', breakAnywhere: true },
       { key: 'kind', label: 'Nature', cls: 'shrink' },
       { key: 'count', label: 'Nombre', align: 'right', cls: 'shrink' },
-      { key: 'share', label: 'Part du brut', align: 'right', cls: 'shrink' },
-      { key: 'bar', label: '' },
+      { key: 'share', label: 'Part du brut', align: 'right', cls: 'shrink', priority: 'md' },
+      { key: 'bar', label: '', priority: 'lg' },
     ],
     rows,
     foot: html`<span>${fmtInt(dropped)} ${pluralize(dropped, 'rejet', 'rejets')} sur ${fmtInt(rawSeen)} ${pluralize(rawSeen, 'enregistrement', 'enregistrements')} bruts</span>`,

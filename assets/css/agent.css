@@ -200,12 +200,12 @@
 .btn--reject:hover { background: #b12f2a; }
 .btn--lg { padding: 11px 18px; font-size: 14px; }
 
-.ag-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.ag-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 10px; }
 .ag-fact { padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface-sunken); }
 .ag-fact-label { font: var(--t-label); color: var(--ink-muted); text-transform: uppercase; letter-spacing: var(--track-label); }
 .ag-fact-value { margin-top: 4px; font: var(--t-body-md); color: var(--ink); font-variant-numeric: tabular-nums; }
 
-.ag-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--gap-3); }
+.ag-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: var(--gap-3); }
 .ag-kpi { padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface-sunken); }
 .ag-kpi-value { font: var(--t-num-lg); color: var(--ink); letter-spacing: var(--track-tight); }
 .ag-kpi-label { margin-top: 3px; font: var(--t-label); color: var(--ink-muted); }

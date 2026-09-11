@@ -504,19 +504,21 @@ function tableHtml(list, searching) {
   const rows = [];
   for (let i = 0; i < slice.length; i++) rows.push(rowCells(slice[i], now));
 
+  // Sans defilement : le detail entrants / sortants et la duree partent en
+  // premier, puis les manques et la date du dernier appel. La colonne « Fiche »
+  // porte le seul bouton de la ligne : elle ne se masque jamais.
   return table({
     columns: [
-      { key: 'peer', label: 'Correspondant' },
+      { key: 'peer', label: 'Correspondant', breakAnywhere: true },
       { key: 'total', label: 'Appels', align: 'right', cls: 'strong' },
-      { key: 'in', label: 'Entrants', align: 'right' },
-      { key: 'out', label: 'Sortants', align: 'right' },
-      { key: 'missed', label: 'Manqués', align: 'right' },
-      { key: 'seconds', label: 'Durée cumulée', align: 'right' },
-      { key: 'last', label: 'Dernier appel', cls: 'shrink' },
+      { key: 'in', label: 'Entrants', align: 'right', priority: 'lg' },
+      { key: 'out', label: 'Sortants', align: 'right', priority: 'lg' },
+      { key: 'missed', label: 'Manqués', align: 'right', priority: 'md' },
+      { key: 'seconds', label: 'Durée cumulée', align: 'right', priority: 'lg' },
+      { key: 'last', label: 'Dernier appel', cls: 'shrink', priority: 'md' },
       { key: 'open', label: 'Fiche', cls: 'shrink' },
     ],
     rows,
-    minWidth: 960,
     foot: raw(footHtml(start, slice.length, list.length, pages)),
   });
 }

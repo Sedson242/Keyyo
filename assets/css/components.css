@@ -136,9 +136,11 @@
    4. Indicateurs cliquables (KPI) — le clic revele l'explication du calcul
    ============================================================================= */
 
+/* `min(…, 100%)` : une grille auto-fit ne doit jamais imposer une colonne
+   plus large que son conteneur, sinon c'est la page qui defile. */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
   gap: var(--gap-4);
 }
 
@@ -384,9 +386,21 @@
    9. Tableaux
    ============================================================================= */
 
-.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* SANS DEFILEMENT HORIZONTAL. Un tableau s'adapte a la place qu'on lui donne :
+   `table-wrap` est un conteneur de requete (container query) et les colonnes
+   portent une priorite posee par app/ui.js :
+     .col-lg  masquee sous 900 px de conteneur ;
+     .col-md  masquee sous 620 px ;
+   sous 460 px les lignes s'empilent (une carte par ligne, libelle devant
+   chaque valeur, toutes colonnes visibles). `container-type: inline-size`
+   a un second effet, voulu : la largeur intrinseque du tableau ne remonte
+   plus a la carte ni a la grille qui le contient — c'est ce qui elargissait
+   toute la page Diagnostic (un message d'API avec une URL de 300 caracteres).
+   `overflow-x: auto` reste en dernier recours pour un navigateur sans
+   container queries : la page, elle, ne defile jamais. */
+.table-wrap { container-type: inline-size; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-.table { min-width: 620px; font: var(--t-body); }
+.table { width: 100%; font: var(--t-body); }
 
 .table thead th {
   position: sticky;
@@ -397,7 +411,7 @@
   font: var(--t-label);
   color: var(--ink-muted);
   text-align: left;
-  white-space: nowrap;
+  vertical-align: bottom;
   border-bottom: 1px solid var(--line);
 }
 .table tbody td {
@@ -405,6 +419,7 @@
   border-bottom: 1px solid var(--line);
   color: var(--ink-soft);
   vertical-align: middle;
+  overflow-wrap: break-word;
 }
 .table tbody tr:last-child td { border-bottom: 0; }
 .table tbody tr.is-clickable { cursor: pointer; }
@@ -413,6 +428,50 @@
 .table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table .strong { font-weight: 600; color: var(--ink); }
 .table .shrink { width: 1%; white-space: nowrap; }
+.table .nowrap { white-space: nowrap; }
+/* Chaine insecable longue (URL, e-mail, identifiant) : coupee ou il faut,
+   plutot que d'imposer sa largeur a toute la colonne. */
+.table .break { overflow-wrap: anywhere; word-break: break-word; }
+
+/* Quand la place se resserre, les marges des cellules d'abord. */
+@container (max-width: 899px) {
+  .table thead th, .table tbody td { padding-left: 12px; padding-right: 12px; }
+  .table .col-lg { display: none; }
+}
+@container (max-width: 619px) {
+  .table .col-md { display: none; }
+}
+/* Mode empile : chaque ligne devient une carte, chaque cellule une paire
+   « libelle : valeur ». Les colonnes masquees plus haut reviennent, la place
+   verticale ne manque pas. */
+@container (max-width: 459px) {
+  .table thead { display: none; }
+  .table, .table tbody, .table tr { display: block; width: 100%; }
+  .table tr { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .table tbody tr:last-child { border-bottom: 0; }
+  .table tbody td, .table .col-lg, .table .col-md {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    width: auto;
+    padding: 3px 0;
+    border-bottom: 0;
+    text-align: right;
+  }
+  .table tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 38%;
+    font: var(--t-micro);
+    color: var(--ink-muted);
+    text-align: left;
+  }
+  .table tbody td[data-label='']::before { content: none; }
+  .table tbody td[colspan] { display: block; text-align: left; }
+  .table tbody td[colspan]::before { content: none; }
+  .table .shrink { width: auto; }
+  .table .num { text-align: right; }
+}
 
 /* Cellule identite : avatar + nom + sous-ligne. */
 .cell-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -426,6 +485,11 @@
   text-overflow: ellipsis;
 }
 .cell-id-sub { font: var(--t-micro); color: var(--ink-muted); }
+/* Dans un tableau, un nom insecable (nowrap + ellipsis) impose sa pleine
+   longueur a la colonne : l'algorithme de mise en page d'un tableau ne sait
+   pas tronquer. On laisse donc les noms passer a la ligne. */
+.table .cell-id-name, .table .truncate { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.table .cell-id-sub { overflow-wrap: anywhere; }
 
 .row-menu {
   display: grid;

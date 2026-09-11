@@ -446,19 +446,21 @@ function linesTable(lines, index, selected) {
       · ${fmtInt(inService)} en service</span>
     <span>${callCount(totalCalls)} sur la période affichée</span>`;
 
+  // Sans defilement : le CSI brut double le numero formate, l'offre, les
+  // options et le poste interne sont des details d'exploitation. Le nombre
+  // d'appels reste toujours visible : c'est aussi le bouton de filtre.
   return table({
-    minWidth: 1240,
     foot: raw(foot),
     columns: [
-      { key: 'csi', label: 'CSI', cls: 'shrink' },
-      { key: 'number', label: 'Numéro' },
-      { key: 'name', label: 'Nom de ligne' },
-      { key: 'short', label: 'Poste interne', cls: 'shrink' },
-      { key: 'offer', label: 'Offre' },
-      { key: 'status', label: 'Statut', cls: 'shrink' },
-      { key: 'options', label: 'Options' },
-      { key: 'person', label: 'Collaborateur' },
-      { key: 'calls', label: 'Appels sur la période', align: 'right' },
+      { key: 'csi', label: 'CSI', cls: 'shrink', priority: 'lg', nowrap: true },
+      { key: 'number', label: 'Numéro', nowrap: true },
+      { key: 'name', label: 'Nom de ligne', breakAnywhere: true },
+      { key: 'short', label: 'Poste interne', cls: 'shrink', priority: 'lg' },
+      { key: 'offer', label: 'Offre', priority: 'lg' },
+      { key: 'status', label: 'Statut', cls: 'shrink', priority: 'md' },
+      { key: 'options', label: 'Options', priority: 'lg' },
+      { key: 'person', label: 'Collaborateur', priority: 'md' },
+      { key: 'calls', label: 'Appels', align: 'right' },
     ],
     rows,
   });
@@ -702,7 +704,6 @@ function coverageSection(st) {
       : 'Les trois derniers mois sont archivés.'}</span>`;
 
   const body = table({
-    minWidth: 620,
     foot: raw(foot),
     columns: [
       { key: 'month', label: 'Mois', cls: 'strong' },

@@ -195,17 +195,18 @@ function agentsCard(agents) {
   return card({
     flush: true,
     body: raw(table({
+      // Sans defilement : pris et emis restent, le reste se masque selon la
+      // place (les colonnes reviennent toutes en mode empile).
       columns: [
-        { key: 'who', label: 'Personne' },
+        { key: 'who', label: 'Personne', breakAnywhere: true },
         { key: 'taken', label: 'Pris', align: 'right' },
         { key: 'dialed', label: 'Émis', align: 'right' },
-        { key: 'transferred', label: 'Transferts', align: 'right' },
-        { key: 'ring', label: 'Sonnerie moy.', align: 'right' },
-        { key: 'talk', label: 'En ligne', align: 'right' },
-        { key: 'last', label: 'Dernière action', align: 'right' },
+        { key: 'transferred', label: 'Transferts', align: 'right', priority: 'md' },
+        { key: 'ring', label: 'Sonnerie moy.', align: 'right', priority: 'lg' },
+        { key: 'talk', label: 'En ligne', align: 'right', priority: 'lg' },
+        { key: 'last', label: 'Dernière action', align: 'right', priority: 'md' },
       ],
       rows,
-      minWidth: 760,
       foot: html`<span class="faint">« Pris » = décroché depuis l’application ou déclaré pris ; un même appel ne compte qu’une fois.</span>`,
     })),
   });
@@ -242,7 +243,7 @@ function calleesCard(agents) {
     flush: true,
     body: raw(table({
       columns: [
-        { key: 'to', label: 'Destinataire' },
+        { key: 'to', label: 'Destinataire', breakAnywhere: true },
         { key: 'n', label: 'Appels', align: 'right' },
         { key: 'who', label: 'Par' },
       ],

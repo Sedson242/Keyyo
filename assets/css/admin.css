@@ -7,14 +7,18 @@
   margin: 0 auto;
   padding: 22px clamp(14px, 3vw, 32px) 110px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--gap-5);
+  overflow-x: clip;
 }
+.adm > * { min-width: 0; }
 .adm-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .adm-top .brand { padding: 0; }
 .adm-top .account { margin-left: auto; }
 .adm-title { font: var(--t-h1); color: var(--ink); letter-spacing: var(--track-tight); }
 .adm-sub { font: var(--t-sm); color: var(--ink-muted); margin-top: 3px; }
 
+.adm-person { min-width: 0; overflow-wrap: anywhere; }
 .adm-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .adm-check { display: inline-flex; align-items: center; gap: 6px; font: var(--t-sm); color: var(--ink-soft); white-space: nowrap; }
 .adm-check input { accent-color: var(--in); width: 15px; height: 15px; }

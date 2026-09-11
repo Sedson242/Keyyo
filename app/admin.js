@@ -127,22 +127,26 @@ function lineOf(csi) {
 function membersCard() {
   const members = _data.config.members;
   const lines = _data.lines || [];
+  // Tableau ecrit a la main, mais sur le meme contrat que ui.table : pas de
+  // largeur minimale (plus de defilement horizontal), `data-label` pour le
+  // mode empile des petits conteneurs. Toutes les colonnes sont des reglages :
+  // aucune ne se masque, les cases a cocher passent a la ligne.
   const rows = members.map((m) => html`<tr data-member="${m.email}">
-    <td>
+    <td data-label="Personne" class="break">
       <div class="row"><span class="avatar avatar--sm" aria-hidden="true">${initialsOf(m.name || m.email)}</span>
-        <div><div class="strong">${m.name || '—'}</div><div class="faint" style="font: var(--t-micro)">${m.email}</div></div></div>
+        <div class="adm-person"><div class="strong">${m.name || '—'}</div><div class="faint" style="font: var(--t-micro)">${m.email}</div></div></div>
     </td>
-    <td>
+    <td data-label="Rôle">
       <div class="select-pill"><select data-role="${m.email}" aria-label="Rôle de ${m.email}">
         ${ROLES.map((r) => raw(html`<option value="${r}"${r === m.role ? ' selected' : ''}>${roleLabel(r)}</option>`))}
       </select></div>
     </td>
-    <td>
+    <td data-label="Lignes">
       <div class="adm-checks">${lines.map((l) => raw(html`<label class="adm-check"><input type="checkbox" data-line="${l.csi}" data-email="${m.email}"${m.lines.indexOf(l.csi) >= 0 ? ' checked' : ''}> ${l.label}</label>`))}
         ${lines.length ? '' : raw(html`<span class="faint">aucune ligne Keyyo lue</span>`)}</div>
     </td>
-    <td><label class="adm-check"><input type="checkbox" data-popup="${m.email}"${m.popup ? ' checked' : ''}> reçoit la fenêtre</label></td>
-    <td class="num"><button class="btn btn--ghost btn--sm" type="button" data-remove="${m.email}" title="Retirer de la configuration">${raw(icon('close'))}</button></td>
+    <td data-label="Appel entrant"><label class="adm-check"><input type="checkbox" data-popup="${m.email}"${m.popup ? ' checked' : ''}> reçoit la fenêtre</label></td>
+    <td class="num" data-label=""><button class="btn btn--ghost btn--sm" type="button" data-remove="${m.email}" title="Retirer de la configuration" aria-label="Retirer ${m.email}">${raw(icon('close'))}</button></td>
   </tr>`);
 
   const known = new Set(members.map((m) => m.email));
@@ -153,7 +157,7 @@ function membersCard() {
     sub: fmtInt(members.length) + ' ' + pluralize(members.length, 'personne configurée', 'personnes configurées')
       + ' · ' + fmtInt(adminCount(_data.config)) + ' ' + pluralize(adminCount(_data.config), 'administrateur', 'administrateurs')
       + '. Une personne absente d’ici est « agent », sur la ligne que l’annuaire Keyyo lui rattache.',
-    body: raw(html`<div class="table-wrap"><table class="table" style="min-width: 860px">
+    body: raw(html`<div class="table-wrap"><table class="table">
       <thead><tr><th scope="col">Personne</th><th scope="col">Rôle</th><th scope="col">Lignes</th><th scope="col">Appel entrant</th><th scope="col"></th></tr></thead>
       <tbody>${rows.length ? rows.map((r) => raw(r)) : raw(html`<tr><td colspan="5">${raw(empty('Aucun membre configuré', 'Ajoutez les personnes ci-dessous. Tant que la liste est vide, les rôles viennent d’Entra et des variables d’environnement.'))}</td></tr>`)}</tbody>
     </table></div>

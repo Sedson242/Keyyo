@@ -71,25 +71,24 @@ const EXPORT_ID = 'calls-export';
 const PREV_ID = 'calls-prev';
 const NEXT_ID = 'calls-next';
 
-/** Colonnes du journal. `cls` et `align` viennent du contrat de `ui.table`. */
+/**
+ * Colonnes du journal. `cls`, `align` et `priority` viennent du contrat de
+ * `ui.table` : le tableau ne defile jamais, les colonnes secondaires se
+ * masquent quand la place manque. Toujours visibles : quand, qui appelle qui,
+ * combien de temps, et l'issue. Le numero de ligne et son libelle se
+ * recoupent (l'un est le CSI, l'autre son nom) : ils partent en premier.
+ */
 const COLUMNS = [
-  { key: 'date', label: 'Date', cls: 'shrink' },
-  { key: 'time', label: 'Heure', cls: 'shrink' },
-  { key: 'caller', label: 'Appelant' },
-  { key: 'callee', label: 'Appelé' },
-  { key: 'dir', label: 'Sens', cls: 'shrink' },
-  { key: 'line', label: 'Ligne', cls: 'shrink' },
-  { key: 'person', label: 'Collaborateur', cls: 'shrink' },
-  { key: 'duration', label: 'Durée', align: 'right' },
+  { key: 'date', label: 'Date', cls: 'shrink', nowrap: true },
+  { key: 'time', label: 'Heure', cls: 'shrink', nowrap: true },
+  { key: 'caller', label: 'Appelant', breakAnywhere: true },
+  { key: 'callee', label: 'Appelé', breakAnywhere: true },
+  { key: 'dir', label: 'Sens', cls: 'shrink', priority: 'md' },
+  { key: 'line', label: 'Ligne', cls: 'shrink', priority: 'lg', nowrap: true },
+  { key: 'person', label: 'Collaborateur', priority: 'md' },
+  { key: 'duration', label: 'Durée', align: 'right', nowrap: true },
   { key: 'state', label: 'État', cls: 'shrink' },
 ];
-
-/**
- * Largeur minimale du tableau. Neuf colonnes dont deux cellules d'identite :
- * en dessous, les noms se replient et la lecture devient penible. Au-dela,
- * `.table-wrap` defile horizontalement.
- */
-const TABLE_MIN_WIDTH = 1080;
 
 /** En-tetes du fichier CSV, dans l'ordre exact des champs produits. */
 const CSV_COLUMNS = [
@@ -357,7 +356,6 @@ function tableHtml(shown) {
     columns: COLUMNS,
     rows,
     foot: footHtml(shown.length),
-    minWidth: TABLE_MIN_WIDTH,
   });
 }
 

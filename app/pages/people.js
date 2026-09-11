@@ -429,16 +429,19 @@ function personCard(p) {
  * @returns {string}
  */
 function comparisonTable(people) {
+  // Sans defilement : l'e-mail, le nom de ligne, le poste et la source sont
+  // deja sur les cartes au-dessus ; ils partent en premier. Restent toujours
+  // visibles le collaborateur, le volume et le taux de reponse.
   const columns = [
     { key: 'person', label: 'Collaborateur' },
-    { key: 'mail', label: 'Email' },
-    { key: 'csi', label: 'CSI', cls: 'nowrap' },
-    { key: 'name', label: 'Nom de ligne' },
-    { key: 'short', label: 'Poste', cls: 'shrink' },
+    { key: 'mail', label: 'Email', priority: 'lg', breakAnywhere: true },
+    { key: 'csi', label: 'CSI', priority: 'md', nowrap: true },
+    { key: 'name', label: 'Nom de ligne', priority: 'lg', breakAnywhere: true },
+    { key: 'short', label: 'Poste', cls: 'shrink', priority: 'lg' },
     { key: 'calls', label: 'Appels', align: 'right' },
-    { key: 'rate', label: 'Taux de réponse', align: 'right' },
-    { key: 'seconds', label: 'Durée cumulée', align: 'right' },
-    { key: 'source', label: 'Source du rapprochement' },
+    { key: 'rate', label: 'Taux de réponse', align: 'right', nowrap: true },
+    { key: 'seconds', label: 'Durée cumulée', align: 'right', priority: 'md' },
+    { key: 'source', label: 'Source', priority: 'lg' },
   ];
 
   const rows = people.map((p) => {
@@ -467,7 +470,7 @@ function comparisonTable(people) {
         ${raw(meter(p.rate, rateTone(p)))}
       </div>`,
       html`${fmtHms(p.seconds)}`,
-      html`<div class="row">
+      html`<div class="row row--wrap">
         ${raw(p.shared ? tag('ligne partagée', 'in') : tag(sourceLabel(person), sourceTone(person)))}
         <span class="faint nowrap">${person ? fmtPct(confidenceOf(person) * 100, 0) : '—'}</span>
       </div>`,
@@ -481,7 +484,7 @@ function comparisonTable(people) {
       ${fmtInt(called)} ${pluralize(called, 'a', 'ont')} eu de l'activité sur la période.</span>
     <span class="faint">Un appel manqué est un entrant de durée nulle : l'API Keyyo ne fournit pas d'indicateur de décroché.</span>`;
 
-  return table({ columns: columns, rows: rows, foot: raw(foot), minWidth: 1160 });
+  return table({ columns: columns, rows: rows, foot: raw(foot) });
 }
 
 /**

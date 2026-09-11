@@ -554,17 +554,19 @@ function linesCard(lines, s) {
 
   return card({
     flush: true,
+    // Sans defilement : le nom de ligne double souvent le libelle du
+    // collaborateur (lignes partagees), la duree et le detail des sens sont
+    // secondaires. Le CSI reste : c'est le bouton de filtre de la ligne.
     body: raw(table({
-      minWidth: 940,
       columns: [
-        { label: 'CSI', cls: 'shrink' },
-        { label: 'Collaborateur' },
-        { label: 'Ligne' },
-        { label: 'Entrants', align: 'right' },
-        { label: 'Sortants', align: 'right' },
+        { label: 'CSI', cls: 'shrink', nowrap: true },
+        { label: 'Collaborateur', breakAnywhere: true },
+        { label: 'Ligne', priority: 'lg' },
+        { label: 'Entrants', align: 'right', priority: 'md' },
+        { label: 'Sortants', align: 'right', priority: 'md' },
         { label: 'Manqués', align: 'right' },
-        { label: 'Taux de réponse' },
-        { label: 'Durée cumulée', align: 'right' },
+        { label: 'Taux de réponse', nowrap: true },
+        { label: 'Durée cumulée', align: 'right', priority: 'lg' },
       ],
       rows: rows,
       foot: raw(html`<span>${fmtInt(lines.length)} ${pluralize(lines.length, 'ligne', 'lignes')} · ${fmtInt(s.total)} ${pluralize(s.total, 'appel', 'appels')}</span>${raw(reset)}`),

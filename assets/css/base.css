@@ -192,8 +192,13 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .main {
   min-width: 0;
+  /* La page ne defile jamais horizontalement : ce qui deborderait encore est
+     rogne ici (clip ne cree pas de conteneur de defilement, au contraire de
+     hidden). Les tableaux et les grilles s'adaptent en amont. */
+  overflow-x: clip;
   padding: 26px clamp(16px, 2.4vw, 34px) 46px;
 }
+.page > * { min-width: 0; }
 
 .topbar {
   display: flex;
