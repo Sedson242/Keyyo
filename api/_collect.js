@@ -48,7 +48,9 @@ import { readConfig, errorMessage } from './_config.js';
 import {
   getAccessToken, fetchVoipLines, fetchEmailAccounts, fetchDirectoryContacts, fetchCallDetail,
 } from './_keyyo.js';
-import { archiveEnabled, loadArchive, saveArchive, mergeRows, mergeCoverage } from './_archive.js';
+import {
+  archiveEnabled, loadArchive, saveArchive, mergeRows, mergeCoverage, loadSyncState, saveSyncState,
+} from './_archive.js';
 import { F } from '../shared/schema.js';
 import { isoDaysAgo, todayIso, monthSlices, daysBetween } from '../shared/time.js';
 import { resolveLineIdentities } from '../shared/identity.js';
@@ -112,8 +114,12 @@ export async function collect(opts) {
   }
   /** @type {{version: number, savedAt: string, rows: any[], coverage: Record<string, any>, lines: any[]}|null} */
   let archive = null;
+  /** @type {{checkedAt: string, strategy: string}|null} */
+  let syncState = null;
   try {
-    archive = await loadArchive();
+    const both = await Promise.all([loadArchive(), loadSyncState()]);
+    archive = both[0];
+    syncState = both[1];
   } catch (err) {
     warnings.push(errorMessage(err));
     errors.push({ scope: 'archive', message: errorMessage(err) });
@@ -125,18 +131,24 @@ export async function collect(opts) {
   // -- Archive fraiche : servie telle quelle ---------------------------------
   // Le sondage de la page revient toutes les 60 s ; chaque passage coutait six
   // requetes Keyyo (3 lignes x 2 sens) plus les identites, et se chevauchait
-  // avec les synchronisations manuelles. Une archive de moins de `maxAgeMs`,
-  // qui porte son instantane des lignes, suffit : rien n'est demande a Keyyo.
+  // avec les synchronisations manuelles. Si Keyyo a ete interroge il y a
+  // moins de `maxAgeMs` (etat de synchronisation, ou a defaut sauvegarde de
+  // l'archive) et que l'archive porte son instantane des lignes, elle suffit :
+  // rien n'est demande a Keyyo.
   const maxAgeMs = Math.max(0, Number(o.maxAgeMs) || 0);
-  const archiveAgeMs = archive && archive.savedAt ? now - Date.parse(archive.savedAt) : Number.POSITIVE_INFINITY;
+  const lastCheck = Math.max(
+    archive && archive.savedAt ? Date.parse(archive.savedAt) || 0 : 0,
+    syncState ? Date.parse(syncState.checkedAt) || 0 : 0,
+  );
+  const archiveAgeMs = lastCheck > 0 ? now - lastCheck : Number.POSITIVE_INFINITY;
   const servedFromArchive = !!(
     archive && !o.full && !normalizeMonth(o.month) && !firstSync
     && maxAgeMs > 0 && Number.isFinite(archiveAgeMs) && archiveAgeMs >= 0 && archiveAgeMs < maxAgeMs
     && Array.isArray(archive.lines) && archive.lines.length
   );
   if (servedFromArchive) {
-    notes.push('Archive à jour (sauvegardée il y a ' + Math.round(archiveAgeMs / 1000)
-      + ' s) : servie sans nouvelle requête à Keyyo.');
+    notes.push('Archive à jour (Keyyo interrogé il y a ' + Math.round(archiveAgeMs / 1000)
+      + ' s) : servie sans nouvelle requête.');
   }
 
   // -- Jeton -----------------------------------------------------------------
@@ -485,6 +497,19 @@ export async function collect(opts) {
   if (mergedWith) {
     notes.push('Fusionné avec une sauvegarde concurrente du ' + mergedWith + ' : rien n’a été écrasé.');
   }
+  // Keyyo a ete interroge : on le note, meme si rien n'a change — c'est ce qui
+  // permet au passage suivant de servir l'archive sans redemander. Un echec ici
+  // ne coute qu'une collecte de plus la prochaine fois : simple note.
+  let checkedAt = syncState ? syncState.checkedAt : '';
+  if (storeEnabled && !servedFromArchive && token && voipLines.length && tasks.length) {
+    try {
+      const at = new Date().toISOString();
+      await saveSyncState({ checkedAt: at, strategy });
+      checkedAt = at;
+    } catch (err) {
+      notes.push('État de synchronisation non enregistré : ' + errorMessage(err));
+    }
+  }
   // La completude se relit apres fusion : un mois acquis par l'autre passage
   // n'a plus a etre signale manquant.
   const missingAfter = expectedMonths.filter((ym) => !isCompleteEntry(coverage[ym])).sort();
@@ -520,6 +545,7 @@ export async function collect(opts) {
       concurrency: MAX_CONCURRENCY,
       servedFromArchive,
       archiveAgeMs: Number.isFinite(archiveAgeMs) ? archiveAgeMs : null,
+      checkedAt: checkedAt || null,
       mergedWith: mergedWith || null,
     },
     store: {

@@ -28,6 +28,16 @@ import { SCHEMA_VERSION, F, rowKey, isValidRow } from '../shared/schema.js';
 /** Chemin stable de l'archive dans le store Blob. */
 export const ARCHIVE_PATH = 'keyyo/history.json';
 
+/**
+ * Chemin de l'etat de synchronisation : QUAND Keyyo a ete interroge pour la
+ * derniere fois. Separe de l'archive parce que celle-ci n'est reecrite que
+ * lorsqu'un appel ou une couverture change : un passage qui ne trouve rien de
+ * neuf n'y laisse aucune trace, et son horodatage vieillirait jusqu'a
+ * declencher une collecte a chaque sondage de la page. Un objet minuscule,
+ * reecrit a chaque passage, porte cette information a part.
+ */
+export const SYNC_STATE_PATH = 'keyyo/sync-state.json';
+
 /** @param {string} name @returns {string} */
 function env(name) {
   return typeof process !== 'undefined' && process.env ? String(process.env[name] || '').trim() : '';
@@ -175,6 +185,41 @@ export async function saveArchive(payload) {
     lines: Array.isArray(payload && payload.lines) ? payload.lines : [],
   });
   return savedAt;
+}
+
+/**
+ * Lit l'etat de synchronisation. `null` sans store, sans objet, ou si
+ * l'objet est illisible : cet etat n'est qu'une optimisation, jamais une
+ * condition pour servir les appels.
+ * @returns {Promise<{checkedAt: string, strategy: string}|null>}
+ */
+export async function loadSyncState() {
+  if (!archiveEnabled()) return null;
+  let payload = null;
+  try {
+    payload = await readBlobJson(SYNC_STATE_PATH);
+  } catch (err) {
+    return null;
+  }
+  if (!payload || typeof payload !== 'object') return null;
+  const checkedAt = String(payload.checkedAt || '');
+  if (!checkedAt || !Number.isFinite(Date.parse(checkedAt))) return null;
+  return { checkedAt, strategy: String(payload.strategy || '') };
+}
+
+/**
+ * Ecrit l'etat de synchronisation. Renvoie `false` sans store ; JETTE si
+ * l'ecriture echoue — l'appelant decide d'en faire une simple note.
+ * @param {{checkedAt: string, strategy?: string}} state
+ * @returns {Promise<boolean>}
+ */
+export async function saveSyncState(state) {
+  if (!archiveEnabled()) return false;
+  await writeBlobJson(SYNC_STATE_PATH, {
+    checkedAt: String(state.checkedAt),
+    strategy: String(state.strategy || ''),
+  });
+  return true;
 }
 
 /**

@@ -381,7 +381,14 @@ export async function loadArchive(): Promise<{version, savedAt, rows, coverage, 
 export async function saveArchive(payload): Promise<string|false>   // horodatage écrit
 export function mergeRows(oldRows, freshRows, opts?): { rows, added, updated }
 export function mergeCoverage(a, b, counts?): coverage               // union de deux passages concurrents
+export const SYNC_STATE_PATH: string                  // 'keyyo/sync-state.json' : { checkedAt, strategy }
+export async function loadSyncState(): Promise<{checkedAt, strategy}|null>
+export async function saveSyncState(state): Promise<boolean>
 ```
+`sync-state.json` dit **quand Keyyo a été interrogé** pour la dernière fois,
+même si rien n'a changé (l'archive, elle, n'est réécrite qu'en cas de
+changement). C'est sur cet horodatage que `/api/calls` décide de servir
+l'archive telle quelle.
 Le store est **privé** et relié par **OIDC** (`@vercel/blob` ≥ 2, Node ≥ 20) :
 aucun jeton à poser, aucune URL publique. `_journal.js` réutilise
 `readBlobJson` / `writeBlobJson`.
@@ -414,7 +421,7 @@ collecte toujours.
 `CollectResult` : `{ rows, lines, meta, coverage, errors, warnings, notes, diag, store }`
 - `meta` : `{ n, min, max, days, months[], csis[] }`
 - `notes` : informations qui ne sont pas des défauts (lignes partagées, historique en cours de constitution, archive servie telle quelle, fusion avec un passage concurrent)
-- `diag` : `{ perTask[], rawSeen, kept, dropped, dropReasons, strategy, windowDays, elapsedMs, skipped, skippedBackfill, backfillMonth, completeMonths[], servedFromArchive, archiveAgeMs, mergedWith }`
+- `diag` : `{ perTask[], rawSeen, kept, dropped, dropReasons, strategy, windowDays, elapsedMs, skipped, skippedBackfill, backfillMonth, completeMonths[], servedFromArchive, archiveAgeMs, checkedAt, mergedWith }`
 - `store` : `{ enabled, firstSync, windowDays, freshFromKeyyo, added, updated, total, persisted, lastSavedAt, missingMonths[] }`
 
 **Comment l'historique se constitue.** Une requête Keyyo dure 3 à 4 s ; une
