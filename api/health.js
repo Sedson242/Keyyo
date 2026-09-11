@@ -234,17 +234,28 @@ export default async function handler(req, res) {
       if (!l.person) continue;
       bySource[l.person.source] = (bySource[l.person.source] || 0) + 1;
     }
-    const unresolved = lines.filter((l) => !l.person || !l.person.email).map((l) => l.csi);
+    // Une ligne PARTAGEE par une equipe n'a pas de titulaire, et aucun reglage
+    // ne lui en donnera un : elle n'est pas « non associee », elle est
+    // collective. Meme regle que /api/team.
+    const shared = lines.filter((l) => l.shared);
+    const unresolved = lines.filter((l) => !l.shared && (!l.person || !l.person.email)).map((l) => l.csi);
+    const people = shared.reduce((n, l) => n + (l.team ? l.team.length : 0), 0);
 
     return {
       level: unresolved.length ? 'warn' : 'ok',
-      message: withEmail + ' ligne(s) sur ' + lines.length + ' associée(s) à une adresse email'
-        + (withPerson > withEmail ? ' (' + (withPerson - withEmail) + ' avec un prénom mais sans email)' : '')
+      message: (shared.length
+        ? shared.length + ' ligne(s) partagée(s) par ' + people + ' personnes (équipes lues dans l\'annuaire Keyyo)'
+          + (lines.length > shared.length ? ' ; ' : '. ')
+        : '')
+        + (lines.length > shared.length
+          ? withEmail + ' ligne(s) individuelle(s) sur ' + (lines.length - shared.length) + ' associée(s) à une adresse email'
+            + (withPerson > withEmail ? ' (' + (withPerson - withEmail) + ' avec un prénom mais sans email)' : '') + '. '
+          : '')
         + (unresolved.length
-          ? '. Lignes non associées : ' + unresolved.join(', ')
+          ? 'Lignes non associées : ' + unresolved.join(', ')
             + ' — les forcer avec KEYYO_LINE_EMAILS (voir la page Diagnostic).'
-          : '.'),
-      detail: { bySource, unresolved },
+          : 'La répartition par personne vient du journal d\'attribution (vue Attribution).'),
+      detail: { bySource, unresolved, shared: shared.map((l) => ({ csi: l.csi, name: l.name, team: (l.team || []).length })) },
       value: lines,
     };
   }) || [];
@@ -325,6 +336,41 @@ export default async function handler(req, res) {
     });
   }
 
+  // -- 9. Profondeur de la fenetre Keyyo (facultative, avec ?deep=1) ---------
+  // Repond a « pourquoi les mois anciens sont-ils vides ? ». On demande a Keyyo
+  // une semaine situee 60 jours en arriere sur la meme ligne : zero
+  // enregistrement alors que la semaine courante en porte, c'est que la
+  // fenetre de l'API ne remonte pas si loin — et que l'historique ne peut se
+  // constituer qu'au fil des synchronisations, jamais retroactivement.
+  if (deep && voipLines.length) {
+    await check('retention', 'Profondeur de la fenêtre Keyyo (une semaine, il y a 60 jours)', async () => {
+      const csi = voipLines[0].csi;
+      const from = isoDaysAgo(60, Date.now(), cfg.tz);
+      const to = isoDaysAgo(53, Date.now(), cfg.tz);   // date_end exclusive
+      const results = await Promise.all([
+        fetchCallDetail(cfg, token, { csi, direction: 'in', from, to, deadline }),
+        fetchCallDetail(cfg, token, { csi, direction: 'out', from, to, deadline }),
+      ]);
+      const rawSeen = results.reduce((a, r) => a + Number(r.diag.rawSeen || 0), 0);
+      const recent = probe ? Number(probe.rawSeen) || 0 : 0;
+      if (rawSeen > 0) {
+        return {
+          message: rawSeen + ' enregistrement(s) renvoyé(s) pour la semaine du ' + from + ' sur la ligne ' + csi
+            + ' : la fenêtre de Keyyo remonte au moins à 60 jours. Un mois ancien vide est alors un mois sans trafic.',
+          detail: { csi, from, to, rawSeen },
+        };
+      }
+      return {
+        level: 'warn',
+        message: 'Aucun enregistrement pour la semaine du ' + from + ' sur la ligne ' + csi
+          + (recent ? ', alors que la semaine courante en porte ' + recent : '')
+          + ' : la fenêtre de relevés de Keyyo ne remonte pas jusque-là. Les mois anciens ne peuvent pas '
+          + 'être récupérés après coup ; l\'archive se remplit au fil des synchronisations (cron quotidien, CRON_SECRET requis).',
+        detail: { csi, from, to, rawSeen, recentWeek: recent },
+      };
+    });
+  }
+
   // -- Verdict ----------------------------------------------------------------
   const hasError = checks.some((c) => c.level === 'error');
   const archivedCalls = archive && Array.isArray(archive.rows) ? archive.rows.length : 0;
@@ -346,6 +392,8 @@ export default async function handler(req, res) {
 
   sendJson(res, hasError ? 503 : 200, {
     status,
+    // La page Diagnostic verifie que la sonde demandee a bien ete jouee.
+    deep,
     schemaVersion: SCHEMA_VERSION,
     calls,
     period,
