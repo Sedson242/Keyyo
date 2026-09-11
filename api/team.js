@@ -26,8 +26,14 @@ import { resolveLineIdentities, lineLabel } from '../shared/identity.js';
  * serait resservie a quiconque redemande l'URL, sans rejouer la fonction ni son
  * controle d'acces. Cette route porte les noms et les adresses e-mail de toute
  * l'equipe. Voir la note detaillee dans api/calls.js.
+ *
+ * Cinq minutes cote navigateur : le sondage de la page (60 s) redemandait
+ * cette route a chaque passage, soit trois requetes Keyyo (lignes, annuaire,
+ * messageries) par minute et par navigateur ouvert, pour un inventaire qui ne
+ * change pas d'une minute a l'autre. Le bouton Actualiser (`?force=1`)
+ * contourne toujours le cache.
  */
-const CACHE_PRIVATE = 'private, max-age=30';
+const CACHE_PRIVATE = 'private, max-age=300';
 
 /** Domaine de repli quand aucune adresse connue ne permet de le deduire. */
 const FALLBACK_DOMAIN = 'exemple.fr';

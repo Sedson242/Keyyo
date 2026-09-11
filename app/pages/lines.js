@@ -366,6 +366,12 @@ function optionsCell(options) {
 function personCell(line) {
   const person = line && line.person ? line.person : null;
   if (!person || !person.displayName) {
+    // Une ligne partagee par une equipe n'a personne a nommer : ce n'est pas
+    // un rapprochement manque, c'est la nature de la ligne.
+    if (line && line.shared) {
+      const team = Array.isArray(line.team) ? line.team.length : 0;
+      return html`<span class="muted nowrap">Ligne partagée${team ? ' · ' + fmtInt(team) + ' ' + pluralize(team, 'personne', 'personnes') : ''}</span>`;
+    }
     return html`<span class="muted nowrap">Non rapproché</span>`;
   }
   const sub = person.email
