@@ -42,6 +42,7 @@
 /* Le classement imbrique dans la carte, comme « Top Performance ». */
 .rate-rank { display: grid; gap: var(--gap-3); align-content: start; }
 .rate-rank-title { font: var(--t-h3); color: var(--ink); }
+.rate-rank-hint { font: var(--t-sm); margin: 0; }
 
 /* Le tableau collaborateurs occupe toute la largeur, sous les deux colonnes. */
 .dash-wide { grid-column: 1 / -1; min-width: 0; }

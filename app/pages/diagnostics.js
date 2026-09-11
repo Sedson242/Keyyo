@@ -433,7 +433,14 @@ function overview(st) {
       'Dernière sauvegarde',
       store && store.lastSavedAt ? fmtRelative(store.lastSavedAt) : 'Jamais',
     ),
-    diagCell('Durée de la dernière collecte', calls ? msText(calls.elapsedMs) : '—'),
+    diagCell(
+      'Dernier passage',
+      calls
+        ? (calls.strategy === 'archive'
+          ? 'Archive servie telle quelle · ' + msText(calls.elapsedMs)
+          : strategyLabel(calls.strategy) + ' · ' + msText(calls.elapsedMs))
+        : '—',
+    ),
     diagCell('Enregistrements bruts vus', calls ? fmtInt(rawSeen) : '—'),
     diagCell('Gardés', calls ? fmtInt(calls.kept) : '—'),
     diagCell(
@@ -1127,6 +1134,22 @@ function jsonText(value, indent) {
  * @param {unknown} ms
  * @returns {string}
  */
+/**
+ * Libelle de la strategie d'un passage de collecte (`diag.strategy`).
+ * @param {unknown} strategy
+ * @returns {string}
+ */
+function strategyLabel(strategy) {
+  switch (String(strategy || '')) {
+    case 'archive': return 'Archive servie telle quelle';
+    case 'incremental': return 'Collecte incrémentale';
+    case 'month': return 'Collecte d’un mois';
+    case 'full': return 'Collecte complète';
+    case 'first_sync': return 'Premier remplissage';
+    default: return 'Collecte';
+  }
+}
+
 function msText(ms) {
   const n = Number(ms);
   if (!isFinite(n) || n < 0) return '—';

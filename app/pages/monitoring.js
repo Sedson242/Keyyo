@@ -344,32 +344,39 @@ function ratePoint(label, incoming, missed) {
 }
 
 /**
- * Classement des lignes par nombre d'appels traites (appels decroches).
- * Seules les lignes dont l'identite est resolue portent un prenom : sans
- * aucune, le classement n'aurait rien a montrer et on renvoie au Diagnostic.
+ * Classement par nombre d'appels traites (appels decroches).
+ *
+ * Une ligne dont l'identite est resolue porte un prenom. Une ligne PARTAGEE
+ * par une equipe n'en porte aucun, et aucun reglage ne lui en donnera : sur
+ * ce parc, les trois lignes le sont. Le classement montre alors les lignes
+ * elles-memes, et renvoie a la vue Attribution pour la repartition par
+ * personne — pas au Diagnostic, qui ne peut rien y changer.
  * @param {any[]} lines  Sortie de `byLine()`.
  * @returns {string}
  */
 function rankList(lines) {
   const named = [];
+  const sharedLines = [];
   for (let i = 0; i < lines.length; i++) {
     const person = lines[i].person;
-    if (!person) continue;
-    const first = person.firstName || person.displayName;
-    if (!first) continue;
+    const first = person ? (person.firstName || person.displayName) : '';
     // `incoming` est conserve pour distinguer « 0 % de reponse » d'un « aucun
     // entrant a decrocher » : un poste exclusivement sortant afficherait sinon
     // un taux de 0 % qui se lit comme un reproche.
-    named.push({
+    const entry = {
       csi: lines[i].csi,
-      name: first,
+      name: first || lines[i].label,
       handled: lines[i].answered,
       rate: lines[i].answerRate,
       incoming: lines[i].in,
-    });
+    };
+    if (first) { named.push(entry); continue; }
+    const line = lineByCsi(lines[i].csi);
+    if (line && line.shared) sharedLines.push(entry);
   }
 
-  if (!named.length) {
+  const ranked = named.length ? named : sharedLines;
+  if (!ranked.length) {
     return notice({
       tone: 'warn',
       title: 'Aucune ligne identifiée.',
@@ -377,8 +384,8 @@ function rankList(lines) {
     });
   }
 
-  named.sort((a, b) => b.handled - a.handled);
-  const top = named.slice(0, RANK_MAX);
+  ranked.sort((a, b) => b.handled - a.handled);
+  const top = ranked.slice(0, RANK_MAX);
 
   let out = '';
   for (let i = 0; i < top.length; i++) {
@@ -391,7 +398,10 @@ function rankList(lines) {
       metric: top[i].incoming ? fmtPct(top[i].rate, 0) : '—',
     }))}</div>`;
   }
-  return html`<div class="rank-list">${raw(out)}</div>`;
+  const hint = named.length
+    ? ''
+    : html`<p class="rate-rank-hint muted">Lignes partagées par une équipe : la répartition par personne est dans la vue <button class="link" type="button" data-goto="agents">Attribution</button>.</p>`;
+  return html`<div class="rank-list">${raw(out)}</div>${raw(hint)}`;
 }
 
 // -----------------------------------------------------------------------------
