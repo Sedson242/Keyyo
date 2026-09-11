@@ -370,7 +370,9 @@ function personCell(line) {
     // un rapprochement manque, c'est la nature de la ligne.
     if (line && line.shared) {
       const team = Array.isArray(line.team) ? line.team.length : 0;
-      return html`<span class="muted nowrap">Ligne partagée${team ? ' · ' + fmtInt(team) + ' ' + pluralize(team, 'personne', 'personnes') : ''}</span>`;
+      // Pas de `nowrap` : insecable, ce libelle imposait 216 px a la colonne et
+      // faisait deborder le tableau de 27 px a 1280 px de fenetre.
+      return html`<span class="muted">Ligne partagée${team ? ' · ' + fmtInt(team) + ' ' + pluralize(team, 'personne', 'personnes') : ''}</span>`;
     }
     return html`<span class="muted nowrap">Non rapproché</span>`;
   }
@@ -455,7 +457,7 @@ function linesTable(lines, index, selected) {
       { key: 'csi', label: 'CSI', cls: 'shrink', priority: 'lg', nowrap: true },
       { key: 'number', label: 'Numéro', nowrap: true },
       { key: 'name', label: 'Nom de ligne', breakAnywhere: true },
-      { key: 'short', label: 'Poste interne', cls: 'shrink', priority: 'lg' },
+      { key: 'short', label: 'Poste', cls: 'shrink', priority: 'lg' },
       { key: 'offer', label: 'Offre', priority: 'lg' },
       { key: 'status', label: 'Statut', cls: 'shrink', priority: 'md' },
       { key: 'options', label: 'Options', priority: 'lg' },

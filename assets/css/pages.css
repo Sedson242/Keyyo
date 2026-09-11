@@ -160,15 +160,23 @@
   gap: var(--gap-4);
 }
 
+/* `min-width: 0` sur la carte ET ses enfants : un element de grille garde
+   sinon la largeur de son contenu le plus long, et la carte debordait de sa
+   colonne (verifie : +153 px a 1280 px, compteurs et jauge rognes sous la
+   carte voisine). */
 .person {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--gap-4);
+  min-width: 0;
   padding: 18px;
   border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: var(--sh-sm);
   border: 1px solid var(--line);
 }
+.person > * { min-width: 0; }
+.person .btn { white-space: normal; text-align: left; max-width: 100%; }
 .person-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .person-name { font: var(--t-h3); color: var(--ink); }
 .person-mail {
@@ -184,11 +192,15 @@
 /* Origine du rapprochement email -> prenom. */
 .person-source {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px 6px;
+  min-width: 0;
   font: var(--t-micro);
   color: var(--ink-faint);
 }
+.person-source > * { min-width: 0; }
+.person-source .nowrap { white-space: normal; }
 .person-source .tag { font-size: 9px; padding: 2px 7px; }
 
 /* =============================================================================
