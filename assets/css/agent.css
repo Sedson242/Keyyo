@@ -23,7 +23,10 @@
   overflow: hidden;
 }
 
-.ag-side, .ag-list, .ag-main { min-height: 0; overflow-y: auto; }
+/* Defilement VERTICAL seulement : `overflow-y: auto` seul fait calculer
+   `overflow-x: auto`, et un bouton trop large ouvrait un defilement
+   horizontal dans la colonne (verifie a 375 px : pied du menu, +50 px). */
+.ag-side, .ag-list, .ag-main { min-height: 0; overflow-y: auto; overflow-x: hidden; }
 
 .ag-side {
   display: flex;
@@ -363,8 +366,8 @@
   .ag { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; height: auto; overflow: visible; }
   .ag-side { grid-row: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
   .ag-nav { display: flex; }
-  .ag-side-foot { margin-top: 0; border: 0; padding: 0; display: flex; }
-  .ag-line { flex: 1 1 100%; }
+  .ag-side-foot { margin-top: 0; border: 0; padding: 0; display: flex; flex-wrap: wrap; flex: 1 1 100%; min-width: 0; }
+  .ag-line { flex: 1 1 100%; min-width: 0; }
   .ag-newcall { width: auto; }
   .ag-list { max-height: none; }
 }
