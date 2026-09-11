@@ -282,10 +282,15 @@ export default async function handler(req, res) {
       };
     }
     const months = Object.keys(a.coverage || {}).sort();
+    const incomplete = months.filter((ym) => !(a.coverage[ym] && a.coverage[ym].complete === true));
     return {
+      level: incomplete.length ? 'warn' : 'ok',
       message: a.rows.length + ' appel(s) archivé(s), sauvegarde du '
         + (a.savedAt || 'date inconnue')
-        + (months.length ? ', mois couverts : ' + months.join(', ') : '') + '.',
+        + (months.length ? ', mois : ' + months.map((ym) => ym + ' (' + (a.coverage[ym].count || 0) + (a.coverage[ym].complete === true ? '' : ', incomplet') + ')').join(', ') : '') + '.'
+        + (incomplete.length
+          ? ' Les mois incomplets se complètent à chaque synchronisation (le plus ancien d\'abord) : cron quotidien, ou /api/sync depuis cette page.'
+          : ''),
       detail: { savedAt: a.savedAt, rows: a.rows.length, coverage: a.coverage },
       value: a,
     };

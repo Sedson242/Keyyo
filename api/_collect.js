@@ -4,16 +4,35 @@
 //  Enchainement : archive -> jeton -> lignes -> identites -> releves d'appels
 //  (par tranches mensuelles, en parallele borne) -> fusion -> persistance.
 //
-//  Deux regles gouvernent ce module :
+//  Trois regles gouvernent ce module :
 //
 //    1. BUDGET DE TEMPS. Une fonction serverless a une duree maximale. Quand le
-//       budget est epuise, on RENVOIE CE QU'ON A DEJA, en listant les tranches
-//       non collectees dans `store.missingMonths` — le cron ou un ?full=1
-//       reprendra. On n'echoue jamais pour cause de lenteur.
+//       budget est epuise, on RENVOIE CE QU'ON A DEJA, en listant les mois
+//       incomplets dans `store.missingMonths`. On n'echoue jamais pour cause
+//       de lenteur.
 //
-//    2. ECHEC PARTIEL TOLERE. Une ligne en erreur alimente `errors[]` et
-//       n'empeche pas les autres d'aboutir. Seule l'impossibilite totale de
-//       produire quoi que ce soit (pas de jeton ET pas d'archive) fait echouer.
+//    2. UN MOIS N'EST COUVERT QUE QUAND TOUTES SES REQUETES ONT ABOUTI. Appris
+//       en production : une requete Keyyo dure 3 a 4 s, une collecte complete
+//       en compte 24 (3 lignes x 2 sens x 4 mois), et la premiere version
+//       marquait un mois « synchronise » des qu'UNE de ses requetes avait
+//       repondu — les autres, sautees faute de temps, laissaient juillet et
+//       aout a zero pour toujours. La couverture porte desormais un drapeau
+//       `complete` par mois, pose seulement quand chaque ligne et chaque sens
+//       ont ete releves sur le mois entier.
+//
+//    3. L'HISTORIQUE SE CONSTITUE TOUT SEUL, UNE REQUETE A LA FOIS. Chaque
+//       passage incremental (le sondage de la page, le cron) releve d'abord
+//       les jours recents, puis consacre le temps restant au mois incomplet
+//       LE PLUS ANCIEN de la fenetre d'historique — en sequence, jamais en
+//       rafale, pour ne pas disputer le budget aux jours recents ni provoquer
+//       un 429. Chaque requete aboutie (une ligne, un sens, un mois) est
+//       inscrite dans l'archive : un passage interrompu ne refait jamais ce
+//       qui est acquis. Passage apres passage, les trois mois finissent
+//       archives ; ensuite seuls les jours recents sont redemandes.
+//
+//    Echec partiel tolere : une ligne en erreur alimente `errors[]` et
+//    n'empeche pas les autres d'aboutir. Seule l'impossibilite totale de
+//    produire quoi que ce soit (pas de jeton ET pas d'archive) fait echouer.
 // =============================================================================
 
 import { readConfig, errorMessage } from './_config.js';
@@ -172,6 +191,8 @@ export async function collect(opts) {
 
   // -- Fenetre a collecter ---------------------------------------------------
   const today = todayIso(now, cfg.tz);
+  const historyStart = isoDaysAgo(cfg.historyDays - 1, now, cfg.tz);
+  const expectedMonths = monthSlices(historyStart, today).map((s) => s.month);   // le plus recent d'abord
   const month = normalizeMonth(o.month);
   let strategy;
   let windowDays;
@@ -187,7 +208,7 @@ export async function collect(opts) {
   } else if (o.full || firstSync) {
     strategy = o.full ? 'full' : 'first_sync';
     windowDays = cfg.historyDays;
-    fromIso = isoDaysAgo(windowDays - 1, now, cfg.tz);
+    fromIso = historyStart;
     toIso = today;
   } else {
     strategy = 'incremental';
@@ -199,19 +220,67 @@ export async function collect(opts) {
 
   const slices = monthSlices(fromIso, toIso);      // le mois le plus recent d'abord
 
+  // -- Ce qu'un mois complet exige : chaque ligne, dans chaque sens ----------
+  // La cle « csi:sens » identifie une requete couvrant le mois entier. La
+  // couverture archivee garde, par mois, la liste des cles deja acquises
+  // (`done`) : c'est elle qui permet d'avancer requete par requete.
+  /** @type {string[]} */
+  const requiredKeys = [];
+  for (const line of voipLines) { requiredKeys.push(line.csi + ':in'); requiredKeys.push(line.csi + ':out'); }
+  const doneBefore = (ym) => new Set(Array.isArray((prevCoverage[ym] || {}).done) ? prevCoverage[ym].done.map(String) : []);
+
+  // -- Rattrapage : le mois incomplet le plus ancien de la fenetre -----------
+  // En incremental seulement : une collecte complete ou mensuelle vise deja ce
+  // qu'on lui demande. Seules les requetes ENCORE MANQUANTES du mois sont
+  // relancees, sur le mois entier (borne par la fenetre d'historique et par
+  // aujourd'hui), sinon il ne pourrait jamais etre declare complet.
+  let backfillMonth = '';
+  if (strategy === 'incremental' && token && voipLines.length) {
+    const missingBefore = expectedMonths.filter((ym) => !isCompleteEntry(prevCoverage[ym])).sort();
+    if (missingBefore.length) backfillMonth = missingBefore[0];
+  }
+
   // -- Taches ----------------------------------------------------------------
-  /** @type {Array<{csi: string, direction: 'in'|'out', month: string, from: string, to: string}>} */
-  const tasks = [];
+  /** @typedef {{csi: string, direction: 'in'|'out', month: string, from: string, to: string, kind: 'recent'|'backfill'}} Task */
+  /** @type {Task[]} */
+  const recentTasks = [];
+  /** @type {Task[]} */
+  const backfillTasks = [];
   if (token && voipLines.length) {
     // Tranche par tranche : le mois le plus recent est complet avant d'attaquer
     // le suivant, de sorte qu'un budget epuise ne laisse pas de trou recent.
     for (const slice of slices) {
       for (const line of voipLines) {
-        tasks.push({ csi: line.csi, direction: 'in', month: slice.month, from: slice.from, to: slice.to });
-        tasks.push({ csi: line.csi, direction: 'out', month: slice.month, from: slice.from, to: slice.to });
+        recentTasks.push({ csi: line.csi, direction: 'in', month: slice.month, from: slice.from, to: slice.to, kind: 'recent' });
+        recentTasks.push({ csi: line.csi, direction: 'out', month: slice.month, from: slice.from, to: slice.to, kind: 'recent' });
+      }
+    }
+    if (backfillMonth) {
+      const b = clampMonthBounds(backfillMonth, historyStart, today);
+      const bslices = monthSlices(b.from, b.to);
+      const acquired = doneBefore(backfillMonth);
+      for (const slice of bslices) {
+        for (const line of voipLines) {
+          for (const direction of /** @type {Array<'in'|'out'>} */ (['in', 'out'])) {
+            if (acquired.has(line.csi + ':' + direction)) continue;
+            backfillTasks.push({ csi: line.csi, direction, month: slice.month, from: slice.from, to: slice.to, kind: 'backfill' });
+          }
+        }
       }
     }
   }
+  const tasks = recentTasks.concat(backfillTasks);
+
+  // Une requete « couvre » son mois quand elle porte sur le mois entier (dans
+  // la fenetre d'historique). Une tranche de sept jours ne couvre pas un
+  // mois : elle ne compte ni pour ni contre sa completude.
+  const covering = (t) => {
+    const b = clampMonthBounds(t.month, historyStart, today);
+    // `to` des tranches est EXCLUSIF (monthSlices) ; `b.to` est inclusif.
+    return t.from <= b.from && t.to > b.to;
+  };
+  /** @type {Record<string, Set<string>>} cles acquises PAR CE PASSAGE, par mois. */
+  const doneNow = {};
 
   /** @type {any[]} */
   const freshRows = [];
@@ -225,13 +294,15 @@ export async function collect(opts) {
   let kept = 0;
   let dropped = 0;
   let skipped = 0;
+  let skippedBackfill = 0;
   let truncatedTasks = 0;
 
-  await runPool(tasks, MAX_CONCURRENCY, async (task) => {
+  /** @param {Task} task */
+  const worker = async (task) => {
     if (Date.now() >= taskDeadline) {
-      skipped++;
+      if (task.kind === 'backfill') skippedBackfill++; else skipped++;
       perTask.push({
-        csi: task.csi, direction: task.direction, month: task.month,
+        csi: task.csi, direction: task.direction, month: task.month, kind: task.kind,
         from: task.from, to: task.to, ok: false, skipped: true,
         reason: 'budget de temps épuisé avant le lancement',
       });
@@ -256,13 +327,18 @@ export async function collect(opts) {
         dropReasons[k] = (dropReasons[k] || 0) + d.dropReasons[k];
       }
       touchedMonths.add(task.month);
-      perTask.push(d);
+      // Une requete tronquee par la pagination n'a pas tout lu : elle n'est
+      // pas acquise, elle sera rejouee (avec KEYYO_MAX_PAGES releve).
+      if (covering(task) && !d.truncated) {
+        (doneNow[task.month] || (doneNow[task.month] = new Set())).add(task.csi + ':' + task.direction);
+      }
+      perTask.push(Object.assign({ kind: task.kind }, d));
     } catch (err) {
       const budget = !!(err && /** @type {any} */ (err).budget);
-      if (budget) skipped++;
+      if (budget) { if (task.kind === 'backfill') skippedBackfill++; else skipped++; }
       const message = errorMessage(err);
       perTask.push({
-        csi: task.csi, direction: task.direction, month: task.month,
+        csi: task.csi, direction: task.direction, month: task.month, kind: task.kind,
         from: task.from, to: task.to, ok: false, skipped: budget,
         reason: budget ? 'budget de temps épuisé pendant la requête' : message,
       });
@@ -272,12 +348,33 @@ export async function collect(opts) {
         });
       }
     }
-  });
+  };
+
+  // Les jours recents en parallele borne ; le rattrapage ensuite, UNE requete
+  // a la fois, avec ce qui reste de budget.
+  await runPool(recentTasks, MAX_CONCURRENCY, worker);
+  await runPool(backfillTasks, 1, worker);
+
+  /**
+   * Cles acquises par mois, passe compris, et mois desormais complets (toutes
+   * les lignes, dans les deux sens).
+   * @type {Record<string, string[]>}
+   */
+  const doneByMonth = {};
+  /** @type {Set<string>} */
+  const completeMonths = new Set();
+  const monthsSeen = new Set(Object.keys(prevCoverage).concat(Object.keys(doneNow)));
+  for (const ym of monthsSeen) {
+    const acc = doneBefore(ym);
+    for (const k of doneNow[ym] || []) acc.add(k);
+    doneByMonth[ym] = Array.from(acc).sort();
+    if (requiredKeys.length && requiredKeys.every((k) => acc.has(k))) completeMonths.add(ym);
+  }
 
   if (skipped) {
     warnings.push(
       skipped + ' requête(s) non exécutée(s) faute de temps (budget de ' + budgetMs + ' ms). '
-      + 'Les données déjà collectées sont conservées ; relancer /api/sync pour compléter.',
+      + 'Les données déjà collectées sont conservées ; la prochaine synchronisation complète.',
     );
   }
   if (truncatedTasks) {
@@ -291,22 +388,40 @@ export async function collect(opts) {
   const merged = mergeRows(archiveRows, freshRows, { retentionDays: cfg.retentionDays, now });
   const rows = merged.rows;
 
-  const coverage = buildCoverage(rows, touchedMonths, prevCoverage, nowIso);
-  const expectedMonths = monthSlices(isoDaysAgo(cfg.historyDays - 1, now, cfg.tz), today).map((s) => s.month);
-  const missingMonths = expectedMonths.filter((ym) => !coverage[ym]);
+  const coverage = buildCoverage(rows, touchedMonths, prevCoverage, nowIso, completeMonths, doneByMonth);
+  // Un mois est « manquant » tant qu'il n'est pas COMPLET : absent, ou
+  // parcouru sans que toutes ses requetes aient abouti.
+  const missingMonths = expectedMonths.filter((ym) => !isCompleteEntry(coverage[ym])).sort();
+
+  if (backfillMonth) {
+    if (completeMonths.has(backfillMonth)) {
+      const n = coverage[backfillMonth] ? coverage[backfillMonth].count : 0;
+      notes.push('Historique : ' + backfillMonth + ' archivé (' + n + ' appel(s)).'
+        + (missingMonths.length ? ' Reste à compléter : ' + missingMonths.join(', ') + '.' : ' Les ' + cfg.historyDays + ' jours visés sont couverts.'));
+    } else {
+      const got = (doneByMonth[backfillMonth] || []).length;
+      notes.push('Historique en cours de constitution : ' + backfillMonth + ' est acquis à ' + got + ' requête(s) sur ' + requiredKeys.length
+        + (skippedBackfill ? ' (' + skippedBackfill + ' reportée(s) faute de temps)' : '')
+        + '. Les mois restants (' + missingMonths.join(', ') + ') se complètent aux prochaines synchronisations, une requête à la fois.');
+    }
+  } else if (strategy === 'incremental' && missingMonths.length) {
+    notes.push('Mois encore incomplets : ' + missingMonths.join(', ') + '.');
+  }
 
   // La couverture peut evoluer SANS qu'aucune ligne ne bouge : un mois collecte
   // et vide n'ajoute rien a `rows` mais doit cesser d'etre declare manquant.
   // Sans ce test, ce constat ne vivrait qu'en memoire de la fonction et serait
   // reperdu a l'invocation suivante.
   //
-  // On ne compare QUE la partie structurelle — les mois et leurs comptes, dont
-  // depend `missingMonths`. Surtout pas `syncedAt` : il vaut l'heure courante
-  // pour tout mois parcouru, donc il change a CHAQUE invocation, et le comparer
-  // reecrirait l'archive entiere a chaque chargement de page. La signature
-  // triee evite au passage toute dependance a l'ordre des cles.
+  // On ne compare QUE la partie structurelle — les mois, leurs comptes et leur
+  // completude, dont depend `missingMonths`. Surtout pas `syncedAt` : il vaut
+  // l'heure courante pour tout mois parcouru, donc il change a CHAQUE
+  // invocation, et le comparer reecrirait l'archive entiere a chaque
+  // chargement de page. La signature triee evite au passage toute dependance
+  // a l'ordre des cles.
   const coverageKey = (c) => Object.keys(c || {}).sort()
-    .map((ym) => ym + ':' + (Number((c[ym] || {}).count) || 0))
+    .map((ym) => ym + ':' + (Number((c[ym] || {}).count) || 0) + ':' + (isCompleteEntry(c[ym]) ? 1 : 0)
+      + ':' + (Array.isArray((c[ym] || {}).done) ? c[ym].done.length : 0))
     .join('|');
   const coverageChanged = coverageKey(coverage) !== coverageKey(prevCoverage);
 
@@ -344,6 +459,9 @@ export async function collect(opts) {
       slices: slices.map((s) => s.month),
       tasks: tasks.length,
       skipped,
+      skippedBackfill,
+      backfillMonth: backfillMonth || null,
+      completeMonths: Array.from(completeMonths).sort(),
       budgetMs,
       concurrency: MAX_CONCURRENCY,
     },
@@ -450,15 +568,45 @@ function prevDay(iso) {
 }
 
 /**
+ * Bornes INCLUSIVES d'un mois, rognees a la fenetre d'historique et a
+ * aujourd'hui : c'est ce qu'une collecte doit couvrir pour que le mois soit
+ * declare complet.
+ * @param {string} month `YYYY-MM`
+ * @param {string} historyStart `YYYY-MM-DD`
+ * @param {string} today `YYYY-MM-DD`
+ * @returns {{from: string, to: string}}
+ */
+function clampMonthBounds(month, historyStart, today) {
+  const b = monthBounds(month, today);
+  return { from: b.from < historyStart ? historyStart : b.from, to: b.to };
+}
+
+/**
+ * Une entree de couverture dit-elle que le mois est complet ? Les archives
+ * ecrites avant le drapeau `complete` repondent non : elles seront relevees
+ * une fois en entier, puis marquees. C'est le prix, paye une seule fois, de
+ * la certitude.
+ * @param {any} entry
+ * @returns {boolean}
+ */
+function isCompleteEntry(entry) {
+  return !!(entry && entry.complete === true);
+}
+
+/**
  * Couverture par mois. Un mois interroge sans aucun appel est enregistre avec
  * `count: 0` : sinon il serait signale « manquant » a chaque synchronisation.
+ * Le drapeau `complete` n'est pose que par une collecte qui a couvert le mois
+ * entier, et il survit aux passages incrementaux suivants.
  * @param {any[]} rows
  * @param {Set<string>} touched
  * @param {Record<string, any>} prev
  * @param {string} nowIso
- * @returns {Record<string, {count: number, syncedAt: string}>}
+ * @param {Set<string>} complete  mois dont toutes les requetes couvrantes ont abouti
+ * @param {Record<string, string[]>} [doneByMonth]  cles « csi:sens » acquises, par mois
+ * @returns {Record<string, {count: number, syncedAt: string, complete: boolean, done: string[]}>}
  */
-function buildCoverage(rows, touched, prev, nowIso) {
+function buildCoverage(rows, touched, prev, nowIso, complete, doneByMonth) {
   /** @type {Record<string, number>} */
   const counts = {};
   for (const row of rows) {
@@ -466,8 +614,12 @@ function buildCoverage(rows, touched, prev, nowIso) {
     if (ym) counts[ym] = (counts[ym] || 0) + 1;
   }
 
-  /** @type {Record<string, {count: number, syncedAt: string}>} */
+  /** @type {Record<string, {count: number, syncedAt: string, complete: boolean, done: string[]}>} */
   const coverage = {};
+  const done = complete || new Set();
+  const wasComplete = (ym) => isCompleteEntry(prev && prev[ym]);
+  const acquired = (ym) => (doneByMonth && Array.isArray(doneByMonth[ym]) ? doneByMonth[ym].slice()
+    : (prev && prev[ym] && Array.isArray(prev[ym].done) ? prev[ym].done.map(String) : []));
 
   // On ne reprend de la couverture precedente QUE les mois collectes et VIDES.
   //
@@ -475,7 +627,8 @@ function buildCoverage(rows, touched, prev, nowIso) {
   // n'apparaissent pas dans `counts`, et une synchronisation incrementale ne
   // les touche plus. Sans cette reprise, un mois legitimement sans appel
   // (ligne creee plus tard, fermeture estivale) serait declare manquant et
-  // recollecte indefiniment pour ne rien trouver.
+  // recollecte indefiniment pour ne rien trouver — a condition qu'il ait ete
+  // releve en entier, ce que dit son drapeau.
   //
   // Les autres ne sont volontairement PAS repris : un mois qui a des lignes
   // est reconstruit ci-dessous a partir de `rows`, et un mois dont la
@@ -485,7 +638,7 @@ function buildCoverage(rows, touched, prev, nowIso) {
     for (const ym of Object.keys(prev)) {
       const p = prev[ym];
       if (p && Number(p.count) === 0) {
-        coverage[ym] = { count: 0, syncedAt: String(p.syncedAt || '') };
+        coverage[ym] = { count: 0, syncedAt: String(p.syncedAt || ''), complete: wasComplete(ym), done: acquired(ym) };
       }
     }
   }
@@ -493,7 +646,7 @@ function buildCoverage(rows, touched, prev, nowIso) {
   const months = Object.keys(counts).sort();
   for (const ym of months) {
     const before = prev && prev[ym] && prev[ym].syncedAt ? String(prev[ym].syncedAt) : '';
-    coverage[ym] = { count: counts[ym], syncedAt: touched.has(ym) ? nowIso : (before || nowIso) };
+    coverage[ym] = { count: counts[ym], syncedAt: touched.has(ym) ? nowIso : (before || nowIso), complete: wasComplete(ym), done: acquired(ym) };
   }
 
   // Tout mois REELLEMENT parcouru porte l'horodatage de ce passage, meme s'il
@@ -502,7 +655,18 @@ function buildCoverage(rows, touched, prev, nowIso) {
   // le recollecter pour rien.
   for (const ym of Array.from(touched).sort()) {
     if (coverage[ym]) coverage[ym].syncedAt = nowIso;
-    else coverage[ym] = { count: 0, syncedAt: nowIso };
+    else coverage[ym] = { count: 0, syncedAt: nowIso, complete: false, done: acquired(ym) };
+  }
+
+  // Les cles acquises par ce passage (meme sans ligne produite) et le drapeau
+  // de completude, pose seulement sur les mois releves en entier.
+  for (const ym of Object.keys(doneByMonth || {})) {
+    if (!coverage[ym]) coverage[ym] = { count: 0, syncedAt: nowIso, complete: false, done: acquired(ym) };
+    else coverage[ym].done = acquired(ym);
+  }
+  for (const ym of done) {
+    if (!coverage[ym]) coverage[ym] = { count: 0, syncedAt: nowIso, complete: true, done: acquired(ym) };
+    else coverage[ym].complete = true;
   }
   return coverage;
 }

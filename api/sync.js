@@ -33,6 +33,12 @@ import { readAuthConfig, effectiveSession, safeEqual } from './_auth.js';
 import { canAccess } from '../shared/roles.js';
 
 /**
+ * Budget de la synchronisation, en millisecondes : sous le `maxDuration` de
+ * 60 s declare dans vercel.json, marge comprise pour la fusion et l'ecriture.
+ */
+const SYNC_BUDGET_MS = 52000;
+
+/**
  * @param {any} req
  * @param {any} res
  */
@@ -85,10 +91,15 @@ export default async function handler(req, res) {
 
   const startedAt = Date.now();
   try {
+    // Personne n'attend cette reponse dans un navigateur : la synchronisation
+    // prend tout le temps que la fonction peut offrir (maxDuration 60 s dans
+    // vercel.json, marge comprise), la ou /api/calls garde son budget court
+    // pour rendre la page vite. C'est ici que l'historique se constitue.
     const result = await collect({
       full,
       month,
       sinceDays: Number.isFinite(days) && days > 0 ? days : 0,
+      budgetMs: Math.max(cfg.budgetMs, SYNC_BUDGET_MS),
     });
 
     // Un mois demande explicitement mais revenu vide est une information utile :
