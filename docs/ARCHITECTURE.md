@@ -360,6 +360,16 @@ appelle Keyyo doit la passer** : sans elle, un annuaire volumineux pousse la
 fonction au-delà du `maxDuration` de `vercel.json` et la plateforme la coupe
 sans rien renvoyer.
 
+**Paramètres de requête : dans le tableau `filters`.** Keyyo Manager attend
+les paramètres d'une collection sous la forme `?filters[date_start]=…&filters[limit]=200`
+(le « parameter-value array » de sa documentation, encodé ainsi par le client
+PHP officiel). Passés à plat (`?date_start=…`), ils sont **ignorés sans
+erreur** et l'API rend sa fenêtre par défaut — vérifié en production : une
+demande d'août rendait 80 appels de septembre, et `?type=` sur `/services`
+ne filtrait rien. `buildUrl` fait cet encodage pour tous les GET ; la sonde
+`retention` du Diagnostic vérifie que les dates rendues restent dans la
+semaine demandée.
+
 ### `api/_archive.js`
 ```js
 export const ARCHIVE_PATH: string                     // 'keyyo/history.json'
@@ -367,9 +377,10 @@ export function archiveEnabled(): boolean             // BLOB_STORE_ID (OIDC) ou
 export function blobAccess(): 'private'|'public'      // BLOB_ACCESS, sinon private avec BLOB_STORE_ID
 export async function readBlobJson(pathname): Promise<any|null>   // par le SDK (`get`), jamais par URL
 export async function writeBlobJson(pathname, obj): Promise<void>
-export async function loadArchive(): Promise<{version, savedAt, rows, coverage}|null>
-export async function saveArchive(payload): Promise<boolean>
+export async function loadArchive(): Promise<{version, savedAt, rows, coverage, lines}|null>
+export async function saveArchive(payload): Promise<string|false>   // horodatage écrit
 export function mergeRows(oldRows, freshRows, opts?): { rows, added, updated }
+export function mergeCoverage(a, b, counts?): coverage               // union de deux passages concurrents
 ```
 Le store est **privé** et relié par **OIDC** (`@vercel/blob` ≥ 2, Node ≥ 20) :
 aucun jeton à poser, aucune URL publique. `_journal.js` réutilise
@@ -378,17 +389,32 @@ aucun jeton à poser, aucune URL publique. `_journal.js` réutilise
 liste les requêtes acquises sur le mois entier (clé `csi:in` / `csi:out`),
 `complete` n'est vrai que quand chaque ligne a été relevée dans les deux sens.
 C'est ce qui permet de reprendre un remplissage interrompu **requête par
-requête**, sans jamais refaire ce qui est acquis.
+requête**, sans jamais refaire ce qui est acquis. `lines` est l'instantané des
+lignes et de leurs identités à la sauvegarde : il permet de servir une archive
+fraîche sans solliciter Keyyo.
+
+**Deux passages peuvent se chevaucher** (le sondage de la page et une
+synchronisation manuelle) et le store n'a pas d'écriture conditionnelle. Avant
+d'écrire, `collect` relit l'archive ; si un autre passage a sauvegardé
+entre-temps, lignes et couverture sont fusionnées (`mergeRows`,
+`mergeCoverage` : union des clés `done`, `complete` conservé, horodatage le
+plus récent) au lieu d'être écrasées. Vérifié en production avant ce garde :
+septembre, relevé en entier, redevenait « incomplet ».
 
 ### `api/_collect.js`
 ```js
 export async function collect(opts): Promise<CollectResult>
-        // opts : { full?, month?, sinceDays?, budgetMs? }
+        // opts : { full?, month?, sinceDays?, budgetMs?, maxAgeMs? }
 ```
+`maxAgeMs` : une archive sauvegardée il y a moins longtemps que cela est
+servie telle quelle, **sans aucune requête Keyyo** (`strategy: 'archive'`).
+`/api/calls` la fixe à 3 min sauf `?force=1` / `?full=1` ; `/api/sync`
+collecte toujours.
+
 `CollectResult` : `{ rows, lines, meta, coverage, errors, warnings, notes, diag, store }`
 - `meta` : `{ n, min, max, days, months[], csis[] }`
-- `notes` : informations qui ne sont pas des défauts (lignes partagées, historique en cours de constitution)
-- `diag` : `{ perTask[], rawSeen, kept, dropped, dropReasons, strategy, windowDays, elapsedMs, skipped, skippedBackfill, backfillMonth, completeMonths[] }`
+- `notes` : informations qui ne sont pas des défauts (lignes partagées, historique en cours de constitution, archive servie telle quelle, fusion avec un passage concurrent)
+- `diag` : `{ perTask[], rawSeen, kept, dropped, dropReasons, strategy, windowDays, elapsedMs, skipped, skippedBackfill, backfillMonth, completeMonths[], servedFromArchive, archiveAgeMs, mergedWith }`
 - `store` : `{ enabled, firstSync, windowDays, freshFromKeyyo, added, updated, total, persisted, lastSavedAt, missingMonths[] }`
 
 **Comment l'historique se constitue.** Une requête Keyyo dure 3 à 4 s ; une

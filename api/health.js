@@ -28,7 +28,7 @@ import { archiveEnabled, loadArchive } from './_archive.js';
 import { requireRole, readAuthConfig, authSummary } from './_auth.js';
 import { resolveLineIdentities } from '../shared/identity.js';
 import { isoDaysAgo, todayIso, nextDay } from '../shared/time.js';
-import { SCHEMA_VERSION } from '../shared/schema.js';
+import { SCHEMA_VERSION, F } from '../shared/schema.js';
 
 /** Fenetre de la sonde ?deep=1 : assez courte pour rester rapide. */
 const PROBE_DAYS = 7;
@@ -133,11 +133,13 @@ export default async function handler(req, res) {
 
   // Echeance commune a tous les appels sortants de cette route. Sans elle, un
   // annuaire volumineux ou une sonde lente pousserait la fonction au-dela du
-  // `maxDuration` de 30 s declare dans vercel.json : la plateforme la couperait
+  // `maxDuration` de 60 s declare dans vercel.json : la plateforme la couperait
   // net, et la page Diagnostic n'afficherait RIEN — exactement au moment ou
-  // l'on cherche a comprendre pourquoi la collecte est lente. Meme borne que
-  // team.js et directory.js.
-  const deadline = Date.now() + Math.min(cfg.budgetMs, 20000);
+  // l'on cherche a comprendre pourquoi la collecte est lente. Sans sonde, meme
+  // borne que team.js et directory.js ; avec ?deep=1, les deux sondes ajoutent
+  // quatre releves Keyyo (3 a 5 s chacun) : verifie en production, 20 s ne
+  // suffisaient pas et les sondes etaient sautees « faute de temps ».
+  const deadline = Date.now() + (deep ? Math.min(cfg.budgetMs * 2, 48000) : Math.min(cfg.budgetMs, 20000));
 
   // -- 2. Authentification ----------------------------------------------------
   const token = await check('auth', 'Authentification Keyyo (OAuth2)', async () => {
@@ -343,34 +345,50 @@ export default async function handler(req, res) {
 
   // -- 9. Profondeur de la fenetre Keyyo (facultative, avec ?deep=1) ---------
   // Repond a « pourquoi les mois anciens sont-ils vides ? ». On demande a Keyyo
-  // une semaine situee 60 jours en arriere sur la meme ligne : zero
-  // enregistrement alors que la semaine courante en porte, c'est que la
-  // fenetre de l'API ne remonte pas si loin — et que l'historique ne peut se
-  // constituer qu'au fil des synchronisations, jamais retroactivement.
+  // la PREMIERE semaine de l'historique vise (KEYYO_HISTORY_DAYS en arriere)
+  // sur la meme ligne : zero enregistrement alors que la semaine courante en
+  // porte, c'est que la fenetre de l'API ne remonte pas si loin — et que
+  // l'historique ne peut se constituer qu'au fil des synchronisations, jamais
+  // retroactivement. Verifie que la sonde est probante : les dates partent
+  // bien dans `filters[...]`, sinon Keyyo rend sa fenetre par defaut et la
+  // sonde « voit » des appels recents en croyant regarder loin en arriere.
   if (deep && voipLines.length) {
-    await check('retention', 'Profondeur de la fenêtre Keyyo (une semaine, il y a 60 jours)', async () => {
+    const depth = Math.max(7, Number(cfg.historyDays) || 92);
+    await check('retention', 'Profondeur de la fenêtre Keyyo (une semaine, il y a ' + depth + ' jours)', async () => {
       const csi = voipLines[0].csi;
-      const from = isoDaysAgo(60, Date.now(), cfg.tz);
-      const to = isoDaysAgo(53, Date.now(), cfg.tz);   // date_end exclusive
+      const from = isoDaysAgo(depth - 1, Date.now(), cfg.tz);
+      const to = isoDaysAgo(depth - 8, Date.now(), cfg.tz);   // date_end exclusive
       const results = await Promise.all([
         fetchCallDetail(cfg, token, { csi, direction: 'in', from, to, deadline }),
         fetchCallDetail(cfg, token, { csi, direction: 'out', from, to, deadline }),
       ]);
       const rawSeen = results.reduce((a, r) => a + Number(r.diag.rawSeen || 0), 0);
       const recent = probe ? Number(probe.rawSeen) || 0 : 0;
+      const seenRange = dateRange(results);
+      // Un enregistrement hors de la semaine demandee prouverait que les dates
+      // ne sont pas honorees : c'est le symptome exact de l'ancien encodage.
+      if (seenRange.max && seenRange.max >= to) {
+        return {
+          level: 'error',
+          message: 'Keyyo a renvoyé des appels du ' + seenRange.min + ' au ' + seenRange.max
+            + ' alors que la semaine demandée va du ' + from + ' au ' + to + ' (exclu) : les dates ne sont pas honorées. '
+            + 'Les relevés doivent être demandés avec filters[date_start]/filters[date_end].',
+          detail: { csi, from, to, rawSeen, seen: seenRange },
+        };
+      }
       if (rawSeen > 0) {
         return {
           message: rawSeen + ' enregistrement(s) renvoyé(s) pour la semaine du ' + from + ' sur la ligne ' + csi
-            + ' : la fenêtre de Keyyo remonte au moins à 60 jours. Un mois ancien vide est alors un mois sans trafic.',
-          detail: { csi, from, to, rawSeen },
+            + ' : la fenêtre de Keyyo couvre les ' + depth + ' jours visés. Un mois ancien vide est alors un mois sans trafic.',
+          detail: { csi, from, to, rawSeen, seen: seenRange },
         };
       }
       return {
         level: 'warn',
         message: 'Aucun enregistrement pour la semaine du ' + from + ' sur la ligne ' + csi
           + (recent ? ', alors que la semaine courante en porte ' + recent : '')
-          + ' : la fenêtre de relevés de Keyyo ne remonte pas jusque-là. Les mois anciens ne peuvent pas '
-          + 'être récupérés après coup ; l\'archive se remplit au fil des synchronisations (cron quotidien, CRON_SECRET requis).',
+          + ' : soit cette semaine est sans trafic, soit la fenêtre de relevés de Keyyo ne remonte pas jusque-là. '
+          + 'L\'archive conserve de toute façon ce qui a été vu passer (cron quotidien, CRON_SECRET requis).',
         detail: { csi, from, to, rawSeen, recentWeek: recent },
       };
     });
@@ -429,6 +447,26 @@ export default async function handler(req, res) {
  * @param {Record<string, number>} reasons
  * @returns {string}
  */
+/**
+ * Plus petite et plus grande date (`YYYY-MM-DD`) des lignes retenues par des
+ * releves. Sert a verifier que Keyyo a bien honore la fenetre demandee.
+ * @param {Array<{rows?: any[]}>} results
+ * @returns {{min: string|null, max: string|null}}
+ */
+function dateRange(results) {
+  let min = '';
+  let max = '';
+  for (const r of results) {
+    for (const row of (r && Array.isArray(r.rows)) ? r.rows : []) {
+      const d = String(row[F.date] || '');
+      if (!d) continue;
+      if (!min || d < min) min = d;
+      if (!max || d > max) max = d;
+    }
+  }
+  return { min: min || null, max: max || null };
+}
+
 function describeReasons(reasons) {
   const entries = Object.entries(reasons || {}).sort((a, b) => b[1] - a[1]);
   if (!entries.length) return 'aucune raison enregistrée';

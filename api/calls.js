@@ -38,6 +38,18 @@ import { SCHEMA_VERSION, FIELDS } from '../shared/schema.js';
 const CACHE_PRIVATE = 'private, max-age=30';
 
 /**
+ * Age maximal d'une archive servie SANS interroger Keyyo.
+ *
+ * Le front sonde toutes les 60 s ; chaque sondage coutait six releves Keyyo
+ * plus trois lectures d'identites, par navigateur ouvert, et se chevauchait
+ * avec les synchronisations manuelles. Les releves de Keyyo ne sont de toute
+ * facon publies qu'apres la fin de l'appel : trois minutes de retard sur le
+ * tableau de bord ne changent rien a la supervision. `?force=1` (le bouton
+ * Actualiser) et `?full=1` interrogent toujours Keyyo.
+ */
+const FRESH_MS = 180000;
+
+/**
  * @param {any} req
  * @param {any} res
  */
@@ -58,6 +70,7 @@ export default async function handler(req, res) {
       full,
       month,
       sinceDays: Number.isFinite(days) && days > 0 ? days : 0,
+      maxAgeMs: force || full ? 0 : FRESH_MS,
     });
 
     const empty = !result.rows.length;

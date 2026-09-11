@@ -44,7 +44,9 @@ audio.
   tout ce qui a été vu passer. Chaque synchronisation redemande les derniers
   jours, puis complète le mois le plus ancien encore incomplet, une requête à
   la fois : l'historique de trois mois se constitue tout seul, sans jamais
-  refaire ce qui est acquis.
+  refaire ce qui est acquis. Le tableau de bord sert l'archive telle quelle
+  quand elle a moins de trois minutes ; le bouton *Actualiser* interroge
+  toujours Keyyo.
 - **Il nomme.** Les numéros deviennent des noms via l'annuaire du compte, et
   chaque ligne se voit attribuer un collaborateur — voir
   [docs/MAPPING-IDENTITES.md](docs/MAPPING-IDENTITES.md).

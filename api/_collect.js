@@ -30,6 +30,15 @@
 //       qui est acquis. Passage apres passage, les trois mois finissent
 //       archives ; ensuite seuls les jours recents sont redemandes.
 //
+//    4. DEUX PASSAGES PEUVENT SE CHEVAUCHER. Le sondage de la page et une
+//       synchronisation manuelle lisent la meme archive ; sans precaution, le
+//       dernier a ecrire effacait les acquis de l'autre (verifie : septembre,
+//       releve en entier, redevenait « incomplet »). Avant d'ecrire, on relit
+//       l'archive et l'on fusionne avec ce qu'un autre passage y a mis entre-
+//       temps. Et une archive fraiche (moins de `maxAgeMs`) est servie telle
+//       quelle par la page, sans solliciter Keyyo : moins de chevauchements,
+//       moins de requetes.
+//
 //    Echec partiel tolere : une ligne en erreur alimente `errors[]` et
 //    n'empeche pas les autres d'aboutir. Seule l'impossibilite totale de
 //    produire quoi que ce soit (pas de jeton ET pas d'archive) fait echouer.
@@ -39,7 +48,7 @@ import { readConfig, errorMessage } from './_config.js';
 import {
   getAccessToken, fetchVoipLines, fetchEmailAccounts, fetchDirectoryContacts, fetchCallDetail,
 } from './_keyyo.js';
-import { archiveEnabled, loadArchive, saveArchive, mergeRows } from './_archive.js';
+import { archiveEnabled, loadArchive, saveArchive, mergeRows, mergeCoverage } from './_archive.js';
 import { F } from '../shared/schema.js';
 import { isoDaysAgo, todayIso, monthSlices, daysBetween } from '../shared/time.js';
 import { resolveLineIdentities } from '../shared/identity.js';
@@ -66,7 +75,10 @@ const PERSIST_RESERVE_MS = 3000;
  */
 
 /**
- * @param {{full?: boolean, month?: string, sinceDays?: number, budgetMs?: number}} [opts]
+ * @param {{full?: boolean, month?: string, sinceDays?: number, budgetMs?: number, maxAgeMs?: number}} [opts]
+ *        `maxAgeMs` : une archive sauvegardee il y a moins longtemps que cela
+ *        est servie telle quelle, sans aucune requete Keyyo (passage
+ *        incremental seulement ; 0 ou absent = toujours collecter).
  * @returns {Promise<CollectResult>}
  */
 export async function collect(opts) {
@@ -98,7 +110,7 @@ export async function collect(opts) {
       + 'Relier un store Blob au projet Vercel pour conserver les trois mois.',
     );
   }
-  /** @type {{version: number, savedAt: string, rows: any[], coverage: Record<string, any>}|null} */
+  /** @type {{version: number, savedAt: string, rows: any[], coverage: Record<string, any>, lines: any[]}|null} */
   let archive = null;
   try {
     archive = await loadArchive();
@@ -110,11 +122,28 @@ export async function collect(opts) {
   const prevCoverage = archive ? archive.coverage : {};
   const firstSync = !archiveRows.length;
 
+  // -- Archive fraiche : servie telle quelle ---------------------------------
+  // Le sondage de la page revient toutes les 60 s ; chaque passage coutait six
+  // requetes Keyyo (3 lignes x 2 sens) plus les identites, et se chevauchait
+  // avec les synchronisations manuelles. Une archive de moins de `maxAgeMs`,
+  // qui porte son instantane des lignes, suffit : rien n'est demande a Keyyo.
+  const maxAgeMs = Math.max(0, Number(o.maxAgeMs) || 0);
+  const archiveAgeMs = archive && archive.savedAt ? now - Date.parse(archive.savedAt) : Number.POSITIVE_INFINITY;
+  const servedFromArchive = !!(
+    archive && !o.full && !normalizeMonth(o.month) && !firstSync
+    && maxAgeMs > 0 && Number.isFinite(archiveAgeMs) && archiveAgeMs >= 0 && archiveAgeMs < maxAgeMs
+    && Array.isArray(archive.lines) && archive.lines.length
+  );
+  if (servedFromArchive) {
+    notes.push('Archive à jour (sauvegardée il y a ' + Math.round(archiveAgeMs / 1000)
+      + ' s) : servie sans nouvelle requête à Keyyo.');
+  }
+
   // -- Jeton -----------------------------------------------------------------
   /** @type {string} */
   let token = '';
   try {
-    token = await getAccessToken(cfg);
+    if (!servedFromArchive) token = await getAccessToken(cfg);
   } catch (err) {
     const message = errorMessage(err);
     errors.push({ scope: 'auth', message });
@@ -159,12 +188,14 @@ export async function collect(opts) {
     else errors.push({ scope: 'email_accounts', message: mailboxesRes.message });
   }
 
-  const lines = resolveLineIdentities({
-    voipLines,
-    directoryContacts,
-    emailAccounts,
-    overrides: cfg.lineEmails,
-  });
+  const lines = servedFromArchive
+    ? archive.lines
+    : resolveLineIdentities({
+      voipLines,
+      directoryContacts,
+      emailAccounts,
+      overrides: cfg.lineEmails,
+    });
   // Deux situations tres differentes, qu'il ne faut pas confondre dans un
   // meme message : une ligne PARTAGEE par une equipe n'est pas une ligne mal
   // configuree, et aucun reglage ne la resoudra.
@@ -199,7 +230,12 @@ export async function collect(opts) {
   let fromIso;
   let toIso;
 
-  if (month) {
+  if (servedFromArchive) {
+    strategy = 'archive';
+    windowDays = 0;
+    fromIso = today;
+    toIso = today;
+  } else if (month) {
     strategy = 'month';
     const bounds = monthBounds(month, today);
     fromIso = bounds.from;
@@ -218,7 +254,7 @@ export async function collect(opts) {
   }
   if (fromIso > toIso) fromIso = toIso;
 
-  const slices = monthSlices(fromIso, toIso);      // le mois le plus recent d'abord
+  const slices = servedFromArchive ? [] : monthSlices(fromIso, toIso);      // le mois le plus recent d'abord
 
   // -- Ce qu'un mois complet exige : chaque ligne, dans chaque sens ----------
   // La cle « csi:sens » identifie une requete couvrant le mois entier. La
@@ -386,9 +422,9 @@ export async function collect(opts) {
 
   // -- Fusion et persistance -------------------------------------------------
   const merged = mergeRows(archiveRows, freshRows, { retentionDays: cfg.retentionDays, now });
-  const rows = merged.rows;
+  let rows = merged.rows;
 
-  const coverage = buildCoverage(rows, touchedMonths, prevCoverage, nowIso, completeMonths, doneByMonth);
+  let coverage = buildCoverage(rows, touchedMonths, prevCoverage, nowIso, completeMonths, doneByMonth);
   // Un mois est « manquant » tant qu'il n'est pas COMPLET : absent, ou
   // parcouru sans que toutes ses requetes aient abouti.
   const missingMonths = expectedMonths.filter((ym) => !isCompleteEntry(coverage[ym])).sort();
@@ -425,15 +461,33 @@ export async function collect(opts) {
     .join('|');
   const coverageChanged = coverageKey(coverage) !== coverageKey(prevCoverage);
 
+  /** @type {string|false} */
   let persisted = false;
-  if (storeEnabled && (merged.added || merged.updated || coverageChanged || !archive)) {
+  /** Horodatage d'une sauvegarde concurrente avec laquelle ce passage a fusionne. */
+  let mergedWith = '';
+  if (storeEnabled && !servedFromArchive && (merged.added || merged.updated || coverageChanged || !archive)) {
     try {
-      persisted = await saveArchive({ rows, coverage });
+      // Regle 4 : relire juste avant d'ecrire. Si un autre passage a sauvegarde
+      // depuis notre lecture, on fusionne lignes et couverture au lieu de
+      // l'ecraser. La fenetre de course se reduit a la duree de l'ecriture.
+      const latest = await loadArchive();
+      if (latest && latest.savedAt && latest.savedAt !== (archive ? archive.savedAt : '')) {
+        mergedWith = latest.savedAt;
+        rows = mergeRows(latest.rows, rows, { retentionDays: cfg.retentionDays, now }).rows;
+        coverage = mergeCoverage(latest.coverage, coverage, countByMonth(rows));
+      }
+      persisted = await saveArchive({ rows, coverage, lines });
     } catch (err) {
       warnings.push(errorMessage(err));
       errors.push({ scope: 'archive_write', message: errorMessage(err) });
     }
   }
+  if (mergedWith) {
+    notes.push('Fusionné avec une sauvegarde concurrente du ' + mergedWith + ' : rien n’a été écrasé.');
+  }
+  // La completude se relit apres fusion : un mois acquis par l'autre passage
+  // n'a plus a etre signale manquant.
+  const missingAfter = expectedMonths.filter((ym) => !isCompleteEntry(coverage[ym])).sort();
 
   const meta = buildMeta(rows);
 
@@ -464,6 +518,9 @@ export async function collect(opts) {
       completeMonths: Array.from(completeMonths).sort(),
       budgetMs,
       concurrency: MAX_CONCURRENCY,
+      servedFromArchive,
+      archiveAgeMs: Number.isFinite(archiveAgeMs) ? archiveAgeMs : null,
+      mergedWith: mergedWith || null,
     },
     store: {
       enabled: storeEnabled,
@@ -473,11 +530,26 @@ export async function collect(opts) {
       added: merged.added,
       updated: merged.updated,
       total: rows.length,
-      persisted,
-      lastSavedAt: persisted ? nowIso : (archive && archive.savedAt ? archive.savedAt : null),
-      missingMonths,
+      persisted: !!persisted,
+      lastSavedAt: persisted || (archive && archive.savedAt ? archive.savedAt : null),
+      missingMonths: missingAfter,
     },
   };
+}
+
+/**
+ * Comptes par mois (`YYYY-MM`) d'un jeu de lignes.
+ * @param {any[]} rows
+ * @returns {Record<string, number>}
+ */
+function countByMonth(rows) {
+  /** @type {Record<string, number>} */
+  const counts = {};
+  for (const row of rows) {
+    const ym = String(row[F.date] || '').slice(0, 7);
+    if (ym) counts[ym] = (counts[ym] || 0) + 1;
+  }
+  return counts;
 }
 
 // -----------------------------------------------------------------------------

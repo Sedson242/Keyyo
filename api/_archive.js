@@ -118,7 +118,10 @@ function plainObject(v) {
  * de SCHEMA_VERSION : dans ce cas l'archive est volontairement ignoree, la
  * collecte repartira sur la fenetre complete et l'ecrasera au bon format.
  *
- * @returns {Promise<{version: number, savedAt: string, rows: any[], coverage: Record<string, any>}|null>}
+ * `lines` est l'instantane des lignes et de leurs identites au moment de la
+ * sauvegarde : il permet de servir une archive fraiche SANS solliciter Keyyo.
+ *
+ * @returns {Promise<{version: number, savedAt: string, rows: any[], coverage: Record<string, any>, lines: any[]}|null>}
  */
 export async function loadArchive() {
   if (!archiveEnabled()) return null;
@@ -146,29 +149,76 @@ export async function loadArchive() {
     savedAt: payload.savedAt ? String(payload.savedAt) : '',
     rows,
     coverage: plainObject(payload.coverage),
+    lines: Array.isArray(payload.lines) ? payload.lines.filter((l) => l && typeof l === 'object') : [],
   };
 }
 
 /**
  * Ecrit l'archive. Renvoie `false` si aucun store n'est configure (mode direct),
- * `true` en cas de succes, et JETTE si l'ecriture a echoue alors qu'elle etait
- * possible — un echec d'ecriture silencieux ferait perdre l'historique sans
- * que personne ne le sache.
+ * l'horodatage ecrit en cas de succes, et JETTE si l'ecriture a echoue alors
+ * qu'elle etait possible — un echec d'ecriture silencieux ferait perdre
+ * l'historique sans que personne ne le sache.
  *
- * @param {{rows: any[], coverage?: Record<string, any>}} payload
- * @returns {Promise<boolean>}
+ * @param {{rows: any[], coverage?: Record<string, any>, lines?: any[]}} payload
+ * @returns {Promise<string|false>}
  */
 export async function saveArchive(payload) {
   if (!archiveEnabled()) return false;
 
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+  const savedAt = new Date().toISOString();
   await writeBlobJson(ARCHIVE_PATH, {
     version: SCHEMA_VERSION,
-    savedAt: new Date().toISOString(),
+    savedAt,
     rows,
     coverage: plainObject(payload && payload.coverage),
+    lines: Array.isArray(payload && payload.lines) ? payload.lines : [],
   });
-  return true;
+  return savedAt;
+}
+
+/**
+ * Fusionne deux couvertures mensuelles issues de deux passages concurrents.
+ *
+ * Pourquoi : le store Blob n'a pas d'ecriture conditionnelle. Deux collectes
+ * qui se chevauchent (le sondage de la page et une synchronisation manuelle,
+ * verifie en production) lisent la meme archive, et la seconde a ecrire
+ * effacait ce que la premiere avait acquis — septembre, releve en entier,
+ * redevenait « incomplet ». Ici rien ne se perd : les requetes acquises
+ * s'additionnent, un mois complet le reste, l'horodatage le plus recent
+ * l'emporte. Les comptes sont recalcules par l'appelant a partir des lignes
+ * fusionnees ; a defaut, le plus grand des deux est garde.
+ *
+ * @param {Record<string, any>} a
+ * @param {Record<string, any>} b
+ * @param {Record<string, number>} [counts]  comptes par mois apres fusion des lignes
+ * @returns {Record<string, {count: number, syncedAt: string, complete: boolean, done: string[]}>}
+ */
+export function mergeCoverage(a, b, counts) {
+  const pa = plainObject(a);
+  const pb = plainObject(b);
+  /** @type {Record<string, {count: number, syncedAt: string, complete: boolean, done: string[]}>} */
+  const out = {};
+  const months = new Set(Object.keys(pa).concat(Object.keys(pb)));
+  for (const ym of months) {
+    const x = plainObject(pa[ym]);
+    const y = plainObject(pb[ym]);
+    const done = new Set();
+    for (const k of Array.isArray(x.done) ? x.done : []) done.add(String(k));
+    for (const k of Array.isArray(y.done) ? y.done : []) done.add(String(k));
+    const sx = String(x.syncedAt || '');
+    const sy = String(y.syncedAt || '');
+    const count = counts && Object.prototype.hasOwnProperty.call(counts, ym)
+      ? Number(counts[ym]) || 0
+      : Math.max(Number(x.count) || 0, Number(y.count) || 0);
+    out[ym] = {
+      count,
+      syncedAt: sx > sy ? sx : sy,
+      complete: x.complete === true || y.complete === true,
+      done: Array.from(done).sort(),
+    };
+  }
+  return out;
 }
 
 /**
