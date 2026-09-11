@@ -576,8 +576,6 @@ export async function keyyoGetAll(cfg, token, path, params, opts) {
   let offset = 0;
   let pages = 0;
   let truncated = false;
-  /** Taille de page REELLE, apprise sur la premiere page : Keyyo peut servir moins que `limit`. */
-  let pageSize = 0;
   /** Empreinte de la page precedente, pour detecter un `offset` ignore (meme page rendue en boucle). */
   let lastFingerprint = '';
   let url = buildUrl(cfg, path, Object.assign({}, baseParams, { limit, offset }));
@@ -597,12 +595,13 @@ export async function keyyoGetAll(cfg, token, path, params, opts) {
     lastFingerprint = fingerprint;
 
     for (let i = 0; i < records.length; i++) out.push(records[i]);
-    if (!pageSize) pageSize = records.length;
 
     const link = nextLink(payload);
-    // Il reste peut-etre des pages si celle-ci est pleine — au sens de la
-    // taille que Keyyo sert reellement, pas seulement de `limit`.
-    const hasMoreByCount = records.length > 0 && records.length >= Math.min(limit, pageSize || limit);
+    // Une page pleine laisse supposer une suite ; une page courte est la
+    // derniere. Deviner une taille de page « reelle » plus petite que `limit`
+    // coutait une requete de trop a chaque collection (verifie : l'annuaire de
+    // 47 contacts etait redemande a partir du 47e), soit 3 a 4 s perdues.
+    const hasMoreByCount = records.length >= limit;
 
     if (pages >= maxPages) {
       truncated = !!link || hasMoreByCount;
