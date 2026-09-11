@@ -41,8 +41,10 @@ audio.
   mensuelles, dans les deux sens.
 - **Il se souvient.** L'API Keyyo n'expose qu'une fenêtre glissante : un appel
   assez ancien cesse d'être renvoyé. Une archive sur Vercel Blob conserve donc
-  tout ce qui a été vu passer, et chaque synchronisation ne redemande que les
-  derniers jours avant de fusionner.
+  tout ce qui a été vu passer. Chaque synchronisation redemande les derniers
+  jours, puis complète le mois le plus ancien encore incomplet, une requête à
+  la fois : l'historique de trois mois se constitue tout seul, sans jamais
+  refaire ce qui est acquis.
 - **Il nomme.** Les numéros deviennent des noms via l'annuaire du compte, et
   chaque ligne se voit attribuer un collaborateur — voir
   [docs/MAPPING-IDENTITES.md](docs/MAPPING-IDENTITES.md).

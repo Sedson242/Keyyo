@@ -374,18 +374,33 @@ export function mergeRows(oldRows, freshRows, opts?): { rows, added, updated }
 Le store est **privé** et relié par **OIDC** (`@vercel/blob` ≥ 2, Node ≥ 20) :
 aucun jeton à poser, aucune URL publique. `_journal.js` réutilise
 `readBlobJson` / `writeBlobJson`.
-`coverage` : `{ [YYYY-MM]: { count, syncedAt } }` — sert à savoir quels mois
-sont déjà collectés et à reprendre un remplissage interrompu.
+`coverage` : `{ [YYYY-MM]: { count, syncedAt, complete, done[] } }` — `done`
+liste les requêtes acquises sur le mois entier (clé `csi:in` / `csi:out`),
+`complete` n'est vrai que quand chaque ligne a été relevée dans les deux sens.
+C'est ce qui permet de reprendre un remplissage interrompu **requête par
+requête**, sans jamais refaire ce qui est acquis.
 
 ### `api/_collect.js`
 ```js
 export async function collect(opts): Promise<CollectResult>
         // opts : { full?, month?, sinceDays?, budgetMs? }
 ```
-`CollectResult` : `{ rows, lines, meta, coverage, errors, warnings, diag, store }`
+`CollectResult` : `{ rows, lines, meta, coverage, errors, warnings, notes, diag, store }`
 - `meta` : `{ n, min, max, days, months[], csis[] }`
-- `diag` : `{ perTask[], rawSeen, kept, dropped, dropReasons, strategy, windowDays, elapsedMs }`
+- `notes` : informations qui ne sont pas des défauts (lignes partagées, historique en cours de constitution)
+- `diag` : `{ perTask[], rawSeen, kept, dropped, dropReasons, strategy, windowDays, elapsedMs, skipped, skippedBackfill, backfillMonth, completeMonths[] }`
 - `store` : `{ enabled, firstSync, windowDays, freshFromKeyyo, added, updated, total, persisted, lastSavedAt, missingMonths[] }`
+
+**Comment l'historique se constitue.** Une requête Keyyo dure 3 à 4 s ; une
+collecte complète (3 lignes × 2 sens × 4 mois) ne tient pas dans une
+fonction. Chaque passage *incrémental* (sondage de la page, cron, bouton du
+Diagnostic) relève d'abord les jours récents (`KEYYO_SYNC_DAYS`) en parallèle
+borné, puis consacre le reste du budget au **mois incomplet le plus ancien**
+de la fenêtre, **une requête à la fois**, en ne rejouant que les clés
+manquantes de `done`. `/api/sync` dispose de ~52 s (`maxDuration` 60 s),
+`/api/calls` de `KEYYO_BUDGET_MS` (24 s) pour rendre la page vite. Un mois
+n'est déclaré `complete` que quand toutes ses requêtes ont abouti sans
+troncature ; tant qu'il ne l'est pas, il figure dans `store.missingMonths`.
 
 ### Points d'entrée HTTP
 
