@@ -31,6 +31,13 @@ const DEFAULT_TIMEOUT_MS = 30000;
 const SYNC_TIMEOUT_MS = 60000;
 
 /**
+ * Timeout de /api/health?deep=1 : les deux sondes ajoutent quatre releves
+ * Keyyo (3 a 5 s chacun) et la route s'accorde jusqu'a 48 s pour les mener.
+ * Avec le delai par defaut (30 s), la page abandonnait avant la reponse.
+ */
+const DEEP_HEALTH_TIMEOUT_MS = 60000;
+
+/**
  * Requetes en vol, indexees par `METHODE URL`.
  * @type {Map<string, Promise<any>>}
  */
@@ -377,7 +384,7 @@ export async function getHealth(opts) {
   return request('/health', {
     params,
     noCache: !!o.force || !!o.deep,
-    timeoutMs: o.timeoutMs,
+    timeoutMs: typeof o.timeoutMs === 'number' ? o.timeoutMs : (o.deep ? DEEP_HEALTH_TIMEOUT_MS : undefined),
   });
 }
 
