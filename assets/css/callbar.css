@@ -17,14 +17,20 @@
   right: 0;
   bottom: 0;
   z-index: var(--z-sticky);
-  max-width: var(--page-max);
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: min(62vh, 560px);
   padding: 10px 14px 12px;
   background: var(--surface-glass-strong);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--line);
   box-shadow: 0 -12px 30px -18px rgba(120, 70, 40, 0.25);
+}
+/* Sur grand ecran la barre laterale reste visible : la barre d'appel ne doit
+   pas la recouvrir. Le voile de la barre laterale est a `left: 0` en mobile. */
+@media (min-width: 901px) {
+  .callbar { left: max(0px, calc((100vw - var(--page-max)) / 2 + var(--sidebar-w))); right: max(0px, calc((100vw - var(--page-max)) / 2)); }
 }
 body.has-callbar .main { padding-bottom: 210px; }
 
@@ -45,7 +51,7 @@ body.has-callbar .main { padding-bottom: 210px; }
 }
 .callbar-count[hidden] { display: none; }
 
-.callbar-body { display: grid; gap: 8px; margin-top: 8px; }
+.callbar-body { display: grid; gap: 8px; margin-top: 8px; min-height: 0; overflow-y: auto; }
 .callbar-body[hidden] { display: none; }
 .callbar.is-collapsed { padding-bottom: 8px; }
 body.has-callbar .callbar.is-collapsed ~ * { padding-bottom: 0; }
@@ -106,7 +112,7 @@ body.has-callbar .callbar.is-collapsed ~ * { padding-bottom: 0; }
   border-radius: var(--r-lg);
   box-shadow: var(--sh-md);
   padding: 8px;
-  max-height: min(44vh, 360px);
+  max-height: 300px;
   overflow-y: auto;
 }
 .callbar-picker[hidden] { display: none; }

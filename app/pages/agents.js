@@ -19,7 +19,7 @@
 
 import { html, raw, mount, on } from '../dom.js';
 import { card, sectionHead, table, tag, avatar, notice, empty, skeleton, kpi } from '../ui.js';
-import { journal, loadJournal, labelOf, getLines } from '../store.js';
+import { journal, loadJournal, labelOf, getLines, lineByCsi } from '../store.js';
 import { fmtInt, fmtPct, fmtDurationShort, fmtRelative, fmtMonth, pluralize } from '../format.js';
 import { formatNumber } from '../../shared/phone.js';
 import { monthOf } from '../../shared/journal.js';
@@ -224,13 +224,44 @@ function calleesCard(agents) {
     }
   }
   const list = Array.from(acc.entries()).sort((x, y) => y[1].count - x[1].count).slice(0, CALLEES_MAX);
-  const body = list.length
-    ? html`<div class="feed">${list.map(([to, e]) => raw(html`<div class="feed-item" style="color: var(--ink)">
-        <div class="feed-title" style="color: var(--ink)">${labelOf(to)} <span class="faint">${formatNumber(to)}</span></div>
-        <div class="feed-meta" style="color: var(--ink-muted)">${fmtInt(e.count)} ${pluralize(e.count, 'appel', 'appels')} · ${Array.from(e.who).join(', ')}</div>
-      </div>`))}</div>`
-    : empty('Aucun appel émis depuis l’application', 'Les numéros composés depuis la barre d’appel apparaîtront ici.');
-  return card({ title: 'Vers qui on appelle', sub: 'Depuis l’application, ce mois-ci', body: raw(body) });
+  if (!list.length) {
+    return card({
+      title: 'Vers qui on appelle',
+      sub: 'Depuis l’application, ce mois-ci',
+      body: raw(empty('Aucun appel émis depuis l’application', 'Les numéros composés depuis la barre d’appel apparaîtront ici.')),
+    });
+  }
+  const rows = list.map(([to, e]) => [
+    html`<div class="strong">${calleeLabel(to)}</div><div class="faint" style="font: var(--t-micro)">${formatNumber(to)}${lineByCsi(to) ? ' · ligne partagée par tout un site' : ''}</div>`,
+    html`<span class="tnum">${fmtInt(e.count)}</span>`,
+    html`${Array.from(e.who).join(', ')}`,
+  ]);
+  return card({
+    title: 'Vers qui on appelle',
+    sub: 'Depuis l’application, ce mois-ci',
+    flush: true,
+    body: raw(table({
+      columns: [
+        { key: 'to', label: 'Destinataire' },
+        { key: 'n', label: 'Appels', align: 'right' },
+        { key: 'who', label: 'Par' },
+      ],
+      rows,
+    })),
+  });
+}
+
+/**
+ * Destinataire d'un appel emis : une LIGNE DU COMPTE est nommee comme telle
+ * (« Ligne BIOS TNR ») plutot que par le premier contact que l'annuaire lui
+ * rattache — les collegues sans numero direct passent tous par elle.
+ * @param {string} number
+ * @returns {string}
+ */
+function calleeLabel(number) {
+  const line = lineByCsi(number);
+  if (line) return 'Ligne ' + String(line.label);
+  return labelOf(number);
 }
 
 /** @param {any} c @param {any} j @returns {string} */

@@ -66,12 +66,17 @@ export async function collect(opts) {
   /** @type {string[]} */
   const warnings = [];
 
+  // Informations qui ne sont PAS des defauts de collecte : elles s'affichent
+  // a part, jamais sous « collecte partielle ».
+  /** @type {string[]} */
+  const notes = [];
+
   // -- Archive ---------------------------------------------------------------
   const storeEnabled = archiveEnabled();
   if (!storeEnabled) {
     warnings.push(
       "Archive désactivée : les appels ne sont pas mémorisés, seule la fenêtre encore servie par Keyyo est visible. "
-      + 'Définir BLOB_READ_WRITE_TOKEN pour conserver les trois mois.',
+      + 'Relier un store Blob au projet Vercel pour conserver les trois mois.',
     );
   }
   /** @type {{version: number, savedAt: string, rows: any[], coverage: Record<string, any>}|null} */
@@ -148,11 +153,14 @@ export async function collect(opts) {
   const unresolvedCount = lines.filter((l) => !l.shared && (!l.person || !l.person.email)).length;
 
   if (sharedLines.length) {
+    // Une INFORMATION, pas un defaut : la collecte est complete, c'est la
+    // source qui ne nomme personne. La repartition par personne vient du
+    // journal d'attribution (vue Attribution), pas des releves Keyyo.
     const people = sharedLines.reduce((n, l) => n + (l.team ? l.team.length : 0), 0);
-    warnings.push(
+    notes.push(
       sharedLines.length + ' ligne(s) sont partagées par ' + people + ' personnes au total. '
-      + "L'API Keyyo n'indique pas quel poste a pris un appel : l'activité de ces lignes "
-      + 'ne peut donc pas être répartie par collaborateur.',
+      + "Les relevés Keyyo n'indiquent pas quel poste a pris un appel : la répartition par "
+      + 'personne vient de la vue Attribution (actions faites dans l’application).',
     );
   }
   if (voipLines.length && unresolvedCount) {
@@ -321,6 +329,7 @@ export async function collect(opts) {
     coverage,
     errors,
     warnings,
+    notes,
     diag: {
       perTask,
       rawSeen,

@@ -74,7 +74,11 @@ export default async function handler(req, res) {
       diag: Object.assign({}, result.diag, {
         errors: result.errors,
         warnings: result.warnings,
+        notes: result.notes || [],
       }),
+      // Informations qui ne sont PAS des defauts de collecte (lignes partagees,
+      // etc.) : le front les affiche a part, jamais en « collecte partielle ».
+      notes: result.notes || [],
       updatedAt: new Date().toISOString(),
       empty,
       warning: buildWarning(result, empty),

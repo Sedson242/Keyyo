@@ -89,6 +89,8 @@ let _meta = emptyMeta();
 let _coverage = /** @type {Record<string, any>} */ ({});
 let _store = /** @type {any} */ (null);
 let _diag = /** @type {any} */ (null);
+/** Informations de collecte qui ne sont pas des defauts (lignes partagees...). */
+let _notes = /** @type {string[]} */ ([]);
 
 let _kind = /** @type {'loading'|'ok'|'warn'|'error'} */ ('loading');
 let _at = /** @type {string} */ ('');
@@ -1145,12 +1147,13 @@ export async function loadJournal(month, opts) {
   notify();
 }
 
-/** @returns {{kind: string, at: string, warning: string, empty: boolean, store: any, diag: any, meta: any}} */
+/** @returns {{kind: string, at: string, warning: string, notes: string[], empty: boolean, store: any, diag: any, meta: any}} */
 export function status() {
   return {
     kind: _kind,
     at: _at,
     warning: _warning,
+    notes: _notes,
     empty: _rows.length === 0,
     store: _store,
     diag: _diag,
@@ -1196,6 +1199,7 @@ function applyCalls(payload, warnings) {
   _meta = normalizeMeta(payload.meta, rows);
   _coverage = payload.coverage && typeof payload.coverage === 'object' ? payload.coverage : {};
   _store = payload.store && typeof payload.store === 'object' ? payload.store : null;
+  _notes = Array.isArray(payload.notes) ? payload.notes.map(String) : [];
 }
 
 /**
