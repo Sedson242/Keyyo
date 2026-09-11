@@ -1002,6 +1002,16 @@ if (need(journalMod, 'shared/journal.js', 'shared/journal.js')) suite('shared/jo
     eq(e.to, '0612345678');
     eq(e.ts, NOW, 'sans ts : maintenant');
     eq(e.dir, '', 'sens absent -> vide');
+    eq(e.toName, undefined, 'pas de personne visee : champ absent');
+  });
+
+  test('la personne visee est retenue, bornee, pour un appel emis ou un transfert', () => {
+    const d = normalizeEvent({ type: 'dial', to: '33175433361', toName: '  Rina Rakoto ' }, ctx);
+    eq(d.toName, 'Rina Rakoto');
+    const t = normalizeEvent({ type: 'transfer', to: '4012', toName: 'x'.repeat(200) }, ctx);
+    eq(t.toName.length, 80);
+    const n = normalizeEvent({ type: 'dial', to: '33175433361', toName: '' }, ctx);
+    eq(n.toName, undefined);
   });
 
   test('les types inconnus et les faits incomplets sont rejetes', () => {

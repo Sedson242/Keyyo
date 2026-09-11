@@ -592,10 +592,13 @@ function mark(callref, patch) {
 /**
  * Compose un numero depuis la ligne.
  * @param {string} number
+ * @param {{toName?: string}} [opts] personne visee, quand le numero est celui
+ *        d'une ligne partagee : c'est elle que le journal doit retenir.
  * @returns {Promise<void>}
  */
-export async function dial(number) {
+export async function dial(number, opts) {
   requireConnected();
+  const o = opts || {};
   const to = toKeyyoNumber(number);
   try {
     await command(function (cb) { _cti.dial(to, cb); });
@@ -609,6 +612,7 @@ export async function dial(number) {
     type: 'dial',
     csi: _state.line ? _state.line.csi : '',
     to,
+    toName: String(o.toName || ''),
     dir: 'out',
   });
   emit();
@@ -622,7 +626,12 @@ export async function answer(callref) {
   requireConnected();
   const call = liveCall(callref);
   if (!call) throw new Error('Cet appel n\'est plus en cours.');
-  await command(function (cb) { call.answer(cb); });
+  try {
+    await command(function (cb) { call.answer(cb); });
+  } catch (err) {
+    throw new Error('Keyyo refuse le décroché depuis l’application (' + messageOf(err) + '). '
+      + 'Décrochez sur Keyyo Phone, puis cliquez « C’est moi qui ai répondu » pour que l’appel vous soit attribué.');
+  }
   const v = _calls.get(String(callref));
   mark(callref, { mine: true });
   journal.record({
@@ -674,7 +683,8 @@ export async function hangup(callref) {
  * Pour un entrant, c'est l'appelant qu'on transfere ; pour un sortant, l'appele.
  * @param {string} callref
  * @param {string} number
- * @param {{supervised?: boolean}} [opts] supervise : n'aboutit que si le destinataire decroche.
+ * @param {{supervised?: boolean, toName?: string}} [opts] supervise : n'aboutit que si le
+ *        destinataire decroche ; `toName` : personne visee, pour le journal.
  */
 export async function transfer(callref, number, opts) {
   requireConnected();
@@ -693,6 +703,7 @@ export async function transfer(callref, number, opts) {
     callref: String(callref),
     dir: v ? v.dir : '',
     to,
+    toName: String(o.toName || ''),
     supervised: !!o.supervised,
   });
   emit();

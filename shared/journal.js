@@ -119,6 +119,11 @@ export function normalizeEvent(raw, ctx) {
   if (type === 'dial' || type === 'transfer') {
     e.to = str(raw.to).replace(/[^\d+]/g, '');
     if (!e.to) return null;
+    // La personne visee, quand le numero compose est celui d'une ligne
+    // partagee par tout un site : sans elle, le journal ne saurait dire que
+    // « ligne TNR », alors que l'agent voulait joindre quelqu'un de precis.
+    const toName = str(raw.toName);
+    if (toName) e.toName = toName.slice(0, 80);
     if (type === 'transfer') e.supervised = !!raw.supervised;
   }
   if (type === 'observed' || type === 'answer' || type === 'claim') {

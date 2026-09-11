@@ -133,9 +133,20 @@ function hideGate() {
 //  Noms, avatars, libelles
 // -----------------------------------------------------------------------------
 
-/** @param {string} number @returns {string} nom connu, sinon numero formate. */
+/**
+ * Nom connu, sinon numero formate.
+ *
+ * Une LIGNE DU SITE passe avant l'annuaire : sur ce compte, les collegues
+ * sans numero direct portent le numero de leur ligne, et l'annuaire rattache
+ * ce numero au premier contact venu (« Aicha » pour toute la ligne TNR).
+ * Nommer la ligne est vrai ; nommer la premiere personne ne l'est pas.
+ * @param {string} number
+ * @returns {string}
+ */
 function labelOf(number) {
   if (number === 'anonymous') return 'Appelant masqué';
+  const line = lineByNumber(number);
+  if (line) return 'Ligne ' + line.label;
   const key = toE164(number);
   if (key && key !== 'anonymous') {
     const hit = _names.get(key);
@@ -144,6 +155,14 @@ function labelOf(number) {
   const c = colleagueByNumber(number);
   if (c) return c.name;
   return formatNumber(number);
+}
+
+/** @param {string} number @returns {any|null} ligne du compte portant ce numero. */
+function lineByNumber(number) {
+  const lines = _profile && Array.isArray(_profile.lines) ? _profile.lines : [];
+  const digits = String(number || '').replace(/\D/g, '');
+  if (!digits) return null;
+  return lines.find((l) => String(l.e164 || '').replace(/\D/g, '') === digits || String(l.csi || '') === digits) || null;
 }
 
 /** @param {string} number @returns {any|null} */
@@ -402,7 +421,7 @@ function paintList() {
     ))}</div>`);
     return;
   }
-  mount(body, items.map((c) => raw(callRow(c))).join(''));
+  mount(body, items.map((c) => callRow(c)).join(''));
 }
 
 /** @param {CallItem} c @returns {string} */
@@ -500,9 +519,10 @@ function colleagueDetail(c) {
       </div>
     </div>
     <div class="ag-actions">
-      <button class="btn btn--accent btn--lg" type="button" data-act="dial" data-number="${c.number}"${!snap.connected || _busy === 'dial' ? ' disabled' : ''}>${raw(icon('out'))}Appeler</button>
-      ${live ? raw(html`<button class="btn btn--lg" type="button" data-act="transfer-to" data-ref="${live.callref}" data-number="${c.number}">${raw(icon('peers'))}Lui transférer l’appel en cours</button>`) : ''}
-    </div>`;
+      <button class="btn btn--accent btn--lg" type="button" data-act="dial" data-number="${c.number}" data-name="${c.name}"${!snap.connected || _busy === 'dial' ? ' disabled' : ''}>${raw(icon('out'))}Appeler</button>
+      ${live ? raw(html`<button class="btn btn--lg" type="button" data-act="transfer-to" data-ref="${live.callref}" data-number="${c.number}" data-name="${c.name}">${raw(icon('peers'))}Lui transférer l’appel en cours</button>`) : ''}
+    </div>
+    ${lineByNumber(c.number) ? raw(notice({ tone: 'warn', title: 'Numéro partagé.', body: html`${c.name} n’a pas de numéro direct dans l’annuaire Keyyo : l’appel passe par la ligne ${lineByNumber(c.number).label}, qui sonne pour toute l’équipe de ce site.` })) : ''}`;
 }
 
 /** @returns {string} */
@@ -533,7 +553,7 @@ function activityView() {
   const callees = me && me.callees.length
     ? html`<div class="ag-simple">${me.callees.slice(0, 8).map((c) => raw(html`<div class="ag-simple-row">
         ${raw(avatarOf(labelOf(c.to), 'sm'))}
-        <div><div class="ag-simple-main">${labelOf(c.to)}</div><div class="ag-simple-sub">${formatNumber(c.to)}</div></div>
+        <div><div class="ag-simple-main">${labelOf(c.to)}</div><div class="ag-simple-sub">${formatNumber(c.to)}${lineByNumber(c.to) ? ' · ligne partagée : la personne visée est dans « Derniers faits »' : ''}</div></div>
         <div class="ag-simple-metric">${fmtInt(c.count)}</div>
       </div>`))}</div>`
     : empty('Aucun appel émis ce mois-ci', 'Les appels lancés depuis cette page apparaîtront ici, avec leur destinataire.');
@@ -542,10 +562,10 @@ function activityView() {
   const rows = mine.map((e) => {
     let what = '';
     let ico = 'phone';
-    if (e.type === 'dial') { what = 'Appel émis vers ' + labelOf(e.to); ico = 'out'; }
+    if (e.type === 'dial') { what = 'Appel émis vers ' + targetLabel(e); ico = 'out'; }
     else if (e.type === 'answer') { what = 'Décroché ici · ' + labelOf(e.peer); ico = 'in'; }
     else if (e.type === 'claim') { what = 'Déclaré pris · ' + labelOf(e.peer); ico = 'check'; }
-    else if (e.type === 'transfer') { what = 'Transféré vers ' + labelOf(e.to); ico = 'peers'; }
+    else if (e.type === 'transfer') { what = 'Transféré vers ' + targetLabel(e); ico = 'peers'; }
     else if (e.type === 'hangup') { what = 'Raccroché'; ico = 'close'; }
     const extra = e.ring ? ' · sonnerie ' + clock(e.ring) : '';
     return html`<div class="ag-simple-row">${raw(icon(ico))}
@@ -561,6 +581,19 @@ function activityView() {
     + card({ title: 'Vers qui j’appelle', sub: 'Depuis l’application, ce mois-ci', body: raw(callees) })
     + card({ title: 'Derniers faits', body: raw(rows.length ? html`<div class="ag-simple">${rows.map((r) => raw(r))}</div>` : empty('Rien pour l’instant', 'Vos actions sur les appels seront listées ici.')) })
     + warn;
+}
+
+/**
+ * Destinataire d'un appel emis ou d'un transfert : la personne visee quand on
+ * la connait (choisie dans le composeur), puis par quoi on est passe.
+ * @param {any} e evenement dial / transfer
+ * @returns {string}
+ */
+function targetLabel(e) {
+  const via = labelOf(e.to);
+  const name = String(e.toName || '').trim();
+  if (name && name !== via) return name + ' (' + via + ')';
+  return via;
 }
 
 /** @param {string} ym @returns {string} */
@@ -672,11 +705,17 @@ function paintDialer() {
   const managers = filtered.filter((c) => c.manager);
   const others = filtered.filter((c) => !c.manager);
 
-  const row = (c) => html`<button class="dl-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}">
+  const row = (c) => {
+    const viaLine = lineByNumber(c.number);
+    const sub = viaLine
+      ? 'via la ligne ' + viaLine.label + ' (' + (formatNumber(c.number) || c.number) + ') · sonne pour tout le site'
+      : (formatNumber(c.number) || c.number) + ' · ' + c.numberKind + (c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : '');
+    return html`<button class="dl-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}">
     ${raw(avatarOf(c.name, 'sm'))}
-    <span><span class="dl-row-name">${c.name}${c.manager ? raw(tag('Manager', 'ok')) : ''}</span><span class="dl-row-sub">${formatNumber(c.number) || c.number} · ${c.numberKind}${c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : ''}</span></span>
+    <span><span class="dl-row-name">${c.name}${c.manager ? raw(tag('Manager', 'ok')) : ''}</span><span class="dl-row-sub">${sub}</span></span>
     <span class="dl-row-go">${transfer ? 'Transférer' : 'Appeler'}</span>
   </button>`;
+  };
 
   mount(host, html`<div class="dl-card" role="dialog" aria-labelledby="dl-title">
     <div class="dl-head">
@@ -799,8 +838,16 @@ function wire() {
     if (act === 'reject') { run(ref, function () { return cti.reject(ref); }, 'Appel rejeté.'); return; }
     if (act === 'hangup') { run(ref, function () { return cti.hangup(ref); }); return; }
     if (act === 'transfer') { openDialer('transfer', ref); return; }
-    if (act === 'transfer-to') { run(ref, function () { return cti.transfer(ref, number, { supervised: false }); }, 'Appel transféré à ' + labelOf(number) + '.'); return; }
-    if (act === 'dial') { run('dial', function () { return cti.dial(number); }, 'Appel vers ' + labelOf(number) + ' lancé.'); return; }
+    if (act === 'transfer-to') {
+      const who = el.getAttribute('data-name') || labelOf(number);
+      run(ref, function () { return cti.transfer(ref, number, { supervised: false, toName: who }); }, 'Appel transféré à ' + who + '.');
+      return;
+    }
+    if (act === 'dial') {
+      const who = el.getAttribute('data-name') || labelOf(number);
+      run('dial', function () { return cti.dial(number, { toName: who }); }, 'Appel vers ' + who + ' lancé.');
+      return;
+    }
     if (act === 'claim') {
       try { cti.claim(ref); toast({ title: 'Appel attribué à vous. Merci !', tone: 'ok' }); }
       catch (err) { toast({ title: 'Impossible', sub: messageOf(err), tone: 'error' }); }
@@ -838,8 +885,8 @@ function wire() {
     const mode = _dialer.mode;
     const ref = _dialer.callref;
     closeDialer();
-    if (mode === 'transfer') run(ref, function () { return cti.transfer(ref, number, { supervised: false }); }, 'Appel transféré à ' + name + '.');
-    else run('dial', function () { return cti.dial(number); }, 'Appel vers ' + name + ' lancé.');
+    if (mode === 'transfer') run(ref, function () { return cti.transfer(ref, number, { supervised: false, toName: name }); }, 'Appel transféré à ' + name + '.');
+    else run('dial', function () { return cti.dial(number, { toName: name }); }, 'Appel vers ' + name + ' lancé.');
   });
 
   document.addEventListener('keydown', function (ev) {
