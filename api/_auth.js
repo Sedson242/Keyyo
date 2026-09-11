@@ -371,6 +371,16 @@ export function readSession(req, auth, now) {
 export async function effectiveSession(req, auth) {
   const session = readSession(req, auth);
   if (!session) return null;
+
+  // Les listes d'amorce (AUTH_ADMIN_EMAILS, AUTH_DIRECTION_EMAILS) sont
+  // relues ici aussi : poser la variable puis redeployer doit suffire, sans
+  // demander a la personne de se deconnecter pour que son cookie l'apprenne.
+  if (session.src !== 'entra') {
+    const email = session.email.toLowerCase();
+    if ((auth.adminEmails || []).indexOf(email) >= 0) { session.role = 'admin'; session.src = 'env'; }
+    else if ((auth.directionEmails || []).indexOf(email) >= 0 && session.role === 'agent') { session.role = 'direction'; session.src = 'env'; }
+  }
+
   let configRole = '';
   try {
     const config = await loadAccess();
