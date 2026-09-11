@@ -108,6 +108,17 @@ function personMail(person) {
   return mail || 'aucun email rattaché';
 }
 
+/**
+ * Sous-titre d'une ligne partagee : la taille de l'equipe qui la porte.
+ * @param {number} team
+ * @returns {string}
+ */
+function sharedLabel(team) {
+  return team > 0
+    ? 'ligne partagée par ' + fmtInt(team) + ' ' + pluralize(team, 'personne', 'personnes')
+    : 'ligne partagée par une équipe';
+}
+
 // -----------------------------------------------------------------------------
 //  Donnees de la vue
 // -----------------------------------------------------------------------------
@@ -173,13 +184,20 @@ function buildPeople() {
     const line = lines[i] || {};
     const entry = activity.get(digitsOf(line.csi)) || emptyEntry(line.csi);
     const person = line.person || null;
+    // Une ligne PARTAGEE par une equipe n'a personne a nommer, et aucun
+    // reglage n'y changera rien : elle s'affiche sous son nom de ligne, avec
+    // la taille de l'equipe, jamais comme « non associee ».
+    const shared = !person && !!line.shared;
+    const team = Array.isArray(line.team) ? line.team.length : 0;
     out.push({
       line,
       person,
+      shared,
+      team,
       csi: String(line.csi || ''),
       number: line.formattedCsi ? String(line.formattedCsi) : formatCsi(line.csi),
-      name: personName(person),
-      mail: personMail(person),
+      name: shared ? String(line.label || line.name || formatCsi(line.csi)) : personName(person),
+      mail: shared ? sharedLabel(team) : personMail(person),
       label: person && person.displayName ? String(person.displayName) : String(line.label || formatCsi(line.csi)),
       total: entry.total,
       in: entry.in,
@@ -245,22 +263,39 @@ function matchNotice(people) {
   let withPerson = 0;
   let withMail = 0;
   let weak = 0;
+  let shared = 0;
+  let team = 0;
   for (let i = 0; i < people.length; i++) {
+    if (people[i].shared) { shared++; team += people[i].team; continue; }
     if (!people[i].person) continue;
     withPerson++;
     if (people[i].person.email) withMail++;
     if (confidenceOf(people[i].person) < WEAK_CONFIDENCE) weak++;
   }
 
-  const clean = total > 0 && withPerson === total && weak === 0;
-  const missing = total - withPerson;
+  // Une ligne partagee n'est pas un manque : personne ne peut lui etre
+  // rattache, et la repartition par personne vit dans la vue Attribution.
+  const missing = total - withPerson - shared;
+  const clean = total > 0 && missing === 0 && weak === 0;
 
-  const counts = html`<strong>${fmtInt(withPerson)}</strong> ${pluralize(withPerson, 'ligne', 'lignes')}
-    ${pluralize(withPerson, 'associée', 'associées')} à une personne sur ${fmtInt(total)},
-    dont ${fmtInt(withMail)} avec une adresse e-mail rattachée.`;
+  const counts = withPerson || !shared
+    ? html`<strong>${fmtInt(withPerson)}</strong> ${pluralize(withPerson, 'ligne', 'lignes')}
+      ${pluralize(withPerson, 'associée', 'associées')} à une personne sur ${fmtInt(total)},
+      dont ${fmtInt(withMail)} avec une adresse e-mail rattachée.`
+    : html`<strong>${fmtInt(shared)}</strong> ${pluralize(shared, 'ligne', 'lignes')} sur ${fmtInt(total)}
+      ${pluralize(shared, 'est partagée', 'sont partagées')} par une équipe (${fmtInt(team)} ${pluralize(team, 'personne', 'personnes')} au total).`;
+
+  const sharedNote = shared && withPerson
+    ? html` ${fmtInt(shared)} ${pluralize(shared, 'ligne est partagée', 'lignes sont partagées')} par une équipe.`
+    : '';
+  const attribution = shared
+    ? html` Les relevés Keyyo n'indiquent pas quel poste a pris un appel : la répartition par personne est dans la vue <button class="link" type="button" data-goto="agents">Attribution</button>.`
+    : '';
 
   const detail = clean
-    ? html` Le prénom affiché est déduit de l'adresse e-mail de la ligne (annuaire Keyyo ou compte mail).`
+    ? (withPerson
+      ? html` Le prénom affiché est déduit de l'adresse e-mail de la ligne (annuaire Keyyo ou compte mail).`
+      : '')
     : html` ${missing > 0
       ? fmtInt(missing) + ' ' + pluralize(missing, 'ligne reste', 'lignes restent') + ' sans personne identifiée.'
       : ''}${weak > 0
@@ -275,8 +310,8 @@ function matchNotice(people) {
 
   return notice({
     tone: clean ? 'ok' : 'warn',
-    title: clean ? 'Rapprochement complet.' : 'Rapprochement partiel.',
-    body: html`${raw(counts)}${raw(detail)}${raw(link)}`,
+    title: clean ? (withPerson ? 'Rapprochement complet.' : 'Lignes partagées.') : 'Rapprochement partiel.',
+    body: html`${raw(counts)}${raw(sharedNote)}${raw(detail)}${raw(attribution)}${raw(link)}`,
   });
 }
 
@@ -289,17 +324,25 @@ function matchNotice(people) {
  */
 function kpiRow(people, totals) {
   let withPerson = 0;
-  for (let i = 0; i < people.length; i++) if (people[i].person) withPerson++;
+  let shared = 0;
+  for (let i = 0; i < people.length; i++) {
+    if (people[i].person) withPerson++;
+    else if (people[i].shared) shared++;
+  }
 
   const cards = [
     kpi({
-      label: 'Lignes rapprochées',
-      value: fmtInt(withPerson) + ' / ' + fmtInt(people.length),
-      foot: 'Lignes VoIP du parc Keyyo',
+      label: shared && !withPerson ? 'Lignes partagées' : 'Lignes rapprochées',
+      value: fmtInt(shared && !withPerson ? shared : withPerson) + ' / ' + fmtInt(people.length),
+      foot: shared
+        ? fmtInt(shared) + ' ' + pluralize(shared, 'ligne partagée', 'lignes partagées') + ' par une équipe'
+        : 'Lignes VoIP du parc Keyyo',
       why: "Chaque ligne est rapprochée d'une personne en croisant l'annuaire Keyyo, "
         + 'les comptes e-mail et le nom de la ligne. Le prénom vient de l\'adresse e-mail '
-        + 'quand elle est connue ; sinon la ligne reste affichée sous son numéro.',
-      tone: withPerson === people.length ? 'ok' : 'missed',
+        + 'quand elle est connue ; sinon la ligne reste affichée sous son numéro. '
+        + 'Une ligne partagée par une équipe n\'a personne à nommer : sa répartition par personne '
+        + 'vient de la vue Attribution.',
+      tone: withPerson + shared === people.length ? 'ok' : 'missed',
     }),
     kpi({
       label: 'Appels sur la période',
@@ -344,7 +387,7 @@ function personCard(p) {
 
   return html`<article class="person">
     <div class="person-head">
-      ${raw(avatar(p.label, { size: 'lg', tone: person ? undefined : 'missed' }))}
+      ${raw(avatar(p.label, { size: 'lg', tone: person || p.shared ? undefined : 'missed' }))}
       <div class="grow">
         <div class="person-name truncate">${p.name}</div>
         <div class="person-mail">${p.mail}</div>
@@ -367,9 +410,9 @@ function personCard(p) {
     </div>
 
     <div class="person-source">
-      ${raw(tag(sourceLabel(person), sourceTone(person)))}
-      <span class="truncate" title="${evidence}">${evidence || 'aucun indice de rapprochement'}</span>
-      <span class="nowrap">confiance ${person ? fmtPct(conf * 100, 0) : '—'}</span>
+      ${raw(p.shared ? tag('ligne partagée', 'in') : tag(sourceLabel(person), sourceTone(person)))}
+      <span class="truncate" title="${p.shared ? p.mail : evidence}">${p.shared ? p.mail + ' (annuaire Keyyo)' : (evidence || 'aucun indice de rapprochement')}</span>
+      <span class="nowrap">${p.shared ? 'répartition : vue Attribution' : 'confiance ' + (person ? fmtPct(conf * 100, 0) : '—')}</span>
     </div>
 
     <button class="btn btn--sm btn--ghost" type="button" data-line-csi="${p.csi}"
@@ -406,7 +449,7 @@ function comparisonTable(people) {
 
     return [
       html`<div class="cell-id">
-        ${raw(avatar(p.label, { tone: person ? undefined : 'missed' }))}
+        ${raw(avatar(p.label, { tone: person || p.shared ? undefined : 'missed' }))}
         <div class="cell-id-body">
           <div class="cell-id-name">${p.name}</div>
           <div class="cell-id-sub">${sub}</div>
@@ -414,7 +457,7 @@ function comparisonTable(people) {
       </div>`,
       person && person.email
         ? html`${person.email}`
-        : html`<span class="faint">aucun email rattaché</span>`,
+        : html`<span class="faint">${p.shared ? p.mail : 'aucun email rattaché'}</span>`,
       html`${p.number}`,
       p.line.name ? html`${p.line.name}` : html`<span class="faint">—</span>`,
       p.line.shortNumber ? html`${p.line.shortNumber}` : html`<span class="faint">—</span>`,
@@ -425,7 +468,7 @@ function comparisonTable(people) {
       </div>`,
       html`${fmtHms(p.seconds)}`,
       html`<div class="row">
-        ${raw(tag(sourceLabel(person), sourceTone(person)))}
+        ${raw(p.shared ? tag('ligne partagée', 'in') : tag(sourceLabel(person), sourceTone(person)))}
         <span class="faint nowrap">${person ? fmtPct(confidenceOf(person) * 100, 0) : '—'}</span>
       </div>`,
     ];
