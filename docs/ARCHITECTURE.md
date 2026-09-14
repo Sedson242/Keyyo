@@ -565,7 +565,9 @@ export function heatmap(opts): string
    // { matrix:number[7][24], max?, rowLabels? }
 export function sparkline(opts): string
    // { values:number[], width?, height?, color? }
-export function attachChartTips(root): void        // active les info-bulles
+export function attachChartTips(root): void        // active les info-bulles, et garde le texte des
+                                                   // graphiques vers 10 px quelle que soit leur échelle
+                                                   // (pose --chart-k, suivi par ResizeObserver)
 ```
 Toutes renvoient une **chaîne HTML**. Les couleurs viennent des variables CSS
 (`var(--in)`, `var(--out)`…), jamais de valeurs en dur.

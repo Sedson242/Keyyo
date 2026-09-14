@@ -12,6 +12,9 @@
   overflow-x: clip;
 }
 .adm > * { min-width: 0; }
+/* Meme rythme que les vues de supervision : 20 px entre deux cartes (elles se
+   touchaient, 0 px mesure). */
+#admin-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap-5); align-content: start; }
 .adm-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .adm-top .brand { padding: 0; }
 .adm-top .account { margin-left: auto; }

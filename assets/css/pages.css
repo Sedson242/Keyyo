@@ -17,39 +17,40 @@
    Vue Monitoring
    ============================================================================= */
 
+/* Les deux colonnes se terminent a la meme hauteur : la derniere carte de
+   chaque colonne absorbe la difference. Mesure avant correctif : 454 px a
+   gauche contre 749 px a droite, soit un trou de 295 px sous le taux de
+   reponse. */
 .dash {
   display: grid;
   grid-template-columns: minmax(0, 1.62fr) minmax(300px, 0.9fr);
   gap: var(--gap-5);
-  align-items: start;
+  align-items: stretch;
 }
 
-.dash-left { display: grid; gap: var(--gap-5); min-width: 0; }
-.dash-right { display: grid; gap: var(--gap-5); min-width: 0; }
+.dash-left,
+.dash-right { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--gap-5); min-width: 0; }
 
-/* Grande carte du taux de reponse : graphique a gauche, classement a droite. */
-.rate-card { display: grid; gap: var(--gap-5); }
+/* Grande carte du taux de reponse : le graphique sur toute la largeur, le
+   classement dessous. Cote a cote, le graphique n'avait que 376 px et son
+   texte tombait a 6 px. */
+.rate-card { display: grid; gap: 0; align-content: start; }
 
 .rate-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.72fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--gap-5);
-  align-items: stretch;
 }
 
 .rate-figure { display: grid; gap: var(--gap-4); min-width: 0; align-content: start; }
 
 /* Le classement imbrique dans la carte, comme « Top Performance ». */
-.rate-rank { display: grid; gap: var(--gap-3); align-content: start; }
+.rate-rank { display: grid; gap: var(--gap-3); align-content: start; padding-top: var(--gap-4); border-top: 1px solid var(--line); }
 .rate-rank-title { font: var(--t-h3); color: var(--ink); }
 .rate-rank-hint { font: var(--t-sm); margin: 0; }
 
 /* Le tableau collaborateurs occupe toute la largeur, sous les deux colonnes. */
 .dash-wide { grid-column: 1 / -1; min-width: 0; }
-
-@media (max-width: 1280px) {
-  .rate-body { grid-template-columns: minmax(0, 1fr); }
-}
 
 @media (max-width: 1080px) {
   .dash { grid-template-columns: minmax(0, 1fr); }
@@ -61,18 +62,20 @@
 
 /* `min(…, 100%)` partout : une grille auto-fit ne doit jamais imposer une
    colonne plus large que son conteneur, sinon c'est la page qui defile. */
+/* Les cartes d'une meme rangee ont la meme hauteur (`stretch`). Mesure avant
+   correctif : 201 / 244 / 268 px sur les Manques, 712 / 343 px sur les Lignes. */
 .grid-2 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--gap-5);
-  align-items: start;
+  align-items: stretch;
 }
 
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: var(--gap-5);
-  align-items: start;
+  align-items: stretch;
 }
 
 /* Deux tiers / un tiers, pour « graphique + liste ». */
@@ -80,7 +83,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
   gap: var(--gap-5);
-  align-items: start;
+  align-items: stretch;
 }
 @media (max-width: 1080px) {
   .grid-split { grid-template-columns: minmax(0, 1fr); }
@@ -122,7 +125,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--gap-5);
-  align-items: start;
+  align-items: stretch;
 }
 
 .callback-list { display: grid; gap: 2px; max-height: 460px; overflow-y: auto; }
@@ -154,10 +157,16 @@
    Vue Collaborateurs : cartes par personne
    ============================================================================= */
 
+/* `auto-fit` et non `auto-fill` : avec trois lignes, auto-fill reservait une
+   quatrieme colonne vide et les cartes ne couvraient que les trois quarts de
+   la largeur, decalees par rapport aux indicateurs au-dessus. Meme
+   espacement que `.kpi-grid`, pour que les colonnes tombent l'une sous
+   l'autre. */
 .people {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(276px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(276px, 100%), 1fr));
   gap: var(--gap-4);
+  align-items: stretch;
 }
 
 /* `min-width: 0` sur la carte ET ses enfants : un element de grille garde
@@ -165,8 +174,8 @@
    colonne (verifie : +153 px a 1280 px, compteurs et jauge rognes sous la
    carte voisine). */
 .person {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--gap-4);
   min-width: 0;
   padding: 18px;
@@ -176,7 +185,9 @@
   border: 1px solid var(--line);
 }
 .person > * { min-width: 0; }
-.person .btn { white-space: normal; text-align: left; max-width: 100%; }
+/* Le bouton d'action occupe toute la largeur et reste en bas de la carte :
+   d'une carte a l'autre, les boutons tombent sur la meme ligne. */
+.person .btn { margin-top: auto; width: 100%; justify-content: center; white-space: normal; }
 .person-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .person-name { font: var(--t-h3); color: var(--ink); }
 .person-mail {

@@ -124,7 +124,9 @@
   z-index: 1;
   display: grid;
   gap: 10px;
-  padding: 18px 16px 12px;
+  /* 22 px en haut, comme la colonne de gauche et le detail : les titres des
+     trois colonnes partent de la meme ligne (18 px mesure avant). */
+  padding: 22px 16px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }

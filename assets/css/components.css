@@ -644,6 +644,8 @@
   margin-bottom: var(--gap-4);
 }
 .toolbar-spacer { flex: 1 1 auto; }
+/* Dernier element d'une carte ou d'un bloc : pas de marge qui creuse le bas. */
+.toolbar:last-child, .notice:last-child { margin-bottom: 0; }
 
 /* Interrupteur (son, notifications). */
 .switch {
@@ -898,7 +900,10 @@
    16. Graphiques (SVG fait main — voir app/charts/)
    ============================================================================= */
 
-.chart { width: 100%; display: block; overflow: visible; }
+/* Un graphique garde ses proportions en s'adaptant a la largeur : sans borne,
+   un histogramme de trois barres montait a 610 px de haut dans une carte
+   large. Au-dela de 300 px il est centre dans sa carte. */
+.chart { width: 100%; display: block; overflow: visible; max-height: 300px; }
 .chart-wrap { position: relative; width: 100%; }
 .chart-legend {
   display: flex;
@@ -915,6 +920,12 @@
 /* Textes internes au SVG : pilotes en CSS pour rester coherents. */
 .chart .axis-label { font: var(--t-micro); fill: var(--ink-muted); }
 .chart .axis-value { font: var(--t-micro); fill: var(--ink-faint); }
+/* Le texte d'un SVG grossit et retrecit avec le dessin : mesure avant
+   correctif, de 6 px (Monitoring) a 31 px (Lignes). `--chart-k`, pose par
+   charts.js selon l'echelle reelle du dessin, compense pour rester vers 10 px. */
+.chart-wrap .chart text,
+.chart-wrap .chart .axis-label,
+.chart-wrap .chart .axis-value { font-size: calc(10px * var(--chart-k, 1)); }
 .chart .bar-track { fill: var(--surface-sunken); }
 .chart .grid-line { stroke: var(--line); stroke-width: 1; }
 

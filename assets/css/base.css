@@ -245,7 +245,46 @@ input, select, textarea { font: inherit; color: inherit; }
 
 /* Pages : une seule visible a la fois. */
 .page { display: none; }
-.page.is-active { display: block; }
+
+/* -----------------------------------------------------------------------------
+   Rythme vertical unique des vues
+
+   Mesure avant correctif : l'espace entre deux blocs dependait des marges
+   propres a chaque composant — 0 px entre les indicateurs et les cartes
+   Collaborateurs, 16 px ailleurs, 36 px sous la barre d'outils du Diagnostic,
+   48 px avant un titre sur la vue Lignes. Desormais le flux d'une vue est une
+   colonne a espacement constant, et les composants n'ont plus de marge
+   exterieure :
+     - 20 px entre deux blocs ;
+     - 32 px au-dessus d'un titre de section, 12 px au-dessous (le titre est
+       plus proche de ce qu'il annonce que de ce qui precede).
+   Les enveloppes <div> sans classe (titre + carte regroupes par le code) ne
+   jouent aucun role visuel : `display: contents` les fait disparaitre du
+   flux, pour que leurs enfants suivent la meme regle.
+   -------------------------------------------------------------------------- */
+.page.is-active,
+.page > .stack,
+.page > .diag,
+.dash-wide { display: flex; flex-direction: column; gap: var(--gap-5); }
+
+.page > div:not([class]),
+.page > .stack > div:not([class]),
+.page > .diag > div:not([class]) { display: contents; }
+
+:is(.page, .page > .stack, .page > .diag, .dash-wide) > *,
+:is(.page, .page > .stack, .page > .diag) > div:not([class]) > * { margin-top: 0; margin-bottom: 0; }
+
+:is(.page, .page > .stack, .page > .diag, .dash-wide) > .section-head,
+:is(.page, .page > .stack, .page > .diag) > div:not([class]) > .section-head {
+  margin-top: var(--gap-3);
+  margin-bottom: calc(var(--gap-3) - var(--gap-5));
+}
+
+/* Un titre en tete de vue colle au bandeau, sans marge superflue. */
+.page > .section-head:first-child,
+.page > div:not([class]):first-child > .section-head:first-child,
+.page > :is(.stack, .diag):first-child > .section-head:first-child,
+.page > :is(.stack, .diag):first-child > div:not([class]):first-child > .section-head:first-child { margin-top: 0; }
 
 /* -----------------------------------------------------------------------------
    Ecran de connexion

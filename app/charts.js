@@ -9,7 +9,8 @@
 
    Contrat (docs/ARCHITECTURE.md, section 5) :
      barChart, areaChart, donutChart, heatmap, sparkline -> renvoient une CHAINE
-     attachChartTips(root) -> seule fonction qui touche au DOM
+     attachChartTips(root) -> seule fonction qui touche au DOM (info-bulles et
+                              taille du texte selon l'echelle reelle du dessin)
 
    Deux regles non negociables dans ce fichier :
    1. Aucune couleur en dur : tout passe par une variable de tokens.css. Les
@@ -243,7 +244,9 @@ export function barChart(opts) {
   // Pas et largeur nominale : la largeur de barre fait le tiers du pas, ce qui
   // donne les barres etroites et tres espacees de la maquette.
   var stepWanted = clamp(600 / n, 9, 58);
-  var plotW = Math.max(n * stepWanted, 220);
+  // Largeur nominale d'au moins 520 : avec deux ou trois barres, 220 donnait
+  // un dessin presque carre, qui montait tres haut dans une carte large.
+  var plotW = Math.max(n * stepWanted, 520);
   var step = plotW / n;
   var W = padL + plotW + padR;
   var barW = clamp(step / 3, 2, 30);
@@ -855,6 +858,14 @@ export function attachChartTips(root) {
     if (wired) wired.delete(root);
   }
 
+  // Taille du texte : suivie a chaque rendu dans la racine, pas seulement a
+  // l'appel (une page peut re-rendre ses graphiques sans rappeler la fonction).
+  fitCharts(root);
+  var mutations = typeof MutationObserver === 'function'
+    ? new MutationObserver(function () { fitCharts(root); })
+    : null;
+  if (mutations) mutations.observe(root, { childList: true, subtree: true });
+
   var active = null;
 
   function tipOf(el) {
@@ -976,10 +987,58 @@ export function attachChartTips(root) {
 
   function detach() {
     hide();
+    if (mutations) mutations.disconnect();
     for (var k = 0; k < TIP_EVENTS.length; k++) {
       root.removeEventListener(TIP_EVENTS[k], handlers[TIP_EVENTS[k]]);
     }
   }
 
   if (wired) wired.set(root, { detach: detach });
+}
+
+/* -----------------------------------------------------------------------------
+   Taille du texte des graphiques
+
+   Un SVG a viewBox s'etire avec sa carte, son texte aussi : mesure avant
+   correctif, l'axe du Monitoring tombait a 6 px (echelle 0,43) et celui de la
+   vue Lignes montait a 31 px (echelle 2,34). On lit l'echelle reelle du dessin
+   et on pose `--chart-k` = 1 / echelle, que components.css applique a la
+   taille du texte : il reste vers 10 px a l'ecran. Borne a [0,7 ; 2] pour que
+   des libelles grossis ne sortent pas franchement du trace.
+   -------------------------------------------------------------------------- */
+
+var fitObserver = null;
+
+/** Echelle d'affichage d'un SVG en `meet` : la plus contrainte des deux. */
+function chartScale(svg) {
+  var vb = svg.viewBox && svg.viewBox.baseVal;
+  if (!vb || !(vb.width > 0) || !(vb.height > 0)) return 0;
+  var rect = svg.getBoundingClientRect();
+  if (!(rect.width > 0) || !(rect.height > 0)) return 0;
+  return Math.min(rect.width / vb.width, rect.height / vb.height);
+}
+
+function fitOne(svg) {
+  if (!svg.isConnected) {
+    if (fitObserver) fitObserver.unobserve(svg);
+    return;
+  }
+  var s = chartScale(svg);
+  if (!(s > 0)) return;
+  var k = r2(clamp(1 / s, 0.7, 2));
+  if (svg.style.getPropertyValue('--chart-k') !== String(k)) svg.style.setProperty('--chart-k', String(k));
+}
+
+function fitCharts(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return;
+  if (!fitObserver && typeof ResizeObserver === 'function') {
+    fitObserver = new ResizeObserver(function (entries) {
+      for (var e = 0; e < entries.length; e++) fitOne(entries[e].target);
+    });
+  }
+  var list = root.querySelectorAll('svg.chart');
+  for (var i = 0; i < list.length; i++) {
+    fitOne(list[i]);
+    if (fitObserver) fitObserver.observe(list[i]);
+  }
 }
