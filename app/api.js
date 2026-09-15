@@ -395,7 +395,7 @@ export async function getHealth(opts) {
  * @returns {Promise<any>} `{ csi, handoffs: [{ peer, toEmail, toName, byEmail, byName, at }] }`
  */
 export async function getHandoff(csi) {
-  return request('/handoff', { params: { csi: String(csi || '') }, noCache: true, timeoutMs: 8000 });
+  return request('/events', { params: { handoff: String(csi || '') }, noCache: true, timeoutMs: 8000 });
 }
 
 /**

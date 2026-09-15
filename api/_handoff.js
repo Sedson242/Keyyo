@@ -11,8 +11,9 @@
 //
 //  Un petit fichier par ligne (`keyyo/handoff/<csi>.json`), les derniers
 //  passages seulement, ecrit par POST /api/events (qui recoit le transfert)
-//  et lu par GET /api/handoff. Deux transferts simultanes sur la meme ligne
-//  sont rares ; le pire cas est un passage oublie, pas une donnee fausse.
+//  et lu par GET /api/events?handoff=<csi>. Deux transferts simultanes sur la
+//  meme ligne sont rares ; le pire cas est un passage oublie, pas une donnee
+//  fausse.
 // =============================================================================
 
 import { archiveEnabled, readBlobJson, writeBlobJson } from './_archive.js';

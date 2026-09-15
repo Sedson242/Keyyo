@@ -443,6 +443,7 @@ export function summarize(events, opts) {
       .sort((x, y) => y.count - x.count || x.to.localeCompare(y.to));
     delete a._calleeMap;
     delete a._taken;
+    delete a._pending;
     out.push(a);
   }
   out.sort((x, y) => (y.taken + y.dialed) - (x.taken + x.dialed) || x.email.localeCompare(y.email));

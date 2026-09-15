@@ -480,7 +480,7 @@ troncature ; tant qu'il ne l'est pas, il figure dans `store.missingMonths`.
 | `GET /api/sync` | direction ou cron | `{ ok, at, store, period, warnings }` — cible du cron |
 | `GET /api/oauth` | direction, si `KEYYO_OAUTH_SETUP=1` | page HTML : refresh token Keyyo avec `cti_admin` |
 | `GET /api/me` | connecté | `{ user, line, lines[], colleagues[], managers[], journal, warnings }` — ma ligne, mes collègues avec un numéro et une `photo` chacun |
-| `GET /api/handoff` | connecté | `?csi=<ligne>` → `{ csi, handoffs: [{ peer, toEmail, toName, byEmail, byName, at }] }` — passages d'appel en cours sur la ligne (écrits par `POST /api/events` à chaque `transfer` visant une adresse, fichier `keyyo/handoff/<csi>.json`) |
+| `GET /api/events?handoff=<ligne>` | connecté | `{ csi, handoffs: [{ peer, toEmail, toName, byEmail, byName, at }] }` — passages d'appel en cours sur la ligne (écrits par `POST /api/events` à chaque `transfer` visant une adresse, fichier `keyyo/handoff/<csi>.json`). Pas de route dédiée : **Vercel Hobby limite un déploiement à 12 fonctions `api/*.js`, toutes prises** — une 13ᵉ fait échouer le déploiement |
 | `GET /api/photo` | connecté | `?u=<adresse>&s=<48…360>` → `image/jpeg` (cache privé 1 j), `404` sans photo, `503` si Graph refuse. Photo Entra lue par `api/_graph.js` avec le jeton d'**application** (permission `User.ReadBasic.All`, consentement admin), gardée dans le Blob `keyyo/photos/<empreinte>/<taille>.jpg`, l'absence mémorisée 7 j |
 | `POST /api/cti-token` | connecté | `{ csi, number, token, expiresAt, line, lines[] }` — jeton CSI (1 h) ; `409` + `lines` si aucune ligne rattachée |
 | `POST /api/events` | connecté | `{ accepted, rejected, byMonth }` — écrit dans la partition de la session |

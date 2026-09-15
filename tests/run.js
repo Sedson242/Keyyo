@@ -990,7 +990,6 @@ if (need(roles, 'shared/roles.js', 'shared/roles.js')) suite('shared/roles.js', 
     eq(canAccess('/api/directory', 'agent'), true);
     eq(canAccess('/api/directory', 'direction'), true);
     eq(canAccess('/api/photo', 'agent'), true, 'les photos sont visibles de toute personne connectee');
-    eq(canAccess('/api/handoff', 'agent'), true, 'les passages d’appel de sa ligne aussi');
   });
 
   test('la query est ignoree pour retrouver la route', () => {

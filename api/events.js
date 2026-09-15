@@ -7,6 +7,8 @@
 //    GET  /api/events?month=AAAA-MM        relecture :
 //                                          - un agent ne lit que sa partition ;
 //                                          - la direction lit tout le mois.
+//    GET  /api/events?handoff=<csi>        passages d'appel en cours sur la
+//                                          ligne (api/_handoff.js).
 //
 //  Le back est le SEUL ecrivain, et il impose l'adresse de la session sur
 //  chaque evenement : une page ne peut pas ecrire au nom d'un autre, meme en
@@ -26,7 +28,7 @@ import { normalizeEvent, monthOf, summarize } from '../shared/journal.js';
 import { journalEnabled, appendEvents, readUserMonth, readMonth } from './_journal.js';
 import { loadAccess } from './_access.js';
 import { lineOwners } from '../shared/access.js';
-import { recordHandoff } from './_handoff.js';
+import { recordHandoff, pendingHandoffs } from './_handoff.js';
 
 /** Plafond d'evenements par envoi : au-dela, c'est une erreur de la page. */
 const MAX_BATCH = 200;
@@ -107,6 +109,18 @@ export default async function handler(req, res) {
 
     // -- Lecture ----------------------------------------------------------------
     const params = readParams(req);
+
+    // Passages d'appel en cours sur une ligne : `?handoff=<csi>`. Servi par
+    // cette route et non par une route dediee — Vercel (offre Hobby) limite
+    // un deploiement a douze fonctions, et elles sont toutes prises.
+    if (params.handoff != null) {
+      const csi = String(params.handoff || '').replace(/\D/g, '');
+      if (!csi) return sendJson(res, 400, { error: 'Paramètre handoff invalide', hint: 'Attendu : ?handoff=<numéro de la ligne>' }, 'no-store');
+      const handoffs = await pendingHandoffs(csi);
+      res.setHeader('Vary', 'Cookie');
+      return sendJson(res, 200, { csi, handoffs, updatedAt: new Date().toISOString() }, 'no-store');
+    }
+
     let month = String(params.month || '').trim();
     if (!month) month = monthOf(Math.floor(Date.now() / 1000));
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
