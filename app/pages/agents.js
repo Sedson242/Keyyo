@@ -23,7 +23,7 @@ import { journal, loadJournal, labelOf, getLines, lineByCsi } from '../store.js'
 import { photoUrl } from '../api.js';
 import { fmtInt, fmtPct, fmtDurationShort, fmtRelative, fmtMonth, pluralize } from '../format.js';
 import { formatNumber } from '../../shared/phone.js';
-import { monthOf } from '../../shared/journal.js';
+import { monthOf, HANDOFF_WINDOW_SEC } from '../../shared/journal.js';
 
 /** Mois proposes : celui-ci et les deux precedents. */
 const MONTHS_BACK = 2;
@@ -256,9 +256,17 @@ function personCard(a, events) {
   for (const e of list) if (e.type !== 'observed' && e.callref) named.add(String(e.csi) + ':' + String(e.callref));
 
   const mine = list.filter((e) => e.type !== 'observed' && String(e.email).toLowerCase() === email);
-  const auto = own.size
+  // Appels passes par un collegue en la visant : reconnus par le correspondant
+  // qui resonne dans la fenetre du passage (meme regle que summarize).
+  const handoffs = list.filter((e) => e.type === 'transfer' && String(e.toEmail || '').toLowerCase() === email && e.peer);
+  const passed = list.filter((e) => {
+    if (e.type !== 'observed' || e.dir !== 'in' || e.answered !== 1 || named.has(String(e.csi) + ':' + String(e.callref))) return false;
+    const p = digitsOf(e.peer).slice(-9);
+    return !!p && handoffs.some((h) => String(h.csi) === String(e.csi) && digitsOf(h.peer).slice(-9) === p && Number(e.ts) >= Number(h.ts) - 5 && Number(e.ts) <= Number(h.ts) + HANDOFF_WINDOW_SEC);
+  });
+  const auto = (own.size
     ? list.filter((e) => e.type === 'observed' && own.has(String(e.csi)) && !named.has(String(e.csi) + ':' + String(e.callref)))
-    : [];
+    : []).concat(passed.filter((e) => !own.size || !own.has(String(e.csi))));
 
   // Rappels : un manque (sur sa ligne, sinon n'importe laquelle) suivi d'un
   // appel emis par elle vers le meme numero.
@@ -272,7 +280,7 @@ function personCard(a, events) {
 
   const ring = a.ringCount ? Math.round(a.ringTotal / a.ringCount) : 0;
   const cells = [
-    ['Pris', fmtInt(a.taken), [a.answered ? fmtInt(a.answered) + ' depuis l’application' : '', a.claimed ? fmtInt(a.claimed) + ' déclarés' : '', a.auto ? fmtInt(a.auto) + ' d’office' : ''].filter(Boolean).join(' · ') || 'aucun'],
+    ['Pris', fmtInt(a.taken), [a.answered ? fmtInt(a.answered) + ' depuis l’application' : '', a.claimed ? fmtInt(a.claimed) + ' déclarés' : '', a.handoff ? fmtInt(a.handoff) + ' passés par un collègue' : '', (a.auto - (a.handoff || 0)) > 0 ? fmtInt(a.auto - a.handoff) + ' d’office sur sa ligne' : ''].filter(Boolean).join(' · ') || 'aucun'],
     ['Émis', fmtInt(a.dialed), a.callees.length ? fmtInt(a.callees.length) + ' ' + pluralize(a.callees.length, 'destinataire', 'destinataires') : 'aucun'],
     ['Manqués', own.size ? fmtInt(a.missed) : '—', own.size ? 'sur sa ligne personnelle' : 'ligne partagée : non attribuable'],
     ['Rappelés', fmtInt(calledBack), missed.length ? 'sur ' + fmtInt(missed.length) + ' ' + pluralize(missed.length, 'manqué', 'manqués') + (own.size ? ' de sa ligne' : ' du mois') : 'aucun manqué'],
@@ -294,7 +302,9 @@ function personCard(a, events) {
     else if (e.type === 'transfer') { what = 'Transféré vers ' + (e.toName ? e.toName + ' (' + labelOf(e.to) + ')' : labelOf(e.to)); tone = 'ok'; }
     else if (e.type === 'hangup') { what = 'Raccroché'; }
     else if (e.type === 'observed') {
-      if (e.dir === 'out') { what = 'Appel émis depuis son téléphone vers ' + labelOf(e.peer); tone = 'out'; }
+      const viaHandoff = passed.indexOf(e) >= 0;
+      if (viaHandoff) { what = 'Décroché, passé par un collègue · ' + labelOf(e.peer); tone = 'in'; }
+      else if (e.dir === 'out') { what = 'Appel émis depuis son téléphone vers ' + labelOf(e.peer); tone = 'out'; }
       else if (e.answered === 1) { what = 'Décroché sur sa ligne · ' + labelOf(e.peer); tone = 'in'; }
       else { what = 'Manqué sur sa ligne · ' + labelOf(e.peer); tone = 'missed'; }
     }

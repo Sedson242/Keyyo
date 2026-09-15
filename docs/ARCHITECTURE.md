@@ -199,7 +199,8 @@ export function resolveEffectiveRole({ sessionRole, roleSource, configRole }): r
 export function upsertMember(config, patch): AccessConfig      // nouvelle configuration
 export function removeMember(config, email): AccessConfig
 export function adminCount(config): number
-export function lineOwners(config): { [csi]: email }   // lignes PERSONNELLES : une seule titulaire
+export function lineOwners(config): { [csi]: email }   // titulaire unique : ligne personnelle, ou ligne partagée
+                                                       // dont le routage ne présente l'appel qu'à une personne
 ```
 `AccessConfig` : `{ version, updatedAt, updatedBy, members: [{ email, name, role,
 lines[], popup, number }], routing: { [csi]: { agents[] } } }`.
@@ -247,8 +248,16 @@ export function summarize(events, opts?): { agents[], calls, period }
 ```
 Un `observed` peut porter `extra` (≤ 300 caractères) : les champs NON
 documentés de la notification Keyyo (`app/cti.js`), conservés pour découvrir
-un éventuel identifiant de terminal. `agents[]` porte aussi `auto`, `missed`
-(manqués sur sa ligne personnelle) et `lines` (ses lignes personnelles).
+un éventuel identifiant de terminal. `agents[]` porte aussi `auto`, `handoff`,
+`missed` (manqués sur sa ligne personnelle) et `lines` (ses lignes personnelles).
+
+**Passage d'appel** (`transfer` avec `toEmail` et `peer`) : sur une ligne
+partagée, transférer le correspondant vers la ligne en visant une personne.
+Keyyo fait sonner tout le site ; l'application, elle, n'ouvre la fenêtre que
+chez la personne visée (« passé par Emma ») et lui attribue d'office l'appel
+décroché dans les `HANDOFF_WINDOW_SEC` (180 s) qui suivent. Une déclaration
+(`claim`, y compris le clic « Accepter » quand Keyyo refuse le décroché à
+distance) ne compte comme prise que si l'observation confirme le décroché.
 
 **Le seul endroit où un appel est relié à une personne.** Aucune API Keyyo ne
 dit qui a pris un appel ; la seule source est notre application, parce que
@@ -471,6 +480,7 @@ troncature ; tant qu'il ne l'est pas, il figure dans `store.missingMonths`.
 | `GET /api/sync` | direction ou cron | `{ ok, at, store, period, warnings }` — cible du cron |
 | `GET /api/oauth` | direction, si `KEYYO_OAUTH_SETUP=1` | page HTML : refresh token Keyyo avec `cti_admin` |
 | `GET /api/me` | connecté | `{ user, line, lines[], colleagues[], managers[], journal, warnings }` — ma ligne, mes collègues avec un numéro et une `photo` chacun |
+| `GET /api/handoff` | connecté | `?csi=<ligne>` → `{ csi, handoffs: [{ peer, toEmail, toName, byEmail, byName, at }] }` — passages d'appel en cours sur la ligne (écrits par `POST /api/events` à chaque `transfer` visant une adresse, fichier `keyyo/handoff/<csi>.json`) |
 | `GET /api/photo` | connecté | `?u=<adresse>&s=<48…360>` → `image/jpeg` (cache privé 1 j), `404` sans photo, `503` si Graph refuse. Photo Entra lue par `api/_graph.js` avec le jeton d'**application** (permission `User.ReadBasic.All`, consentement admin), gardée dans le Blob `keyyo/photos/<empreinte>/<taille>.jpg`, l'absence mémorisée 7 j |
 | `POST /api/cti-token` | connecté | `{ csi, number, token, expiresAt, line, lines[] }` — jeton CSI (1 h) ; `409` + `lines` si aucune ligne rattachée |
 | `POST /api/events` | connecté | `{ accepted, rejected, byMonth }` — écrit dans la partition de la session |

@@ -3,9 +3,9 @@
 //
 //  Ce que la page agent a besoin de savoir avant de decrocher son premier
 //  appel : qui elle est, sur quelle ligne l'annuaire la rattache, et a qui elle
-//  peut transferer — ses collegues et les managers — avec un NUMERO pour
-//  chacun. Rien de plus : la page agent ne voit ni les appels des autres, ni
-//  leurs adresses (les collegues sont rendus par nom et numero seulement).
+//  peut transferer — ses collegues et les managers — avec un NUMERO, une
+//  ADRESSE (pour viser une personne lors d'un passage d'appel, et pour sa
+//  photo) et rien d'autre : la page agent ne voit pas les appels des autres.
 //
 //  Les « managers » sont les personnes de la direction telles que
 //  l'application les connait : AUTH_DIRECTION_EMAILS croise avec l'annuaire.
@@ -112,6 +112,10 @@ export default async function handler(req, res) {
         const own = m.numbers.find((n) => !lines.some((l) => l.e164 === n)) || '';
         seen.set(key, {
           name: m.name,
+          // L'adresse sert au passage d'appel (viser une personne sur une
+          // ligne partagee) et a sa photo : adresse professionnelle du meme
+          // locataire, deja visible de tous dans Outlook.
+          email: m.email || '',
           number: admin || direct || own || (line ? line.e164 : ''),
           numberKind: admin ? 'direct' : (direct ? 'poste' : (own ? 'direct' : 'ligne du site')),
           lines: line ? [line.label] : [],
@@ -128,6 +132,7 @@ export default async function handler(req, res) {
         const labels = m.lines.map((c) => { const l = lines.find((x) => x.csi === c); return l ? l.label : ''; }).filter(Boolean);
         seen.set(m.email, {
           name: m.name || m.email.split('@')[0],
+          email: m.email,
           number: m.number,
           numberKind: 'direct',
           lines: labels,

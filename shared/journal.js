@@ -34,6 +34,19 @@
 /** Types acceptes. Tout autre type est rejete a l'ecriture. */
 export const EVENT_TYPES = Object.freeze(['dial', 'answer', 'claim', 'transfer', 'hangup', 'observed']);
 
+/**
+ * Fenetre d'un passage d'appel : un correspondant transfere a un collegue de
+ * la meme ligne doit y resonner dans ce delai pour que l'appel lui soit
+ * attribue. Secondes.
+ */
+export const HANDOFF_WINDOW_SEC = 180;
+
+/** @param {unknown} n @returns {string} neuf derniers chiffres : suffit a reconnaitre un numero, quel que soit son format. */
+function tail9(n) {
+  const d = String(n == null ? '' : n).replace(/\D/g, '');
+  return d.slice(-9);
+}
+
 /** Version du format. Un fichier d'une autre version est ignore a la lecture. */
 export const JOURNAL_VERSION = 1;
 
@@ -124,7 +137,16 @@ export function normalizeEvent(raw, ctx) {
     // « ligne TNR », alors que l'agent voulait joindre quelqu'un de precis.
     const toName = str(raw.toName);
     if (toName) e.toName = toName.slice(0, 80);
-    if (type === 'transfer') e.supervised = !!raw.supervised;
+    if (type === 'transfer') {
+      e.supervised = !!raw.supervised;
+      // PASSAGE D'APPEL entre collegues d'une meme ligne partagee : la
+      // personne visee (adresse) et le correspondant transfere. Quand ce
+      // correspondant resonne sur la ligne juste apres, l'appel est pour elle.
+      const toEmail = str(raw.toEmail).toLowerCase();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) e.toEmail = toEmail;
+      const peer = str(raw.peer).replace(/[^\d+]/g, '') || (raw.peer === 'anonymous' ? 'anonymous' : '');
+      if (peer) e.peer = peer;
+    }
   }
   if (type === 'observed' || type === 'answer' || type === 'claim') {
     e.peer = str(raw.peer).replace(/[^\d+]/g, '') || (raw.peer === 'anonymous' ? 'anonymous' : '');
@@ -192,7 +214,8 @@ export function monthOf(unix) {
  * @property {number} dialed       appels composes (application, ou telephone sur sa ligne personnelle)
  * @property {number} answered     appels decroches depuis l'application
  * @property {number} claimed      appels declares pris au telephone
- * @property {number} auto         appels attribues d'office : decroches sur SA ligne personnelle
+ * @property {number} auto         appels attribues d'office : decroches sur SA ligne personnelle, ou passes par un collegue
+ * @property {number} handoff      dont appels passes par un collegue (transfert vise) et decroches
  * @property {number} taken        answered + claimed + auto, sans double compte par appel
  * @property {number} missed       appels entrants manques sur sa ligne personnelle
  * @property {number} transferred
@@ -214,6 +237,15 @@ export function monthOf(unix) {
  * sien, sans clic. `opts.lineOwners` (csi -> adresse) porte cette regle ; un
  * appel observe sur une telle ligne est attribue d'office a sa titulaire
  * (`auto`), sauf si une action nominative le relie deja a quelqu'un.
+ *
+ * PASSAGE D'APPEL. Sur une ligne partagee, un transfert vise une personne
+ * (`transfer` avec `toEmail` et `peer`) : le correspondant resonne sur la
+ * ligne, et l'appel decroche dans les HANDOFF_WINDOW_SEC qui suivent est
+ * attribue d'office a cette personne (`auto`, detaille dans `handoff`).
+ *
+ * UN CLIC N'EST PAS UN DECROCHE. Une declaration (`claim`) ou un decroche
+ * depuis l'application (`answer`) sur un appel que l'observation dit manque
+ * ne compte pas comme pris : l'intention etait la, l'appel non.
  *
  * @param {any[]} events
  * @param {{email?: string, lineOwners?: Record<string, string>}} [opts]
@@ -251,15 +283,18 @@ export function summarize(events, opts) {
     let a = agents.get(email);
     if (!a) {
       a = {
-        email, dialed: 0, answered: 0, claimed: 0, auto: 0, taken: 0, missed: 0, transferred: 0, hungUp: 0,
+        email, dialed: 0, answered: 0, claimed: 0, auto: 0, handoff: 0, taken: 0, missed: 0, transferred: 0, hungUp: 0,
         ringTotal: 0, ringCount: 0, talkTotal: 0, callees: [], lines: [], lastTs: 0,
-        _calleeMap: new Map(), _taken: new Set(),
+        _calleeMap: new Map(), _taken: new Set(), _pending: [],
       };
       for (const c of Object.keys(owners)) if (owners[c] === email) a.lines.push(c);
       agents.set(email, a);
     }
     return a;
   };
+
+  /** @type {Array<{csi: string, peer: string, ts: number, toEmail: string}>} passages d'appel */
+  const handoffs = [];
 
   for (const e of list) {
     if (!isValidEvent(e)) continue;
@@ -275,6 +310,9 @@ export function summarize(events, opts) {
     }
 
     if (e.callref) attributed.add(callKey);
+    if (e.type === 'transfer' && e.toEmail && e.peer) {
+      handoffs.push({ csi: str(e.csi), peer: tail9(e.peer), ts: t, toEmail: String(e.toEmail).toLowerCase() });
+    }
     if (only && String(e.email).toLowerCase() !== only) continue;
 
     const a = agentOf(String(e.email).toLowerCase());
@@ -287,12 +325,11 @@ export function summarize(events, opts) {
     } else if (e.type === 'answer' || e.type === 'claim') {
       if (e.type === 'answer') a.answered++; else a.claimed++;
       // Un appel decroche depuis l'application PUIS declare pris ne compte
-      // qu'une fois dans « pris ».
+      // qu'une fois dans « pris ». Et l'appel doit avoir ete decroche : la
+      // decision se prend plus bas, quand toutes les observations sont lues.
       if (!a._taken.has(callKey)) {
         a._taken.add(callKey);
-        a.taken++;
-        if (Number(e.ring) > 0) { a.ringTotal += nat(e.ring); a.ringCount++; }
-        a.talkTotal += nat(e.duration);
+        a._pending.push({ key: callKey, ring: nat(e.ring), duration: nat(e.duration) });
       }
     } else if (e.type === 'transfer') {
       a.transferred++;
@@ -301,12 +338,52 @@ export function summarize(events, opts) {
     }
   }
 
-  // Attribution d'office sur les lignes personnelles : un appel observe sur
-  // une ligne a titulaire unique, sans action nominative, est le sien.
+  // Les prises revendiquees ne comptent que si l'appel a bien ete decroche
+  // (observation absente : on croit la personne).
+  for (const a of agents.values()) {
+    for (const p of a._pending) {
+      const obs = observed.get(p.key);
+      if (obs && obs.answered !== 1) { a._taken.delete(p.key); continue; }
+      a.taken++;
+      if (p.ring > 0) { a.ringTotal += p.ring; a.ringCount++; }
+      a.talkTotal += p.duration;
+    }
+    delete a._pending;
+  }
+
+  // Passages d'appel : le correspondant transfere a un collegue resonne sur
+  // la ligne ; s'il est decroche dans la fenetre, c'est le collegue qui l'a.
   const autoKeys = new Set();
   for (const [key, obs] of observed) {
+    if (attributed.has(key) || obs.dir !== DIR_IN || obs.answered !== 1) continue;
+    const t = Number(obs.ts) || 0;
+    const peer = tail9(obs.peer);
+    if (!peer) continue;
+    let best = null;
+    for (const h of handoffs) {
+      if (h.csi !== str(obs.csi) || h.peer !== peer) continue;
+      if (t < h.ts - 5 || t > h.ts + HANDOFF_WINDOW_SEC) continue;
+      if (!best || h.ts > best.ts) best = h;
+    }
+    if (!best) continue;
+    if (only && best.toEmail !== only) { autoKeys.add(key); continue; }
+    const a = agentOf(best.toEmail);
+    if (t > a.lastTs) a.lastTs = t;
+    if (a._taken.has(key)) continue;
+    a._taken.add(key);
+    autoKeys.add(key);
+    a.auto++;
+    a.handoff++;
+    a.taken++;
+    if (nat(obs.ring) > 0) { a.ringTotal += nat(obs.ring); a.ringCount++; }
+    a.talkTotal += nat(obs.duration);
+  }
+
+  // Attribution d'office sur les lignes personnelles : un appel observe sur
+  // une ligne a titulaire unique, sans action nominative, est le sien.
+  for (const [key, obs] of observed) {
     const owner = owners[str(obs.csi)];
-    if (!owner || attributed.has(key)) continue;
+    if (!owner || attributed.has(key) || autoKeys.has(key)) continue;
     if (only && owner !== only) { autoKeys.add(key); continue; }
     const a = agentOf(owner);
     const t = Number(obs.ts) || 0;

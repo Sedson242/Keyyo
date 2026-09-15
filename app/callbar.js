@@ -239,7 +239,7 @@ function paintPicker() {
   const others = list.filter((c) => !c.manager);
   const transfer = _mode.kind === 'transfer';
 
-  const row = (c) => html`<button class="pick-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}">
+  const row = (c) => html`<button class="pick-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}" data-pick-email="${c.email || ''}">
     <span class="avatar avatar--sm" aria-hidden="true">${initials(c.name)}${c.photo && /^\/api\/photo\?/.test(String(c.photo)) ? raw(html`<img class="avatar-img" src="${c.photo}" alt="" loading="lazy" decoding="async">`) : ''}</span>
     <span class="pick-body">
       <span class="pick-name">${c.name}${c.manager ? raw(html` <span class="tag tag--ok"><span class="tag-dot" aria-hidden="true"></span>Manager</span>`) : ''}</span>
@@ -331,10 +331,12 @@ function wire() {
   on(_host, 'click', '[data-pick-number]', function (ev, el) {
     const number = el.getAttribute('data-pick-number') || '';
     const name = el.getAttribute('data-pick-name') || number;
+    const toEmail = el.getAttribute('data-pick-email') || '';
     if (!number) return;
     if (_mode.kind === 'transfer') {
       const ref = _mode.callref;
-      run(ref, function () { return cti.transfer(ref, number, { supervised: false }); }, 'Appel transféré à ' + name + '.');
+      run(ref, function () { return cti.transfer(ref, number, { supervised: false, toName: name, toEmail }); },
+        toEmail ? 'Appel passé à ' + name + ' : la fenêtre s’ouvre chez ' + name + ', l’appel lui sera attribué.' : 'Appel transféré à ' + name + '.');
       _pickerOpen = false;
       _mode = { kind: 'dial', callref: '' };
       paintPicker();

@@ -159,13 +159,13 @@ const CONTRACT = [
   ['../shared/identity.js', ['capitalizeName', 'normalizeName', 'nameTokens', 'isEmail', 'nameFromEmail', 'firstNameFromEmail', 'nameSimilarity', 'NAME_MATCH_THRESHOLD', 'resolveLineIdentities', 'lineTeams', 'lineLabel', 'initialsOf', 'parseLineEmails', 'isPhoneCsi', 'formatCsi']],
   ['../shared/roles.js', ['ROLE_ADMIN', 'ROLE_DIRECTION', 'ROLE_AGENT', 'ROLES', 'POLICY', 'parseEmailList', 'roleFromClaims', 'roleAndSourceFromClaims', 'allowedRoles', 'canAccess', 'isDirection', 'isAdmin', 'roleLabel']],
   ['../shared/access.js', ['ACCESS_VERSION', 'emptyAccess', 'normalizeAccess', 'memberOf', 'configRoleOf', 'linesOf', 'routingFor', 'shouldPopup', 'resolveEffectiveRole', 'upsertMember', 'removeMember', 'adminCount', 'lineOwners']],
-  ['../shared/journal.js', ['EVENT_TYPES', 'JOURNAL_VERSION', 'DIR_IN', 'DIR_OUT', 'eventId', 'normalizeEvent', 'isValidEvent', 'mergeEvents', 'monthOf', 'summarize']],
+  ['../shared/journal.js', ['EVENT_TYPES', 'JOURNAL_VERSION', 'DIR_IN', 'DIR_OUT', 'HANDOFF_WINDOW_SEC', 'eventId', 'normalizeEvent', 'isValidEvent', 'mergeEvents', 'monthOf', 'summarize']],
 
   ['../app/format.js', ['fmtInt', 'fmtPct', 'fmtDuration', 'fmtDurationShort', 'fmtHms', 'fmtDate', 'fmtDateLong', 'fmtDayShort', 'fmtTime', 'fmtMonth', 'fmtClock', 'fmtRelative', 'WEEKDAYS', 'pluralize']],
   ['../app/dom.js', ['esc', 'h', 'html', 'raw', 'mount', 'mountKeyed', 'watchBrokenImages', 'qs', 'qsa', 'on', 'icon']],
   ['../app/charts.js', ['barChart', 'areaChart', 'donutChart', 'heatmap', 'sparkline', 'attachChartTips']],
   ['../app/ui.js', ['card', 'sectionHead', 'kpi', 'statbar', 'table', 'tag', 'avatar', 'avatarStack', 'meter', 'split', 'rankRow', 'empty', 'notice', 'skeleton', 'toolbar']],
-  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'getAccess', 'postAccess', 'postSync', 'photoUrl', 'ApiError']],
+  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'getAccess', 'postAccess', 'postSync', 'photoUrl', 'getHandoff', 'ApiError']],
   ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'isAdmin', 'roleLabel', 'loginUrl', 'forget']],
   // admin.js ne s'amorce que si #admin-root est present : importable ici.
   ['../app/admin.js', ['boot']],
@@ -990,6 +990,7 @@ if (need(roles, 'shared/roles.js', 'shared/roles.js')) suite('shared/roles.js', 
     eq(canAccess('/api/directory', 'agent'), true);
     eq(canAccess('/api/directory', 'direction'), true);
     eq(canAccess('/api/photo', 'agent'), true, 'les photos sont visibles de toute personne connectee');
+    eq(canAccess('/api/handoff', 'agent'), true, 'les passages d’appel de sa ligne aussi');
   });
 
   test('la query est ignoree pour retrouver la route', () => {
@@ -1106,6 +1107,10 @@ if (need(accessMod, 'shared/access.js', 'shared/access.js')) suite('shared/acces
     eq(c.members[1].number, '*4012', 'numero court compose depuis un poste');
     eq(c.members[2].number, '', 'lettres : pas de numero');
     eqDeep(lineOwners(c), { '33253359565': 'b@bios.fr', '33180843912': 'c@bios.fr' }, 'TNR a deux titulaires : pas personnelle');
+    const routed = normalizeAccess({ version: ACCESS_VERSION, members: [
+      { email: 'a@bios.fr', lines: ['33175433361'] }, { email: 'b@bios.fr', lines: ['33175433361', '33253359565'] },
+    ], routing: { '33175433361': { agents: ['a@bios.fr'] }, '33253359565': { agents: ['a@bios.fr', 'b@bios.fr'] } } });
+    eqDeep(lineOwners(routed), { '33175433361': 'a@bios.fr', '33253359565': 'b@bios.fr' }, 'ligne partagee presentee a une seule personne : c’est elle ; ligne personnelle : sa titulaire');
     eq(upsertMember(c, { email: 'a@bios.fr', number: '+33 6 00 00 00 00' }).members[0].number, '+33600000000');
     eq(upsertMember(c, { email: 'a@bios.fr', popup: false }).members[0].number, '0612345678', 'conserve si non fourni');
   });
@@ -1272,6 +1277,46 @@ if (need(journalMod, 'shared/journal.js', 'shared/journal.js')) suite('shared/jo
     const elle = summarize(ev, { email: aicha, lineOwners: { '33100000001': aicha } });
     eq(elle.agents.length, 1);
     eq(elle.agents[0].auto, 1);
+  });
+
+  test('passage d’appel : le transfert vise une adresse, et l’appel decroche ensuite est a elle', () => {
+    const { HANDOFF_WINDOW_SEC } = journalMod;
+    const emma = 'emma@bios.fr';
+    const aicha = 'aicha@bios.fr';
+    const t = normalizeEvent({ type: 'transfer', csi: '33175433361', callref: 'c1', to: '33175433361', toName: 'Aicha', toEmail: 'Aicha@Bios.fr', peer: '+33611111111', ts: NOW - 300 }, { email: emma, now: NOW });
+    eq(t.toEmail, aicha, 'adresse normalisee');
+    eq(t.peer, '+33611111111');
+    eq(normalizeEvent({ type: 'transfer', to: '4012', toEmail: 'pas une adresse' }, ctx).toEmail, undefined);
+    const ev = [
+      // c1 : Emma decroche puis passe M. X (0611111111) a Aicha.
+      normalizeEvent({ type: 'observed', csi: '33175433361', callref: 'c1', dir: 'in', peer: '+33611111111', ring: 5, duration: 30, answered: true, ts: NOW - 340 }, { email: emma, now: NOW }),
+      normalizeEvent({ type: 'claim', csi: '33175433361', callref: 'c1', dir: 'in', peer: '+33611111111', ring: 5, duration: 30, answered: true, ts: NOW - 335 }, { email: emma, now: NOW }),
+      t,
+      // c2 : M. X resonne sur la ligne 20 s plus tard et est decroche : c'est Aicha.
+      normalizeEvent({ type: 'observed', csi: '33175433361', callref: 'c2', dir: 'in', peer: '0611111111', ring: 4, duration: 200, answered: true, ts: NOW - 280 }, { email: emma, now: NOW }),
+      // c3 : un autre appel du meme numero bien apres la fenetre : personne.
+      normalizeEvent({ type: 'observed', csi: '33175433361', callref: 'c3', dir: 'in', peer: '0611111111', ring: 4, duration: 10, answered: true, ts: NOW - 300 + HANDOFF_WINDOW_SEC + 60 }, { email: emma, now: NOW }),
+      // c4 : Emma clique « Accepter » (declaration) mais l'appel finit manque : pas pris.
+      normalizeEvent({ type: 'observed', csi: '33175433361', callref: 'c4', dir: 'in', peer: '+33622222222', ring: 25, duration: 0, answered: false, ts: NOW - 100 }, { email: emma, now: NOW }),
+      normalizeEvent({ type: 'claim', csi: '33175433361', callref: 'c4', dir: 'in', peer: '+33622222222', ring: 3, ts: NOW - 120 }, { email: emma, now: NOW }),
+    ];
+    const s = summarize(ev);
+    const a = s.agents.find((x) => x.email === aicha);
+    ok(a, 'Aicha apparait sans rien avoir clique');
+    eq(a.handoff, 1);
+    eq(a.auto, 1);
+    eq(a.taken, 1);
+    eq(a.talkTotal, 200);
+    const e = s.agents.find((x) => x.email === emma);
+    eq(e.taken, 1, 'c1 pris, c4 non : l’appel a ete manque malgre le clic');
+    eq(e.claimed, 2);
+    eq(e.transferred, 1);
+    eq(s.calls.attributed, 2, 'c1 (Emma) et c2 (Aicha, d’office)');
+    eq(s.calls.auto, 1);
+    eq(s.calls.unattributed, 1, 'c3 hors fenetre');
+    const elle = summarize(ev, { email: aicha });
+    eq(elle.agents.length, 1);
+    eq(elle.agents[0].handoff, 1);
   });
 
   test('un champ extra d’observation est conserve, borne a 300 caracteres', () => {

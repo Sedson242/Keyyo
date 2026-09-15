@@ -389,6 +389,16 @@ export async function getHealth(opts) {
 }
 
 /**
+ * Passages d'appel en cours sur une ligne : qui vient de transferer quel
+ * correspondant a qui. Jamais mis en cache : c'est de l'instant.
+ * @param {string} csi
+ * @returns {Promise<any>} `{ csi, handoffs: [{ peer, toEmail, toName, byEmail, byName, at }] }`
+ */
+export async function getHandoff(csi) {
+  return request('/handoff', { params: { csi: String(csi || '') }, noCache: true, timeoutMs: 8000 });
+}
+
+/**
  * Adresse de la photo de profil Entra d'une personne, servie par /api/photo
  * (jamais par Graph directement : la page n'a aucun jeton Microsoft, et la
  * CSP n'autorise que nos images). Une personne sans photo repond 404 : les

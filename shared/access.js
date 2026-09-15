@@ -263,9 +263,15 @@ export function removeMember(config, who) {
 }
 
 /**
- * Lignes PERSONNELLES : celles qu'une seule personne de la configuration
- * declare comme siennes. Sur une telle ligne, tout appel decroche est le sien
- * — c'est ce qui permet l'attribution automatique (shared/journal.js).
+ * Lignes a TITULAIRE UNIQUE : tout appel qui y est decroche est le sien, ce
+ * qui permet l'attribution automatique (shared/journal.js). Deux cas :
+ *   - une ligne qu'une seule personne declare comme sienne (ligne personnelle) ;
+ *   - une ligne partagee dont le routage ne PRESENTE l'appel entrant qu'a une
+ *     seule personne : c'est elle qui est chargee de repondre, l'appel lui est
+ *     attribue. Sans nouvelle ligne Keyyo, c'est le seul moyen d'attribuer
+ *     d'office sur une ligne de site — a la condition que ce soit bien elle
+ *     qui decroche, ce que le routage exprime.
+ * La ligne personnelle prime sur le routage.
  * @param {AccessConfig} config
  * @returns {Record<string, string>} csi -> adresse de la titulaire
  */
@@ -277,6 +283,11 @@ export function lineOwners(config) {
   }
   /** @type {Record<string, string>} */
   const out = {};
+  const routing = config && config.routing ? config.routing : {};
+  for (const l of Object.keys(routing)) {
+    const agents = routing[l] && Array.isArray(routing[l].agents) ? routing[l].agents : [];
+    if (agents.length === 1) out[l] = agents[0];
+  }
   for (const l of Object.keys(byLine)) if (byLine[l].length === 1) out[l] = byLine[l][0];
   return out;
 }

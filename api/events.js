@@ -26,6 +26,7 @@ import { normalizeEvent, monthOf, summarize } from '../shared/journal.js';
 import { journalEnabled, appendEvents, readUserMonth, readMonth } from './_journal.js';
 import { loadAccess } from './_access.js';
 import { lineOwners } from '../shared/access.js';
+import { recordHandoff } from './_handoff.js';
 
 /** Plafond d'evenements par envoi : au-dela, c'est une erreur de la page. */
 const MAX_BATCH = 200;
@@ -80,6 +81,20 @@ export default async function handler(req, res) {
       for (const ym of Object.keys(byMonth)) {
         const r = await appendEvents(session.email, ym, byMonth[ym]);
         written[ym] = r.added;
+      }
+
+      // Passages d'appel : un transfert qui vise un collegue est signale sur
+      // la ligne, pour que le navigateur du collegue reconnaisse l'appel.
+      for (const ym of Object.keys(byMonth)) {
+        for (const e of byMonth[ym]) {
+          if (e.type !== 'transfer' || !e.toEmail || !e.peer || !e.csi) continue;
+          try {
+            await recordHandoff(e.csi, {
+              peer: e.peer, toEmail: e.toEmail, toName: String(e.toName || ''),
+              byEmail: session.email, byName: String(session.name || ''), at: e.ts,
+            });
+          } catch (err) { /* le journal a le fait ; le passage en direct est un plus */ }
+        }
       }
 
       return sendJson(res, 200, {

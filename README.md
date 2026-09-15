@@ -78,8 +78,16 @@ Sur ce parc, chaque site a **une ligne Keyyo partagée** par toute son équipe :
 Keyyo ne dit jamais quel poste a décroché, et un transfert vers un collègue
 fait sonner tout son site. L'application fait ce que la configuration permet :
 
-- **Ligne partagée** (aujourd'hui) : l'attribution vient des actions faites dans
-  l'application (décrocher, appeler, transférer, « c'est moi qui ai répondu »).
+- **Ligne partagée** (aujourd'hui, sans commander de ligne) :
+  - un clic sur **Accepter** attribue l'appel à la personne (Keyyo refuse le
+    décroché à distance sur Keyyo Phone : elle décroche sur son poste, l'attribution
+    est déjà faite ; un appel finalement manqué n'est pas compté) ;
+  - une ligne dont le **routage** ne présente l'appel entrant qu'à une seule
+    personne (Administration) lui attribue d'office tout appel décroché ;
+  - **passer un appel à un collègue** : le transfert vers la ligne fait sonner
+    tout le site, mais la fenêtre ne s'ouvre que chez la personne visée, avec le
+    nom de qui lui passe l'appel, et l'appel lui est attribué dès qu'il est
+    décroché.
 - **Ligne ou numéro court par personne** (à demander à Keyyo : une ligne interne
   par collaborateur, le numéro du site devenant un *groupe d'appels*) : dans
   l'Administration, cochez cette ligne pour cette seule personne et renseignez

@@ -27,7 +27,7 @@
 import * as session from './session.js';
 import * as cti from './cti.js';
 import * as journal from './journal.js';
-import { getProfile, getDirectory, photoUrl } from './api.js';
+import { getProfile, getDirectory, getHandoff, photoUrl } from './api.js';
 import { qs, on, html, raw, mount, mountKeyed, icon, watchBrokenImages } from './dom.js';
 import { fmtInt, fmtDurationShort, fmtRelative, pluralize, fmtDate, fmtTime } from './format.js';
 import { card, notice, empty, skeleton, tag } from './ui.js';
@@ -81,6 +81,22 @@ let _dialer = /** @type {{open: boolean, mode: 'dial'|'transfer', callref: strin
 /** Action en cours, pour desactiver les boutons concernes. */
 let _busy = '';
 let _frame = 0;
+
+/**
+ * Passages d'appel reconnus : callref -> { toEmail, toName, byName, byEmail }.
+ * Un correspondant transfere par un collegue en visant quelqu'un resonne
+ * pour tout le site ; la fenetre, elle, n'apparait que chez la personne visee.
+ * @type {Map<string, {toEmail: string, toName: string, byName: string, byEmail: string}>}
+ */
+const _handoffs = new Map();
+/** @type {Set<string>} appels deja verifies (avec ou sans passage). */
+const _handoffChecked = new Set();
+
+/** @returns {string} mon adresse, en minuscules. */
+function myEmail() {
+  const u = session.current().user;
+  return u && u.email ? String(u.email).toLowerCase() : '';
+}
 
 // -----------------------------------------------------------------------------
 //  Ecran de connexion (meme coquille que index.html)
@@ -246,7 +262,7 @@ function live(id, text) {
  * @returns {string}
  */
 function callsKey(calls) {
-  return calls.map((c) => [c.callref, c.state, c.dir, c.peer, c.answered ? 1 : 0, c.mine ? 1 : 0, c.claimed ? 1 : 0, c.live ? 1 : 0].join(':')).join('|');
+  return calls.map((c) => [c.callref, c.state, c.dir, c.peer, c.answered ? 1 : 0, c.mine ? 1 : 0, c.claimed ? 1 : 0, c.live ? 1 : 0, _handoffs.has(c.callref) ? 1 : 0].join(':')).join('|');
 }
 
 // -----------------------------------------------------------------------------
@@ -313,9 +329,10 @@ function callItems() {
 /** @param {CallItem} c @returns {{text: string, icon: string, cls: string}} */
 function statusOf(c) {
   const missed = c.state === 'MISSED' || (!c.live && !c.answered && c.dir === 'in');
+  const hand = handoffLabel(c);
   if (c.state === 'SETUP') {
     return c.dir === 'in'
-      ? { text: 'Appel entrant · sonne depuis ' + clock(c.ring), icon: 'in', cls: 'is-live' }
+      ? { text: (hand ? 'Appel ' + hand + ' · ' : 'Appel entrant · ') + 'sonne depuis ' + clock(c.ring), icon: 'in', cls: 'is-live' }
       : { text: 'Appel sortant · sonne ' + clock(c.ring), icon: 'out', cls: 'is-live' };
   }
   if (c.state === 'CONNECT') return { text: 'En ligne · ' + clock(c.duration), icon: 'phone', cls: 'is-live' };
@@ -596,10 +613,10 @@ function colleagueDetail(c) {
     </div>
     <div class="ag-actions">
       <button class="btn btn--accent btn--lg" type="button" data-act="dial" data-number="${c.number}" data-name="${c.name}"${!snap.connected || _busy === 'dial' ? ' disabled' : ''}>${raw(icon('out'))}Appeler</button>
-      ${live ? raw(html`<button class="btn btn--lg" type="button" data-act="transfer-to" data-ref="${live.callref}" data-number="${c.number}" data-name="${c.name}">${raw(icon('peers'))}Lui transférer l’appel en cours</button>`) : ''}
+      ${live ? raw(html`<button class="btn btn--lg" type="button" data-act="transfer-to" data-ref="${live.callref}" data-number="${c.number}" data-name="${c.name}" data-email="${c.email || ''}">${raw(icon('peers'))}Lui passer l’appel en cours</button>`) : ''}
     </div>
     ${lineByNumber(c.number)
-    ? raw(notice({ tone: 'warn', title: 'Numéro partagé.', body: html`${c.name} n’a pas de numéro direct : l’appel passe par la ligne ${lineByNumber(c.number).label}, qui sonne pour toute l’équipe de ce site. Un administrateur peut lui poser un numéro direct depuis la page Administration.` }))
+    ? raw(notice({ tone: 'warn', title: 'Ligne partagée.', body: html`${c.name} n’a pas de numéro direct : l’appel passe par la ligne ${lineByNumber(c.number).label}, dont le téléphone sonne pour toute l’équipe. En lui passant un appel depuis ici, la fenêtre d’appel ne s’ouvre que chez ${c.name}, avec votre nom, et l’appel lui est attribué dès qu’il est décroché.` }))
     : (c.numberKind === 'direct' ? raw(notice({ tone: 'ok', title: 'Numéro direct.', body: html`Un appel ou un transfert vers ${c.name} ne sonne que chez ${c.name}.` })) : '')}`;
 }
 
@@ -687,12 +704,18 @@ function monthLabel(ym) {
 // -----------------------------------------------------------------------------
 
 /**
- * La fenetre d'appel entrant m'est-elle destinee ? Le routage (page
- * Administration) peut la reserver a certaines personnes de la ligne ; les
- * autres voient l'appel dans la liste, sans fenetre. Sans routage : oui.
+ * La fenetre d'appel entrant m'est-elle destinee ?
+ *   1. un PASSAGE D'APPEL (un collegue m'a transfere ce correspondant) : oui
+ *      pour moi seul, non pour les autres ;
+ *   2. sinon le routage (page Administration) peut la reserver a certaines
+ *      personnes de la ligne ; les autres voient l'appel dans la liste, sans
+ *      fenetre. Sans routage : oui.
+ * @param {CallItem} [c]
  * @returns {boolean}
  */
-function popupAllowed() {
+function popupAllowed(c) {
+  const h = c ? _handoffs.get(c.callref) : null;
+  if (h) return h.toEmail === myEmail();
   const line = cti.snapshot().line || (_profile && _profile.line) || null;
   if (!line || !_profile || !Array.isArray(_profile.lines)) return true;
   const known = _profile.lines.find((l) => l.csi === String(line.csi));
@@ -708,8 +731,63 @@ function primaryCall() {
   const live = callItems().filter((c) => c.live);
   if (!live.length) return null;
   const ringingIn = live.find((c) => c.state === 'SETUP' && c.dir === 'in');
-  if (ringingIn && popupAllowed()) return ringingIn;
-  return live.find((c) => !(c.state === 'SETUP' && c.dir === 'in')) || (popupAllowed() ? live[0] : null);
+  if (ringingIn && popupAllowed(ringingIn)) return ringingIn;
+  const other = live.find((c) => !(c.state === 'SETUP' && c.dir === 'in'));
+  if (other) return other;
+  return popupAllowed(live[0]) ? live[0] : null;
+}
+
+/**
+ * Reconnait les passages d'appel : pour chaque entrant qui sonne et n'a pas
+ * encore ete verifie, demande au serveur les transferts en cours sur la
+ * ligne et retient celui qui vise ce correspondant.
+ */
+function trackHandoffs() {
+  const snap = cti.snapshot();
+  const csi = snap.line ? String(snap.line.csi) : '';
+  if (!csi) return;
+  const fresh = snap.calls.filter((c) => c.dir === 'in' && (c.state === 'SETUP' || c.state === 'CONNECT') && !_handoffChecked.has(c.callref));
+  if (!fresh.length) return;
+  for (const c of fresh) _handoffChecked.add(c.callref);
+  getHandoff(csi).then(function (res) {
+    const list = res && Array.isArray(res.handoffs) ? res.handoffs : [];
+    if (!list.length) return;
+    const now = Math.floor(Date.now() / 1000);
+    let found = false;
+    for (const c of fresh) {
+      const peer = String(c.peer || '').replace(/\D/g, '').slice(-9);
+      const hit = list
+        .filter((h) => h && String(h.peer || '').replace(/\D/g, '').slice(-9) === peer && peer && Number(h.at) > now - 240)
+        .sort((a, b) => Number(b.at) - Number(a.at))[0];
+      if (!hit) continue;
+      _handoffs.set(c.callref, { toEmail: String(hit.toEmail || '').toLowerCase(), toName: String(hit.toName || ''), byName: String(hit.byName || ''), byEmail: String(hit.byEmail || '').toLowerCase() });
+      found = true;
+    }
+    if (found) schedule();
+  }).catch(function (err) {
+    console.warn('[agent] passages d’appel illisibles :', err);
+  });
+}
+
+/**
+ * Libelle d'un passage d'appel pour cet appel, ou ''.
+ * @param {CallItem} c
+ * @returns {string}
+ */
+function handoffLabel(c) {
+  const h = _handoffs.get(c.callref);
+  if (!h) return '';
+  const me = myEmail();
+  const who = h.toEmail === me ? 'vous' : (h.toName || colleagueNameByEmail(h.toEmail) || h.toEmail);
+  const by = h.byEmail === me ? 'vous' : (h.byName || colleagueNameByEmail(h.byEmail) || 'un collègue');
+  return 'pour ' + who + ' · passé par ' + by;
+}
+
+/** @param {string} email @returns {string} */
+function colleagueNameByEmail(email) {
+  if (!_profile || !Array.isArray(_profile.colleagues) || !email) return '';
+  const c = _profile.colleagues.find((x) => String(x.email || '').toLowerCase() === String(email).toLowerCase());
+  return c ? String(c.name) : '';
 }
 
 function paintPopup() {
@@ -747,8 +825,11 @@ function paintPopup() {
 
   const ringingIn = c.state === 'SETUP' && c.dir === 'in';
   const busy = _busy === c.callref;
-  let kicker = ringingIn ? 'Appel entrant' : (c.state === 'SETUP' ? 'Appel sortant' : 'En ligne');
-  let sub = ringingIn ? 'vous appelle' : (c.state === 'SETUP' ? 'sonne…' : 'en conversation');
+  const hand = _handoffs.get(c.callref);
+  let kicker = ringingIn ? (hand ? 'Appel passé pour vous' : 'Appel entrant') : (c.state === 'SETUP' ? 'Appel sortant' : 'En ligne');
+  let sub = ringingIn
+    ? (hand ? 'vous est passé par ' + (hand.byName || colleagueNameByEmail(hand.byEmail) || 'un collègue') + ' : décrochez sur Keyyo Phone' : 'vous appelle')
+    : (c.state === 'SETUP' ? 'sonne…' : 'en conversation');
   let timer = live('timer', c.state === 'CONNECT' ? clock(c.duration) : clock(c.ring));
 
   const actions = [];
@@ -815,7 +896,7 @@ function paintDialer() {
     const sub = viaLine
       ? 'via la ligne ' + viaLine.label + ' (' + (formatNumber(c.number) || c.number) + ') · sonne pour tout le site'
       : (formatNumber(c.number) || c.number) + ' · ' + numberKindLabel(c) + (c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : '');
-    return html`<button class="dl-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}">
+    return html`<button class="dl-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}" data-pick-email="${c.email || ''}">
     ${raw(avatarOf(c.name, 'sm', false, c.photo))}
     <span><span class="dl-row-name">${c.name}${c.manager ? raw(tag('Manager', 'ok')) : ''}</span><span class="dl-row-sub">${sub}</span></span>
     <span class="dl-row-go">${transfer ? 'Transférer' : 'Appeler'}</span>
@@ -939,13 +1020,22 @@ function wire() {
       run('auto', function () { return cti.setAutoAnswer(next); }, next ? 'Décroché automatique activé.' : 'Décroché automatique coupé : votre poste sonnera d’abord.');
       return;
     }
-    if (act === 'answer') { run(ref, function () { return cti.answer(ref); }, 'Appel décroché.'); return; }
+    if (act === 'answer') {
+      run(ref, async function () {
+        const how = await cti.answer(ref);
+        toast(how === 'claimed'
+          ? { title: 'L’appel vous est attribué.', sub: 'Décrochez sur Keyyo Phone : votre poste n’accepte pas le décroché à distance.', tone: 'ok' }
+          : { title: 'Appel décroché.', tone: 'ok' });
+      });
+      return;
+    }
     if (act === 'reject') { run(ref, function () { return cti.reject(ref); }, 'Appel rejeté.'); return; }
     if (act === 'hangup') { run(ref, function () { return cti.hangup(ref); }); return; }
     if (act === 'transfer') { openDialer('transfer', ref); return; }
     if (act === 'transfer-to') {
       const who = el.getAttribute('data-name') || labelOf(number);
-      run(ref, function () { return cti.transfer(ref, number, { supervised: false, toName: who }); }, 'Appel transféré à ' + who + '.');
+      const toEmail = el.getAttribute('data-email') || '';
+      run(ref, function () { return cti.transfer(ref, number, { supervised: false, toName: who, toEmail }); }, transferToast(who, number, toEmail));
       return;
     }
     if (act === 'dial') {
@@ -986,11 +1076,12 @@ function wire() {
   on(document, 'click', '[data-pick-number]', function (ev, el) {
     const number = el.getAttribute('data-pick-number') || '';
     const name = el.getAttribute('data-pick-name') || number;
+    const toEmail = el.getAttribute('data-pick-email') || '';
     if (!number) return;
     const mode = _dialer.mode;
     const ref = _dialer.callref;
     closeDialer();
-    if (mode === 'transfer') run(ref, function () { return cti.transfer(ref, number, { supervised: false, toName: name }); }, 'Appel transféré à ' + name + '.');
+    if (mode === 'transfer') run(ref, function () { return cti.transfer(ref, number, { supervised: false, toName: name, toEmail }); }, transferToast(name, number, toEmail));
     else run('dial', function () { return cti.dial(number, { toName: name }); }, 'Appel vers ' + name + ' lancé.');
   });
 
@@ -1000,6 +1091,20 @@ function wire() {
 
   const refresh = qs('#btn-refresh');
   if (refresh) on(refresh, 'click', function () { loadActivity(); });
+}
+
+/**
+ * Message de confirmation d'un transfert : sur une ligne partagee, on dit ce
+ * qui se passe vraiment — tout le site sonne, mais la fenetre va chez la
+ * personne visee et l'appel lui sera attribue.
+ * @param {string} who
+ * @param {string} number
+ * @param {string} toEmail
+ * @returns {string}
+ */
+function transferToast(who, number, toEmail) {
+  if (lineByNumber(number) && toEmail) return 'Appel passé à ' + who + ' : la ligne sonne pour le site, la fenêtre s’ouvre chez ' + who + '.';
+  return 'Appel transféré à ' + who + '.';
 }
 
 function dialerGo() {
@@ -1065,6 +1170,7 @@ async function startApp() {
 
   journal.init();
   cti.subscribe(schedule);
+  cti.subscribe(trackHandoffs);
   cti.start({ csi: _profile.line ? _profile.line.csi : undefined });
 
   loadActivity();

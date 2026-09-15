@@ -655,8 +655,12 @@ export async function answer(callref) {
   try {
     await command(function (cb) { call.answer(cb); });
   } catch (err) {
-    throw new Error('Keyyo refuse le décroché depuis l’application (' + messageOf(err) + '). '
-      + 'Décrochez sur Keyyo Phone, puis cliquez « C’est moi qui ai répondu » pour que l’appel vous soit attribué.');
+    // Keyyo refuse le decroche a distance sur ce poste (verifie : Keyyo Phone
+    // n'execute pas l'ordre). Le clic vaut alors DECLARATION : l'appel est
+    // attribue a la personne, qui decroche sur Keyyo Phone. Un seul geste au
+    // lieu de deux ; si l'appel finit manque, le journal ne le compte pas.
+    claim(callref);
+    return 'claimed';
   }
   const v = _calls.get(String(callref));
   mark(callref, { mine: true });
@@ -670,6 +674,7 @@ export async function answer(callref) {
     answered: true,
   });
   emit();
+  return 'answered';
 }
 
 /**
@@ -709,8 +714,12 @@ export async function hangup(callref) {
  * Pour un entrant, c'est l'appelant qu'on transfere ; pour un sortant, l'appele.
  * @param {string} callref
  * @param {string} number
- * @param {{supervised?: boolean, toName?: string}} [opts] supervise : n'aboutit que si le
- *        destinataire decroche ; `toName` : personne visee, pour le journal.
+ * @param {{supervised?: boolean, toName?: string, toEmail?: string}} [opts]
+ *        supervise : n'aboutit que si le destinataire decroche ; `toName` et
+ *        `toEmail` : personne visee. Sur une ligne partagee, `toEmail` fait
+ *        du transfert un PASSAGE D'APPEL : le correspondant resonne pour tout
+ *        le site, mais la fenetre n'apparait que chez la personne visee, et
+ *        l'appel decroche lui est attribue.
  */
 export async function transfer(callref, number, opts) {
   requireConnected();
@@ -730,8 +739,13 @@ export async function transfer(callref, number, opts) {
     dir: v ? v.dir : '',
     to,
     toName: String(o.toName || ''),
+    toEmail: String(o.toEmail || ''),
+    peer: v ? v.peer : '',
     supervised: !!o.supervised,
   });
+  // Le passage part tout de suite : le collegue doit le connaitre avant que
+  // le correspondant ne resonne.
+  journal.flush().catch(function () { /* le prochain envoi reprendra */ });
   emit();
 }
 

@@ -77,6 +77,7 @@ export const POLICY = Object.freeze({
   '/api/cti-token': EVERYONE,
   '/api/events': EVERYONE,
   '/api/photo': EVERYONE,
+  '/api/handoff': EVERYONE,
 });
 
 /**
