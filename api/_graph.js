@@ -89,7 +89,11 @@ export async function graphTokenRoles(auth) {
   if (parts.length < 2) return [];
   try {
     const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
-    return Array.isArray(payload.roles) ? payload.roles.map(String) : [];
+    const roles = Array.isArray(payload.roles) ? payload.roles.map(String) : [];
+    // Un jeton sans permission ne vaut rien : on ne le garde pas, pour qu'un
+    // consentement donne dans Entra prenne effet a l'appel suivant.
+    if (!roles.length) _token = { value: '', expiresAt: 0 };
+    return roles;
   } catch {
     return [];
   }
@@ -117,6 +121,7 @@ async function graphError(answer) {
  * @returns {Promise<never>}
  */
 async function refused(answer, what) {
+  _token = { value: '', expiresAt: 0 }; // le prochain appel repart d'un jeton neuf
   const e = await graphError(answer);
   const detail = e.message || e.code;
   throw new Error('Graph refuse ' + what + ' (HTTP ' + answer.status + (detail ? ', ' + detail.slice(0, 160) : '') + '). '

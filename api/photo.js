@@ -97,6 +97,7 @@ export default async function handler(req, res) {
   } catch (err) {
     const hint = errorMessage(err);
     if (/refuse|permission/i.test(hint)) _refusal = { until: Date.now() + REFUSAL_TTL_MS, hint };
+    // Le Diagnostic (?deep=1 non requis) reste le juge : il ne passe pas par ce cache.
     return sendJson(res, 503, { error: 'Photo indisponible', hint }, 'no-store');
   }
 
