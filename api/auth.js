@@ -68,8 +68,11 @@ export default async function handler(req, res) {
   let action = String(params.action || '').trim().toLowerCase();
   if (!action) action = (params.code || params.error) ? 'callback' : 'me';
 
+  // `await` obligatoire sur les actions asynchrones : un `return promesse` sans
+  // await sort du `try` avant le rejet, et l'erreur planterait la fonction au
+  // lieu d'etre affichee (vu le 15 sept. 2026 sur un secret client invalide).
   try {
-    if (action === 'me') return me(req, res, auth);
+    if (action === 'me') return await me(req, res, auth);
     if (action === 'logout') return logout(req, res, auth);
 
     if (!auth.configured) {
@@ -82,7 +85,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'login') return login(req, res, auth, params);
-    if (action === 'callback') return callback(req, res, auth, params);
+    if (action === 'callback') return await callback(req, res, auth, params);
 
     return sendJson(res, 400, {
       error: 'Action inconnue',
