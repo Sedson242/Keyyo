@@ -156,6 +156,8 @@ const AVATAR_SIZES = ['sm', 'lg'];                   // 'md' = taille de base
  * @param {object} opts
  * @param {string} [opts.title]   Texte, echappe.
  * @param {string} [opts.sub]     Texte, echappe.
+ * @param {any}    [opts.lead]    HTML DEJA SUR : un avatar ou une icone posee a
+ *                                gauche du titre (sortie de `avatar()`).
  * @param {any}    [opts.action]  HTML DEJA SUR (sortie de html`...` ou raw()) :
  *                                pose a droite de l'en-tete. Une chaine y est
  *                                inseree sans echappement — ne jamais y passer
@@ -178,11 +180,12 @@ export function card(opts) {
     + (has(o.cls) ? ' ' + txt(o.cls) : '');
 
   let head = '';
-  if (has(o.title) || has(o.sub) || has(o.action)) {
+  if (has(o.title) || has(o.sub) || has(o.action) || has(o.lead)) {
     const heading = has(o.title) ? html`<h3 class="card-title">${txt(o.title)}</h3>` : '';
     const sub = has(o.sub) ? html`<p class="card-sub">${txt(o.sub)}</p>` : '';
+    const lead = has(o.lead) ? html`<div class="card-lead">${raw(frag(o.lead))}</div>` : '';
     head = html`<div class="card-head">
-      <div class="grow">${raw(heading)}${raw(sub)}</div>
+      ${raw(lead)}<div class="grow">${raw(heading)}${raw(sub)}</div>
       ${raw(frag(o.action))}
     </div>`;
   }

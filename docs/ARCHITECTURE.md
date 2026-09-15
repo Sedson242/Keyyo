@@ -645,7 +645,7 @@ medianDuration, totalDuration, uniquePeers }`
 
 ### `app/ui.js` — briques de rendu (renvoient des chaînes HTML)
 ```js
-export function card(opts): string        // { title?, sub?, action?, body, dark?, flush?, cls? }
+export function card(opts): string        // { title?, sub?, lead?, action?, body, dark?, flush?, cls? } — title/sub texte, lead/action/body HTML déjà sûr
 export function sectionHead(title, sub?, action?): string
 export function kpi(opts): string         // { label, value, foot?, why?, tone? }
 export function statbar(items): string    // [{ label, value, icon, tone }]

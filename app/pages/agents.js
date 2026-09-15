@@ -319,7 +319,8 @@ function personCard(a, events) {
   });
 
   return card({
-    title: raw(html`<span class="row">${raw(avatar(name, { size: 'lg', photo: photoUrl(email, 96) }))}<span>${name}</span></span>`),
+    lead: raw(avatar(name, { size: 'lg', photo: photoUrl(email, 96) })),
+    title: name,
     sub: email + (own.size ? ' · ligne personnelle : ' + Array.from(own).map((c) => { const l = lineByCsi(c); return l ? l.label : formatNumber(c); }).join(', ') : ' · pas de ligne personnelle : seules ses actions dans l’application comptent'),
     action: raw(html`<button class="btn btn--sm btn--ghost" type="button" data-person="${email}" data-person-card>Fermer</button>`),
     body: raw(html`<div class="diag-grid">

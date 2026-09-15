@@ -1901,6 +1901,16 @@ if (need(ui, 'app/ui.js', 'app/ui.js')) suite('app/ui.js', () => {
     ok(typeof toolbar(rawOf('<button></button>')) === 'string');
   });
 
+  test('card : `lead` pose un avatar rendu a gauche du titre, sans passer par le texte', () => {
+    const out = card({ lead: rawOf(avatar('Emma Rasolo', { size: 'lg' })), title: 'Emma Rasolo', body: rawOf('<p>corps</p>') });
+    has(out, 'class="card-lead"');
+    has(out, 'class="avatar avatar--lg"');
+    has(out, '<h3 class="card-title">Emma Rasolo</h3>');
+    ok(!out.includes('&lt;span'), 'le balisage de l’avatar ne doit pas apparaitre en texte');
+    // Un raw() glisse dans `title` reste rendu en texte : la faute se voit.
+    has(card({ title: rawOf('<b>x</b>'), body: rawOf('') }), '&lt;b&gt;x&lt;/b&gt;');
+  });
+
   test('kpi, statbar, meter, split et rankRow rendent une valeur lisible', () => {
     has(kpi({ label: 'Appels', value: '12 480' }), '12 480');
     has(statbar([{ label: 'Entrants', value: '12', icon: 'in', tone: 'in' }]), 'Entrants');

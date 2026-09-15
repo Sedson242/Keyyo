@@ -55,6 +55,8 @@
   gap: var(--gap-3);
   margin-bottom: var(--gap-4);
 }
+.card-head > .grow { min-width: 0; }
+.card-lead { flex: 0 0 auto; align-self: center; }
 .card-title { font: var(--t-h2); color: var(--ink); letter-spacing: var(--track-tight); }
 .card-sub { margin-top: 3px; font: var(--t-sm); color: var(--ink-muted); }
 
