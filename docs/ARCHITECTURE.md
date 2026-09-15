@@ -199,9 +199,27 @@ export function resolveEffectiveRole({ sessionRole, roleSource, configRole }): r
 export function upsertMember(config, patch): AccessConfig      // nouvelle configuration
 export function removeMember(config, email): AccessConfig
 export function adminCount(config): number
+export function lineOwners(config): { [csi]: email }   // lignes PERSONNELLES : une seule titulaire
 ```
 `AccessConfig` : `{ version, updatedAt, updatedBy, members: [{ email, name, role,
-lines[], popup }], routing: { [csi]: { agents[] } } }`.
+lines[], popup, number }], routing: { [csi]: { agents[] } } }`.
+
+**`number`** : le numéro DIRECT de la personne (ligne personnelle, numéro
+court `4012`, ou sa forme composée `*4012`). C'est le seul moyen de faire
+sonner cette personne et non tout son site : `/api/me` le sert en premier aux
+collègues, le composeur et le transfert l'utilisent. Sur ce parc, les lignes
+de site sont partagées par toute une équipe et Keyyo n'offre aucun moyen de
+viser un terminal précis (les `sip_records` ne portent qu'une adresse IP, un
+user-agent et un identifiant matériel, pas de numéro) : sans ligne ou numéro
+court propre à la personne, un transfert « à Aicha » sonne pour tout le site.
+
+**Lignes personnelles** : une ligne cochée pour une seule personne est sa
+ligne personnelle (`lineOwners`). Tout appel observé dessus est attribué
+d'office à cette personne par `summarize` (voir `shared/journal.js`) — c'est
+l'attribution automatique, sans clic « c'est moi qui ai répondu ». Elle
+suppose la configuration Keyyo correspondante : une ligne (ou numéro court)
+par collaborateur, le numéro du site devenant un **groupe d'appels** qui les
+fait sonner.
 
 **Ordre de priorité des rôles** : app role Entra (posé par l'informatique, ne
 se retire pas ici) › configuration d'accès (page Administration) ›
@@ -223,8 +241,14 @@ export function normalizeEvent(raw, ctx): object|null   // ctx : { email, now? }
 export function isValidEvent(e): boolean
 export function mergeEvents(...lists): any[]           // dédoublonne par id, premier vu gagne, ordre chronologique
 export function monthOf(unix): string                  // 'AAAA-MM' en UTC : la partition
-export function summarize(events, opts?): { agents[], calls, period }   // opts : { email? }
+export function summarize(events, opts?): { agents[], calls, period }
+        // opts : { email?, lineOwners? } — lineOwners { csi: email } : les appels observés sur une
+        // ligne personnelle sont attribués d'office à sa titulaire (agents[].auto, calls.auto)
 ```
+Un `observed` peut porter `extra` (≤ 300 caractères) : les champs NON
+documentés de la notification Keyyo (`app/cti.js`), conservés pour découvrir
+un éventuel identifiant de terminal. `agents[]` porte aussi `auto`, `missed`
+(manqués sur sa ligne personnelle) et `lines` (ses lignes personnelles).
 
 **Le seul endroit où un appel est relié à une personne.** Aucune API Keyyo ne
 dit qui a pris un appel ; la seule source est notre application, parce que
@@ -449,7 +473,7 @@ troncature ; tant qu'il ne l'est pas, il figure dans `store.missingMonths`.
 | `GET /api/me` | connecté | `{ user, line, lines[], colleagues[], managers[], journal, warnings }` — ma ligne, mes collègues avec un numéro chacun |
 | `POST /api/cti-token` | connecté | `{ csi, number, token, expiresAt, line, lines[] }` — jeton CSI (1 h) ; `409` + `lines` si aucune ligne rattachée |
 | `POST /api/events` | connecté | `{ accepted, rejected, byMonth }` — écrit dans la partition de la session |
-| `GET /api/events` | connecté (`scope=all` : direction) | `{ month, scope, events[], partitions, summary }` |
+| `GET /api/events` | connecté (`scope=all` : direction) | `{ month, scope, events[], partitions, summary, lineOwners }` — `summary` applique l'attribution d'office des lignes personnelles |
 | `GET /api/access` | admin | `{ config, lines[], people[], me, warnings }` |
 | `POST /api/access` | admin | `{ ok, config, updatedAt }` — configuration entière ; 409 sans administrateur restant |
 
@@ -545,6 +569,8 @@ export function h(tag, attrs?, children?): HTMLElement
 export function html(strings, ...values): string  // gabarit balisé, échappe les valeurs
 export function raw(s): {__html: string}          // marque une valeur déjà sûre
 export function mount(target, htmlString): HTMLElement
+export function mountKeyed(target, htmlString, key): boolean   // ne remonte le DOM que si `key` change ;
+                                                               // sinon rafraîchit le texte des [data-live] en place
 export function qs(sel, root?): HTMLElement|null
 export function qsa(sel, root?): HTMLElement[]
 export function on(root, event, selector, handler): void   // délégation d'évènements

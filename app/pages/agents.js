@@ -36,6 +36,12 @@ const _wiredRoots = new WeakSet();
 /** Mois choisi par l'utilisateur, ou '' pour le mois courant. */
 let _month = '';
 
+/** Personne dont la fiche est ouverte (adresse), ou ''. */
+let _person = '';
+
+/** Nombre de faits listes dans une fiche. */
+const PERSON_EVENTS_MAX = 40;
+
 // -----------------------------------------------------------------------------
 //  Rendu
 // -----------------------------------------------------------------------------
@@ -83,10 +89,12 @@ export function render(root) {
     return;
   }
 
+  const selected = _person ? s.agents.find((a) => a.email === _person) : null;
   mount(root, html`${raw(head)}
     ${raw(kpiRow(s.calls))}
-    ${raw(sectionHead('Par personne', 'D’après les actions faites dans l’application. Une personne absente n’a rien fait ici — pas forcément rien pris.'))}
+    ${raw(sectionHead('Par personne', 'D’après les actions faites dans l’application et les lignes personnelles. Cliquez une personne pour le détail de son mois.'))}
     ${raw(agentsCard(s.agents))}
+    ${selected ? raw(personCard(selected, j.events)) : ''}
     <div class="dash" style="margin-top: var(--gap-5)">
       <div class="dash-left">${raw(calleesCard(s.agents))}</div>
       <div class="dash-right">${raw(methodCard(s.calls, j))}</div>
@@ -139,8 +147,8 @@ function kpiRow(c) {
     ${raw(kpi({
       label: 'Décrochés attribués',
       value: c.answered ? fmtPct(rate, 0) : '—',
-      foot: fmtInt(c.attributed) + ' sur ' + fmtInt(c.answered) + ' · ' + fmtInt(c.unattributed) + ' par on ne sait qui',
-      why: 'Un appel est attribué quand une personne connectée l’a décroché depuis l’application, l’a transféré, ou a déclaré l’avoir pris. Le reste a été décroché au téléphone sans passer par ici.',
+      foot: fmtInt(c.attributed) + ' sur ' + fmtInt(c.answered) + (c.auto ? ' · ' + fmtInt(c.auto) + ' d’office' : '') + ' · ' + fmtInt(c.unattributed) + ' par on ne sait qui',
+      why: 'Un appel est attribué quand une personne connectée l’a décroché depuis l’application, l’a transféré, a déclaré l’avoir pris — ou quand il a été décroché sur sa ligne personnelle (une ligne cochée pour elle seule dans l’Administration) : il est alors attribué d’office, sans clic. Le reste a été décroché sur une ligne partagée, sans passer par ici.',
       tone: c.unattributed ? 'missed' : 'ok',
     }))}
     ${raw(kpi({
@@ -182,9 +190,16 @@ function agentsCard(agents) {
   const rows = agents.map((a) => {
     const name = nameOfEmail(a.email);
     const ring = a.ringCount ? Math.round(a.ringTotal / a.ringCount) : 0;
+    const open = _person === a.email;
+    const detail = [];
+    if (a.claimed) detail.push(fmtInt(a.claimed) + ' déclaré' + (a.claimed > 1 ? 's' : ''));
+    if (a.auto) detail.push(fmtInt(a.auto) + ' d’office');
     return [
-      html`<div class="row"><span>${raw(avatar(name, { size: 'sm' }))}</span><div><div class="strong">${name}</div><div class="faint" style="font: var(--t-micro)">${a.email}</div></div></div>`,
-      html`<span class="tnum">${fmtInt(a.taken)}</span>${a.claimed ? raw(html` <span class="faint" title="dont déclarés pris au téléphone">(${fmtInt(a.claimed)} déclarés)</span>`) : ''}`,
+      html`<button class="cell-id" type="button" data-person="${a.email}" aria-expanded="${open ? 'true' : 'false'}" title="${open ? 'Fermer la fiche' : 'Ouvrir la fiche de ' + name}">
+        ${raw(avatar(name, { size: 'sm' }))}
+        <div class="cell-id-body"><div class="cell-id-name">${name}</div><div class="cell-id-sub">${a.email}${a.lines && a.lines.length ? ' · ligne personnelle' : ''}</div></div>
+      </button>`,
+      html`<span class="tnum">${fmtInt(a.taken)}</span>${detail.length ? raw(html` <span class="faint" title="déclarés : pris au téléphone puis déclarés ici · d’office : décrochés sur sa ligne personnelle">(${detail.join(', ')})</span>`) : ''}`,
       html`<span class="tnum">${fmtInt(a.dialed)}</span>`,
       html`<span class="tnum">${fmtInt(a.transferred)}</span>`,
       html`<span class="tnum">${ring ? fmtDurationShort(ring) : '—'}</span>`,
@@ -207,8 +222,109 @@ function agentsCard(agents) {
         { key: 'last', label: 'Dernière action', align: 'right', priority: 'md' },
       ],
       rows,
-      foot: html`<span class="faint">« Pris » = décroché depuis l’application ou déclaré pris ; un même appel ne compte qu’une fois.</span>`,
+      foot: html`<span class="faint">« Pris » = décroché depuis l’application, déclaré pris, ou décroché sur sa ligne personnelle ; un même appel ne compte qu’une fois.</span>`,
     })),
+  });
+}
+
+/** @param {unknown} n @returns {string} chiffres seuls, pour comparer deux numeros. */
+function digitsOf(n) {
+  return String(n == null ? '' : n).replace(/\D/g, '');
+}
+
+/**
+ * Fiche d'une personne : ses chiffres du mois et ses derniers faits.
+ *
+ * Tout vient du journal : ses actions (dial, answer, claim, transfer, hangup)
+ * et, si elle a une ligne personnelle, les appels observes sur cette ligne.
+ * « Rappelés » : parmi les appels manqués qui la concernent (sa ligne
+ * personnelle, sinon toutes les lignes), ceux dont elle a recomposé le numéro
+ * plus tard dans le mois.
+ * @param {any} a  resume de la personne (summarize)
+ * @param {any[]} events  tous les evenements du mois
+ * @returns {string}
+ */
+function personCard(a, events) {
+  const email = String(a.email).toLowerCase();
+  const name = nameOfEmail(email);
+  const own = new Set(Array.isArray(a.lines) ? a.lines : []);
+  const list = Array.isArray(events) ? events : [];
+
+  /** @type {Set<string>} appels relies a quelqu'un par une action nominative */
+  const named = new Set();
+  for (const e of list) if (e.type !== 'observed' && e.callref) named.add(String(e.csi) + ':' + String(e.callref));
+
+  const mine = list.filter((e) => e.type !== 'observed' && String(e.email).toLowerCase() === email);
+  const auto = own.size
+    ? list.filter((e) => e.type === 'observed' && own.has(String(e.csi)) && !named.has(String(e.csi) + ':' + String(e.callref)))
+    : [];
+
+  // Rappels : un manque (sur sa ligne, sinon n'importe laquelle) suivi d'un
+  // appel emis par elle vers le meme numero.
+  const missed = list.filter((e) => e.type === 'observed' && e.dir === 'in' && e.answered !== 1 && e.peer && e.peer !== 'anonymous' && (!own.size || own.has(String(e.csi))));
+  const dials = mine.filter((e) => e.type === 'dial');
+  let calledBack = 0;
+  for (const m of missed) {
+    const p = digitsOf(m.peer);
+    if (p && dials.some((d) => Number(d.ts) > Number(m.ts) && digitsOf(d.to).slice(-9) === p.slice(-9))) calledBack++;
+  }
+
+  const ring = a.ringCount ? Math.round(a.ringTotal / a.ringCount) : 0;
+  const cells = [
+    ['Pris', fmtInt(a.taken), [a.answered ? fmtInt(a.answered) + ' depuis l’application' : '', a.claimed ? fmtInt(a.claimed) + ' déclarés' : '', a.auto ? fmtInt(a.auto) + ' d’office' : ''].filter(Boolean).join(' · ') || 'aucun'],
+    ['Émis', fmtInt(a.dialed), a.callees.length ? fmtInt(a.callees.length) + ' ' + pluralize(a.callees.length, 'destinataire', 'destinataires') : 'aucun'],
+    ['Manqués', own.size ? fmtInt(a.missed) : '—', own.size ? 'sur sa ligne personnelle' : 'ligne partagée : non attribuable'],
+    ['Rappelés', fmtInt(calledBack), missed.length ? 'sur ' + fmtInt(missed.length) + ' ' + pluralize(missed.length, 'manqué', 'manqués') + (own.size ? ' de sa ligne' : ' du mois') : 'aucun manqué'],
+    ['Transferts', fmtInt(a.transferred), ''],
+    ['Sonnerie moyenne', ring ? fmtDurationShort(ring) : '—', a.ringCount ? 'avant décroché, sur ' + fmtInt(a.ringCount) + ' ' + pluralize(a.ringCount, 'appel', 'appels') : ''],
+    ['En ligne', a.talkTotal ? fmtDurationShort(a.talkTotal) : '—', 'temps de conversation des appels pris'],
+    ['Dernière action', a.lastTs ? fmtRelative(new Date(a.lastTs * 1000).toISOString()) : '—', ''],
+  ];
+
+  const facts = mine.concat(auto).sort((x, y) => (Number(y.ts) || 0) - (Number(x.ts) || 0)).slice(0, PERSON_EVENTS_MAX);
+  const rows = facts.map((e) => {
+    const when = new Date((Number(e.ts) || 0) * 1000);
+    const stamp = when.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' ' + when.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    let what = '';
+    let tone = 'neutral';
+    if (e.type === 'dial') { what = 'Appel émis vers ' + (e.toName ? e.toName + ' (' + labelOf(e.to) + ')' : labelOf(e.to)); tone = 'out'; }
+    else if (e.type === 'answer') { what = 'Décroché depuis l’application · ' + labelOf(e.peer); tone = 'in'; }
+    else if (e.type === 'claim') { what = 'Déclaré pris · ' + labelOf(e.peer); tone = 'in'; }
+    else if (e.type === 'transfer') { what = 'Transféré vers ' + (e.toName ? e.toName + ' (' + labelOf(e.to) + ')' : labelOf(e.to)); tone = 'ok'; }
+    else if (e.type === 'hangup') { what = 'Raccroché'; }
+    else if (e.type === 'observed') {
+      if (e.dir === 'out') { what = 'Appel émis depuis son téléphone vers ' + labelOf(e.peer); tone = 'out'; }
+      else if (e.answered === 1) { what = 'Décroché sur sa ligne · ' + labelOf(e.peer); tone = 'in'; }
+      else { what = 'Manqué sur sa ligne · ' + labelOf(e.peer); tone = 'missed'; }
+    }
+    const extra = [];
+    if (e.ring) extra.push('sonnerie ' + fmtDurationShort(e.ring));
+    if (e.duration) extra.push('durée ' + fmtDurationShort(e.duration));
+    return [
+      html`<span class="nowrap">${stamp}</span>`,
+      html`${raw(tag(e.type === 'observed' ? 'd’office' : e.type, /** @type {any} */ (tone)))} ${what}`,
+      html`<span class="faint">${extra.join(' · ')}</span>`,
+    ];
+  });
+
+  return card({
+    title: name,
+    sub: email + (own.size ? ' · ligne personnelle : ' + Array.from(own).map((c) => { const l = lineByCsi(c); return l ? l.label : formatNumber(c); }).join(', ') : ' · pas de ligne personnelle : seules ses actions dans l’application comptent'),
+    action: raw(html`<button class="btn btn--sm btn--ghost" type="button" data-person="${email}" data-person-card>Fermer</button>`),
+    body: raw(html`<div class="diag-grid">
+      ${cells.map(([l, v, sub]) => raw(html`<div class="diag-cell"><div class="diag-cell-label">${l}</div><div class="diag-cell-value">${v}</div>${sub ? raw(html`<div class="faint" style="font: var(--t-micro); margin-top: 2px">${sub}</div>`) : ''}</div>`))}
+    </div>
+    <div style="margin-top: var(--gap-4)">${raw(rows.length
+      ? table({
+        columns: [
+          { key: 'when', label: 'Quand', cls: 'shrink', nowrap: true },
+          { key: 'what', label: 'Fait', breakAnywhere: true },
+          { key: 'extra', label: 'Détail', priority: 'md' },
+        ],
+        rows,
+        foot: html`<span class="faint">${fmtInt(facts.length)} ${pluralize(facts.length, 'fait', 'faits')} sur ${fmtInt(mine.length + auto.length)}, du plus récent au plus ancien.</span>`,
+      })
+      : empty('Aucun fait ce mois-ci', 'Rien n’a été fait ni observé pour cette personne sur ce mois.'))}</div>`),
   });
 }
 
@@ -296,6 +412,16 @@ function wire(root) {
   });
   on(root, 'click', '[data-journal-retry]', function () {
     loadJournal(_month || currentMonth(), { force: true });
+  });
+  on(root, 'click', '[data-person]', function (ev, el) {
+    const email = String(el.getAttribute('data-person') || '').toLowerCase();
+    _person = _person === email ? '' : email;
+    render(root);
+    if (_person) {
+      const close = root.querySelector('[data-person-card]');
+      const box = close ? close.closest('.card') : null;
+      if (box && typeof box.scrollIntoView === 'function') box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   });
 }
 

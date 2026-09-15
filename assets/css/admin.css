@@ -22,6 +22,9 @@
 .adm-sub { font: var(--t-sm); color: var(--ink-muted); margin-top: 3px; }
 
 .adm-person { min-width: 0; overflow-wrap: anywhere; }
+.adm-number { min-width: 150px; }
+.adm-number input { width: 100%; min-width: 0; }
+.adm-hint { margin: 0; padding: 12px var(--pad-card) 4px; font: var(--t-sm); color: var(--ink-muted); }
 .adm-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .adm-check { display: inline-flex; align-items: center; gap: 6px; font: var(--t-sm); color: var(--ink-soft); white-space: nowrap; }
 .adm-check input { accent-color: var(--in); width: 15px; height: 15px; }

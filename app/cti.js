@@ -506,6 +506,28 @@ function ingest(raw) {
   return view;
 }
 
+/** Champs d'un objet Call documentes par Keyyo : tout le reste est « extra ». */
+const KNOWN_CALL_FIELDS = new Set(['callref', 'state', 'type', 'caller', 'callee', 'setup_date', 'connect_date', 'release_date', 'callpark_slot', 'id', 'action']);
+
+/**
+ * Champs NON documentes recus dans une notification, en clair. Keyyo ne dit
+ * pas quel terminal a decroche ; si sa plateforme envoie pourtant un tel
+ * champ, il apparaitra ici, dans le journal, et l'attribution automatique
+ * pourra s'appuyer dessus. Seules des valeurs simples sont retenues, bornees.
+ * @param {any} raw
+ * @returns {string} `cle=valeur; …` ou ''
+ */
+function extraFields(raw) {
+  const parts = [];
+  for (const k of Object.keys(raw || {})) {
+    if (KNOWN_CALL_FIELDS.has(k) || k.charAt(0) === '_') continue;
+    const v = raw[k];
+    if (typeof v === 'function' || (v && typeof v === 'object')) continue;
+    parts.push(k + '=' + String(v == null ? '' : v).slice(0, 60));
+  }
+  return parts.join('; ').slice(0, 300);
+}
+
 /** @param {any} call */
 function onCallNotification(call) {
   const prev = _calls.get(String(call && call.callref));
@@ -527,6 +549,7 @@ function onCallNotification(call) {
       ring: view.ring,
       duration: view.duration,
       answered: view.answered,
+      extra: extraFields(call),
     });
   }
   emit();
@@ -575,6 +598,9 @@ function requireConnected() {
 /** @param {string} number @returns {string} numero au format Keyyo (international, sans +). */
 function toKeyyoNumber(number) {
   const raw = String(number == null ? '' : number).trim();
+  // « *4012 » : numero court d'une ligne interne, tel que Keyyo le compose
+  // depuis un poste (l'etoile precede le numero court). On le laisse passer.
+  if (/^\*\d{2,6}$/.test(raw)) return raw;
   const e164 = toE164(raw);
   if (e164 && e164 !== 'anonymous') return e164.replace(/^\+/, '');
   // Un poste court (« 4012 ») passe tel quel : Keyyo sait le router.

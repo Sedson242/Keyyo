@@ -60,6 +60,22 @@ comme rappelé s'il existe, strictement après lui, un appel sortant vers le mê
 correspondant, depuis n'importe quelle ligne du parc. Les manques sont regroupés
 par personne, parce que c'est une personne qu'on rappelle, pas un appel.
 
+### Qui a décroché, et transférer à une personne
+
+Sur ce parc, chaque site a **une ligne Keyyo partagée** par toute son équipe :
+Keyyo ne dit jamais quel poste a décroché, et un transfert vers un collègue
+fait sonner tout son site. L'application fait ce que la configuration permet :
+
+- **Ligne partagée** (aujourd'hui) : l'attribution vient des actions faites dans
+  l'application (décrocher, appeler, transférer, « c'est moi qui ai répondu »).
+- **Ligne ou numéro court par personne** (à demander à Keyyo : une ligne interne
+  par collaborateur, le numéro du site devenant un *groupe d'appels*) : dans
+  l'Administration, cochez cette ligne pour cette seule personne et renseignez
+  son *numéro direct*. Dès lors, tout appel décroché sur sa ligne lui est
+  **attribué d'office**, sans clic, et un transfert vers elle **ne sonne que chez
+  elle**. La vue Attribution ouvre la fiche d'une personne (pris, émis, manqués,
+  rappelés, sonnerie, temps en ligne, derniers faits) d'un clic sur son nom.
+
 ---
 
 ## Pile technique

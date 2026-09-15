@@ -24,6 +24,8 @@ import { requireRole } from './_auth.js';
 import { canAccess, isDirection } from '../shared/roles.js';
 import { normalizeEvent, monthOf, summarize } from '../shared/journal.js';
 import { journalEnabled, appendEvents, readUserMonth, readMonth } from './_journal.js';
+import { loadAccess } from './_access.js';
+import { lineOwners } from '../shared/access.js';
 
 /** Plafond d'evenements par envoi : au-dela, c'est une erreur de la page. */
 const MAX_BATCH = 200;
@@ -103,6 +105,11 @@ export default async function handler(req, res) {
       }, 'no-store');
     }
 
+    // Lignes personnelles (une seule titulaire dans la configuration d'acces) :
+    // les appels qui y sont decroches sont attribues d'office a leur titulaire.
+    let owners = {};
+    try { const access = await loadAccess(); if (access) owners = lineOwners(access); } catch (err) { owners = {}; }
+
     res.setHeader('Vary', 'Cookie');
     if (wantAll) {
       const all = await readMonth(month);
@@ -111,7 +118,8 @@ export default async function handler(req, res) {
         scope: 'all',
         events: all.events,
         partitions: all.partitions,
-        summary: summarize(all.events),
+        summary: summarize(all.events, { lineOwners: owners }),
+        lineOwners: owners,
         updatedAt: new Date().toISOString(),
       }, 'no-store');
     }
@@ -121,7 +129,8 @@ export default async function handler(req, res) {
       scope: 'me',
       events: mine,
       partitions: mine.length ? 1 : 0,
-      summary: summarize(mine, { email: session.email }),
+      summary: summarize(mine, { email: session.email, lineOwners: owners }),
+      lineOwners: owners,
       updatedAt: new Date().toISOString(),
     }, 'no-store');
   } catch (err) {

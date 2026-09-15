@@ -28,7 +28,7 @@ import * as session from './session.js';
 import * as cti from './cti.js';
 import * as journal from './journal.js';
 import { getProfile, getDirectory } from './api.js';
-import { qs, on, html, raw, mount, icon } from './dom.js';
+import { qs, on, html, raw, mount, mountKeyed, icon } from './dom.js';
 import { fmtInt, fmtDurationShort, fmtRelative, pluralize, fmtDate, fmtTime } from './format.js';
 import { card, notice, empty, skeleton, tag } from './ui.js';
 import { toE164, formatNumber, numberKind } from '../shared/phone.js';
@@ -209,6 +209,28 @@ function clock(sec) {
   return m + ':' + String(s % 60).padStart(2, '0');
 }
 
+/**
+ * Texte VIVANT : un compteur que `mountKeyed` met a jour en place, sans
+ * remonter le bloc qui le contient. Tout chronometre d'appel passe par la.
+ * @param {string} id  identifiant unique dans le bloc
+ * @param {string} text
+ * @returns {string}
+ */
+function live(id, text) {
+  return html`<span data-live="${id}">${text}</span>`;
+}
+
+/**
+ * Cle de STRUCTURE des appels d'un instantane : tout ce qui change l'aspect
+ * d'une ligne d'appel, sauf ses compteurs. Tant qu'elle est stable, une vue
+ * n'est pas remontee — c'est ce qui evite le clignotement a chaque seconde.
+ * @param {any[]} calls
+ * @returns {string}
+ */
+function callsKey(calls) {
+  return calls.map((c) => [c.callref, c.state, c.dir, c.peer, c.answered ? 1 : 0, c.mine ? 1 : 0, c.claimed ? 1 : 0, c.live ? 1 : 0].join(':')).join('|');
+}
+
 // -----------------------------------------------------------------------------
 //  Appels : la liste unifiee
 // -----------------------------------------------------------------------------
@@ -370,7 +392,10 @@ function paintSide() {
     parts.push(html`<div class="ag-line-sub">${snap.status === 'needs-line' ? snap.message : 'Choisir une ligne :'}</div>`);
     parts.push(html`<div class="ag-line-actions">${snap.lines.map((l) => raw(html`<button class="btn btn--sm" type="button" data-choose-line="${l.csi}">${l.label}${l.members ? raw(html` <span class="faint">(${l.members})</span>`) : ''}</button>`))}</div>`);
   }
-  mount(host, parts.join(''));
+  // Le bloc n'est remonte que si son contenu change : repeint chaque seconde,
+  // il relancait l'animation du voyant et faisait clignoter la colonne.
+  const sideHtml = parts.join('');
+  mountKeyed(host, sideHtml, sideHtml);
 
   const newcall = /** @type {HTMLButtonElement|null} */ (qs('#ag-newcall'));
   if (newcall) newcall.disabled = !snap.connected;
@@ -392,10 +417,10 @@ function paintList() {
 
   if (_tab === 'people') {
     title.textContent = 'Collègues';
-    mount(head, '');
+    mountKeyed(head, '', 'people');
     const list = _profile && Array.isArray(_profile.colleagues) ? _profile.colleagues : [];
     if (!list.length) {
-      mount(body, html`<div class="ag-empty">${raw(empty('Aucun collègue à proposer', 'L’annuaire Keyyo ne rattache personne à vos lignes.'))}</div>`);
+      mountKeyed(body, html`<div class="ag-empty">${raw(empty('Aucun collègue à proposer', 'L’annuaire Keyyo ne rattache personne à vos lignes.'))}</div>`, 'people:empty');
       return;
     }
     const managers = list.filter((c) => c.manager);
@@ -404,33 +429,36 @@ function paintList() {
       ${raw(avatarOf(c.name))}
       <span class="ag-row-body">
         <span class="ag-row-name">${c.name}</span>
-        <span class="ag-row-status">${c.manager ? raw(tag('Manager', 'ok')) : ''}${formatNumber(c.number) || c.number} · ${c.numberKind}</span>
+        <span class="ag-row-status">${c.manager ? raw(tag('Manager', 'ok')) : ''}${formatNumber(c.number) || c.number} · ${numberKindLabel(c)}</span>
       </span>
       <span class="ag-row-time">${c.lines && c.lines.length ? c.lines[0] : ''}</span>
     </button>`;
-    mount(body, html`${managers.length ? raw(html`<p class="dl-group">Managers</p>`) : ''}${managers.map((c) => raw(row(c, list.indexOf(c))))}
-      ${others.length ? raw(html`<p class="dl-group">Collègues</p>`) : ''}${others.map((c) => raw(row(c, list.indexOf(c))))}`);
+    const peopleHtml = html`${managers.length ? raw(html`<p class="dl-group">Managers</p>`) : ''}${managers.map((c) => raw(row(c, list.indexOf(c))))}
+      ${others.length ? raw(html`<p class="dl-group">Collègues</p>`) : ''}${others.map((c) => raw(row(c, list.indexOf(c))))}`;
+    mountKeyed(body, peopleHtml, peopleHtml);
     return;
   }
 
   title.textContent = 'Appels';
   const filters = [['all', 'Tous'], ['missed', 'Manqués'], ['in', 'Entrants'], ['out', 'Sortants']];
-  mount(head, html`<div class="segmented" role="group" aria-label="Filtre">${filters.map(([k, l]) => raw(html`<button type="button" data-filter="${k}" class="${k === _filter ? 'is-active' : ''}">${l}</button>`))}</div>`);
+  mountKeyed(head, html`<div class="segmented" role="group" aria-label="Filtre">${filters.map(([k, l]) => raw(html`<button type="button" data-filter="${k}" class="${k === _filter ? 'is-active' : ''}">${l}</button>`))}</div>`, 'filters:' + _filter);
 
   const items = callItems().filter(passesFilter);
   if (!items.length) {
     const snap = cti.snapshot();
-    mount(body, html`<div class="ag-empty">${raw(empty(
+    mountKeyed(body, html`<div class="ag-empty">${raw(empty(
       snap.connected ? 'Aucun appel pour l’instant' : 'La ligne n’est pas connectée',
       snap.connected
         ? 'Les appels de votre ligne apparaîtront ici dès qu’ils sonneront.'
         : (snap.status === 'error' || snap.status === 'disconnected'
           ? 'La raison est indiquée sous « Ma ligne », à gauche.'
           : 'Dès que la ligne sera connectée, ses appels s’afficheront ici.'),
-    ))}</div>`);
+    ))}</div>`, 'empty:' + snap.status);
     return;
   }
-  mount(body, items.map((c) => callRow(c)).join(''));
+  // Les lignes ne sont remontees que si la liste change de structure : les
+  // chronometres (sonne depuis, en ligne) sont des textes vivants.
+  mountKeyed(body, items.map((c) => callRow(c)).join(''), 'calls:' + callsKey(items) + ':' + _selected.kind + ':' + _selected.id + ':' + _names.size);
 }
 
 /** @param {CallItem} c @returns {string} */
@@ -442,10 +470,22 @@ function callRow(c) {
     ${raw(avatarOf(label))}
     <span class="ag-row-body">
       <span class="ag-row-name">${label}</span>
-      <span class="ag-row-status ${st.cls}">${raw(icon(st.icon))}${st.text}</span>
+      <span class="ag-row-status ${st.cls}">${raw(icon(st.icon))}${raw(live('row:' + c.callref, st.text))}</span>
     </span>
     <span class="ag-row-time">${whenOf(c.ts)}</span>
   </button>`;
+}
+
+/**
+ * Nature d'un numero de collegue, en clair : un numero DIRECT ne sonne que
+ * chez cette personne ; la ligne du site sonne pour toute l'equipe.
+ * @param {any} c
+ * @returns {string}
+ */
+function numberKindLabel(c) {
+  if (c.numberKind === 'direct') return 'numéro direct · ne sonne que chez ' + (c.name || 'cette personne');
+  if (c.numberKind === 'poste') return 'poste ' + (c.number || '');
+  return 'ligne du site · sonne pour toute l’équipe';
 }
 
 // -----------------------------------------------------------------------------
@@ -458,16 +498,25 @@ function paintMain() {
 
   if (_selected.kind === 'call') {
     const c = callItems().find((x) => x.callref === _selected.id);
-    if (c) { mount(host, callDetail(c)); return; }
+    if (c) {
+      const snap = cti.snapshot();
+      mountKeyed(host, callDetail(c), 'call:' + callsKey([c]) + ':' + (_busy === c.callref ? 1 : 0) + ':' + snap.connected + ':' + _names.size);
+      return;
+    }
     _selected = { kind: '', id: '' };
   }
   if (_selected.kind === 'colleague') {
     const list = _profile && Array.isArray(_profile.colleagues) ? _profile.colleagues : [];
     const c = list[Number(_selected.id)];
-    if (c) { mount(host, colleagueDetail(c)); return; }
+    if (c) {
+      const snap = cti.snapshot();
+      const liveCall = snap.calls.find((x) => x.state === 'CONNECT' || x.state === 'SETUP');
+      mountKeyed(host, colleagueDetail(c), 'colleague:' + _selected.id + ':' + (liveCall ? liveCall.callref : '') + ':' + snap.connected + ':' + _busy);
+      return;
+    }
     _selected = { kind: '', id: '' };
   }
-  mount(host, activityView());
+  mountKeyed(host, activityView(), 'activity:' + _activity.at + ':' + _activity.error + ':' + (_activity.loading ? 1 : 0) + ':' + _names.size + ':' + (_profile ? 1 : 0));
 }
 
 /** @param {CallItem} c @returns {string} */
@@ -498,8 +547,8 @@ function callDetail(c) {
 
   const facts = [];
   facts.push(['Ligne', snap.line ? snap.line.label : '—']);
-  facts.push(['Sonnerie', c.ring || c.state === 'SETUP' ? clock(c.ring) : '—']);
-  if (c.answered && c.state !== 'SETUP') facts.push(['Durée', c.state === 'CONNECT' ? clock(c.duration) + ' (en cours)' : (c.duration ? fmtDurationShort(c.duration) : '—')]);
+  facts.push(['Sonnerie', raw(live('ring', c.ring || c.state === 'SETUP' ? clock(c.ring) : '—'))]);
+  if (c.answered && c.state !== 'SETUP') facts.push(['Durée', raw(live('dur', c.state === 'CONNECT' ? clock(c.duration) + ' (en cours)' : (c.duration ? fmtDurationShort(c.duration) : '—')))]);
   facts.push(['Heure', c.ts ? whenOf(c.ts) : '—']);
   if (c.dir === 'in' && c.answered) facts.push(['Pris par', c.mine ? 'vous' : 'non attribué']);
 
@@ -508,7 +557,7 @@ function callDetail(c) {
       <div>
         <h2 class="ag-detail-name">${label}</h2>
         <p class="ag-detail-sub">${number ? number + ' · ' : ''}${kind}</p>
-        <div class="ag-detail-state"><span class="ag-row-status ${st.cls}">${raw(icon(st.icon))}${st.text}</span></div>
+        <div class="ag-detail-state"><span class="ag-row-status ${st.cls}">${raw(icon(st.icon))}${raw(live('state', st.text))}</span></div>
       </div>
     </div>
     <div class="ag-actions">${raw(actions.join(''))}</div>
@@ -531,7 +580,9 @@ function colleagueDetail(c) {
       <button class="btn btn--accent btn--lg" type="button" data-act="dial" data-number="${c.number}" data-name="${c.name}"${!snap.connected || _busy === 'dial' ? ' disabled' : ''}>${raw(icon('out'))}Appeler</button>
       ${live ? raw(html`<button class="btn btn--lg" type="button" data-act="transfer-to" data-ref="${live.callref}" data-number="${c.number}" data-name="${c.name}">${raw(icon('peers'))}Lui transférer l’appel en cours</button>`) : ''}
     </div>
-    ${lineByNumber(c.number) ? raw(notice({ tone: 'warn', title: 'Numéro partagé.', body: html`${c.name} n’a pas de numéro direct dans l’annuaire Keyyo : l’appel passe par la ligne ${lineByNumber(c.number).label}, qui sonne pour toute l’équipe de ce site.` })) : ''}`;
+    ${lineByNumber(c.number)
+    ? raw(notice({ tone: 'warn', title: 'Numéro partagé.', body: html`${c.name} n’a pas de numéro direct : l’appel passe par la ligne ${lineByNumber(c.number).label}, qui sonne pour toute l’équipe de ce site. Un administrateur peut lui poser un numéro direct depuis la page Administration.` }))
+    : (c.numberKind === 'direct' ? raw(notice({ tone: 'ok', title: 'Numéro direct.', body: html`Un appel ou un transfert vers ${c.name} ne sonne que chez ${c.name}.` })) : '')}`;
 }
 
 /** @returns {string} */
@@ -661,11 +712,16 @@ function paintPopup() {
   const label = labelOf(c.peer);
   const number = c.peer === 'anonymous' ? '' : formatNumber(c.peer);
   const snap = cti.snapshot();
+  // Cle de structure : la fenetre n'est remontee que si l'appel change d'etat
+  // ou d'aspect. Repeinte chaque seconde pour son chronometre, elle relancait
+  // son animation d'entree a chaque fois — le clignotement signale par les
+  // agents. Les compteurs sont des textes vivants, mis a jour en place.
+  const key = ['popup', callsKey([c]), _busy === c.callref ? 1 : 0, label, number, snap.line ? snap.line.label : '', _popupMin ? 1 : 0].join('|');
 
   if (_popupMin) {
     popup.hidden = true;
     pill.hidden = false;
-    mount(pill, html`<span class="ag-dot ag-dot--busy" aria-hidden="true"></span><span>${label}</span><span class="call-pill-timer">${c.state === 'CONNECT' ? clock(c.duration) : clock(c.ring)}</span>${raw(icon('chevron'))}`);
+    mountKeyed(pill, html`<span class="ag-dot ag-dot--busy" aria-hidden="true"></span><span>${label}</span><span class="call-pill-timer">${raw(live('pill', c.state === 'CONNECT' ? clock(c.duration) : clock(c.ring)))}</span>${raw(icon('chevron'))}`, key);
     return;
   }
   pill.hidden = true;
@@ -675,7 +731,7 @@ function paintPopup() {
   const busy = _busy === c.callref;
   let kicker = ringingIn ? 'Appel entrant' : (c.state === 'SETUP' ? 'Appel sortant' : 'En ligne');
   let sub = ringingIn ? 'vous appelle' : (c.state === 'SETUP' ? 'sonne…' : 'en conversation');
-  let timer = c.state === 'CONNECT' ? clock(c.duration) : clock(c.ring);
+  let timer = live('timer', c.state === 'CONNECT' ? clock(c.duration) : clock(c.ring));
 
   const actions = [];
   if (ringingIn) {
@@ -695,7 +751,10 @@ function paintPopup() {
     facts.push(['Pris par', 'non attribué']);
   }
 
-  mount(popup, html`<div class="call-card" role="dialog" aria-live="polite" aria-label="${kicker}">
+  // aria-live « off » : le chronometre change chaque seconde, un lecteur
+  // d'ecran ne doit pas le lire en boucle ; l'arrivee de la fenetre, elle, est
+  // annoncee par le role de dialogue.
+  mountKeyed(popup, html`<div class="call-card" role="dialog" aria-label="${kicker}">
     <div class="call-card-head">
       ${raw(icon('phone'))}<strong>${kicker}</strong><span>· ${snap.line ? snap.line.label : ''}</span>
       <span class="toolbar-spacer"></span>
@@ -706,14 +765,14 @@ function paintPopup() {
       ${raw(avatarOf(label, 'lg', true))}
       <div class="call-card-name">${label}</div>
       <div class="call-card-sub">${sub}</div>
-      <div class="call-card-timer">${timer}</div>
+      <div class="call-card-timer">${raw(timer)}</div>
     </div>
     <div class="call-card-actions">${raw(actions.join(''))}</div>
     <div class="call-card-facts">
       ${facts.map(([l, v]) => raw(html`<div class="call-card-fact"><span>${l}</span><span>${v}</span></div>`))}
       ${c.state === 'CONNECT' && c.dir === 'in' && !c.mine && !c.claimed ? raw(html`<button class="btn btn--ghost btn--sm" type="button" data-act="claim" data-ref="${c.callref}" style="margin-top:6px;color:#fff">${raw(icon('check'))}C’est moi qui ai répondu</button>`) : ''}
     </div>
-  </div>`);
+  </div>`, key);
 }
 
 // -----------------------------------------------------------------------------
@@ -737,7 +796,7 @@ function paintDialer() {
     const viaLine = lineByNumber(c.number);
     const sub = viaLine
       ? 'via la ligne ' + viaLine.label + ' (' + (formatNumber(c.number) || c.number) + ') · sonne pour tout le site'
-      : (formatNumber(c.number) || c.number) + ' · ' + c.numberKind + (c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : '');
+      : (formatNumber(c.number) || c.number) + ' · ' + numberKindLabel(c) + (c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : '');
     return html`<button class="dl-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}">
     ${raw(avatarOf(c.name, 'sm'))}
     <span><span class="dl-row-name">${c.name}${c.manager ? raw(tag('Manager', 'ok')) : ''}</span><span class="dl-row-sub">${sub}</span></span>

@@ -48,12 +48,28 @@ function csi(v) {
 }
 
 /**
+ * Numero direct d'une personne : un numero complet (« +33… », « 06… »), un
+ * numero court interne (« 4012 ») ou sa forme composee depuis un poste
+ * (« *4012 »). Tout autre caractere est retire ; vide si rien ne reste.
+ * @param {unknown} v
+ * @returns {string}
+ */
+function directNumber(v) {
+  const s = str(v).replace(/[\s.\-()]/g, '');
+  const m = /^([+*]?)(\d{2,15})$/.exec(s);
+  return m ? m[1] + m[2] : '';
+}
+
+/**
  * @typedef {object} Member
  * @property {string} email
  * @property {string} name
  * @property {'admin'|'direction'|'agent'} role
  * @property {string[]} lines    CSI des lignes ou la personne travaille
  * @property {boolean} popup     recoit la fenetre d'appel entrant sur ses lignes
+ * @property {string} number     numero DIRECT (ligne personnelle ou numero court) :
+ *                               le seul moyen de faire sonner cette personne
+ *                               et non tout son site ; '' si elle n'en a pas
  */
 
 /**
@@ -103,6 +119,7 @@ export function normalizeAccess(raw) {
       role: /** @type {any} */ (role),
       lines,
       popup: m.popup !== false,
+      number: directNumber(m.number),
     });
     if (out.members.length >= MAX_MEMBERS) break;
   }
@@ -221,7 +238,7 @@ export function upsertMember(config, patch) {
   const e = email(patch && patch.email);
   if (!e) return next;
   const current = next.members.find((m) => m.email === e);
-  const merged = Object.assign({ email: e, name: '', role: ROLE_AGENT, lines: [], popup: true }, current || {}, patch || {}, { email: e });
+  const merged = Object.assign({ email: e, name: '', role: ROLE_AGENT, lines: [], popup: true, number: '' }, current || {}, patch || {}, { email: e });
   const normalized = normalizeAccess({ version: ACCESS_VERSION, members: [merged] }).members[0];
   if (!normalized) return next;
   if (current) next.members[next.members.indexOf(current)] = normalized;
@@ -243,6 +260,25 @@ export function removeMember(config, who) {
     next.routing[key].agents = next.routing[key].agents.filter((a) => a !== e);
   }
   return next;
+}
+
+/**
+ * Lignes PERSONNELLES : celles qu'une seule personne de la configuration
+ * declare comme siennes. Sur une telle ligne, tout appel decroche est le sien
+ * — c'est ce qui permet l'attribution automatique (shared/journal.js).
+ * @param {AccessConfig} config
+ * @returns {Record<string, string>} csi -> adresse de la titulaire
+ */
+export function lineOwners(config) {
+  /** @type {Record<string, string[]>} */
+  const byLine = {};
+  for (const m of (config && config.members) || []) {
+    for (const l of m.lines || []) (byLine[l] || (byLine[l] = [])).push(m.email);
+  }
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const l of Object.keys(byLine)) if (byLine[l].length === 1) out[l] = byLine[l][0];
+  return out;
 }
 
 /**

@@ -82,9 +82,16 @@ export default async function handler(req, res) {
     const member = access ? memberOf(access, me) : null;
 
     // Collegues : toute personne rattachee a une ligne du compte, sauf soi.
-    // Un numero direct d'abord (numero abrege = poste), sinon la ligne du site.
+    // Le numero DIRECT pose par un administrateur (page Administration)
+    // passe avant tout : c'est le seul qui fait sonner cette personne et non
+    // tout son site. Ensuite le numero abrege de l'annuaire, un numero propre,
+    // et a defaut la ligne du site.
     /** @type {Map<string, any>} */
     const seen = new Map();
+    const configured_number = (email) => {
+      const m = access && email ? access.members.find((x) => x.email === String(email).toLowerCase()) : null;
+      return m && m.number ? m.number : '';
+    };
     for (const t of teams) {
       const line = lines.find((l) => l.csi === t.csi);
       for (const m of t.members) {
@@ -95,14 +102,30 @@ export default async function handler(req, res) {
           if (line && prev.lines.indexOf(line.label) < 0) prev.lines.push(line.label);
           continue;
         }
+        const admin = configured_number(m.email);
         const direct = m.speedNumbers.length ? m.speedNumbers[0] : '';
         const own = m.numbers.find((n) => !lines.some((l) => l.e164 === n)) || '';
         seen.set(key, {
           name: m.name,
-          number: direct || own || (line ? line.e164 : ''),
-          numberKind: direct ? 'poste' : (own ? 'direct' : 'ligne du site'),
+          number: admin || direct || own || (line ? line.e164 : ''),
+          numberKind: admin ? 'direct' : (direct ? 'poste' : (own ? 'direct' : 'ligne du site')),
           lines: line ? [line.label] : [],
           manager: !!m.email && directionSet.has(m.email),
+        });
+      }
+    }
+    // Membres poses par un administrateur mais absents de l'annuaire Keyyo :
+    // ils sont joignables des qu'ils ont un numero direct.
+    if (access) {
+      for (const m of access.members) {
+        if (m.email === me || seen.has(m.email) || !m.number) continue;
+        const labels = m.lines.map((c) => { const l = lines.find((x) => x.csi === c); return l ? l.label : ''; }).filter(Boolean);
+        seen.set(m.email, {
+          name: m.name || m.email.split('@')[0],
+          number: m.number,
+          numberKind: 'direct',
+          lines: labels,
+          manager: directionSet.has(m.email),
         });
       }
     }

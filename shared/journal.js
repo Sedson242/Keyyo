@@ -132,6 +132,13 @@ export function normalizeEvent(raw, ctx) {
     e.duration = nat(raw.duration);
     e.answered = raw.answered === true || raw.answered === 1 ? 1 : 0;
   }
+  if (type === 'observed') {
+    // Champs non documentes de la notification Keyyo (voir app/cti.js) :
+    // conserves tels quels, bornes, pour decouvrir un eventuel identifiant
+    // de terminal. Absents la plupart du temps.
+    const extra = String(raw.extra == null ? '' : raw.extra).trim().slice(0, 300);
+    if (extra) e.extra = extra;
+  }
   if (type === 'observed' && (!csi || !callref)) return null;
   if ((type === 'answer' || type === 'claim' || type === 'hangup') && !callref) return null;
 
@@ -182,28 +189,40 @@ export function monthOf(unix) {
 /**
  * @typedef {object} AgentSummary
  * @property {string} email
- * @property {number} dialed       appels composes depuis l'application
+ * @property {number} dialed       appels composes (application, ou telephone sur sa ligne personnelle)
  * @property {number} answered     appels decroches depuis l'application
  * @property {number} claimed      appels declares pris au telephone
- * @property {number} taken        answered + claimed, sans double compte par appel
+ * @property {number} auto         appels attribues d'office : decroches sur SA ligne personnelle
+ * @property {number} taken        answered + claimed + auto, sans double compte par appel
+ * @property {number} missed       appels entrants manques sur sa ligne personnelle
  * @property {number} transferred
  * @property {number} hungUp
  * @property {number} ringTotal    somme des sonneries des appels pris (s)
  * @property {number} ringCount    nombre d'appels pris avec une sonnerie connue
  * @property {number} talkTotal    somme des durees des appels pris (s)
  * @property {Array<{to: string, count: number}>} callees  destinations, la plus appelee d'abord
+ * @property {string[]} lines      lignes personnelles (dont elle est la seule titulaire)
  * @property {number} lastTs
  */
 
 /**
  * Agrege le journal par personne, et rend ce que le journal NE SAIT PAS.
  *
+ * ATTRIBUTION AUTOMATIQUE. Une ligne partagee par un site ne dit jamais qui a
+ * decroche. Une ligne PERSONNELLE — une seule titulaire dans la configuration
+ * d'acces — le dit d'elle-meme : tout appel decroche sur cette ligne est le
+ * sien, sans clic. `opts.lineOwners` (csi -> adresse) porte cette regle ; un
+ * appel observe sur une telle ligne est attribue d'office a sa titulaire
+ * (`auto`), sauf si une action nominative le relie deja a quelqu'un.
+ *
  * @param {any[]} events
- * @param {{email?: string}} [opts]  `email` restreint a une personne.
+ * @param {{email?: string, lineOwners?: Record<string, string>}} [opts]
+ *        `email` restreint a une personne ; `lineOwners` : titulaire unique de
+ *        chaque ligne personnelle.
  * @returns {{
  *   agents: AgentSummary[],
  *   calls: { observed: number, answered: number, missed: number, attributed: number, unattributed: number,
- *            ringAnsweredTotal: number, ringAnsweredCount: number, ringMissedTotal: number, ringMissedCount: number },
+ *            auto: number, ringAnsweredTotal: number, ringAnsweredCount: number, ringMissedTotal: number, ringMissedCount: number },
  *   period: { min: number, max: number },
  * }}
  */
@@ -211,6 +230,13 @@ export function summarize(events, opts) {
   const o = opts || {};
   const only = o.email ? String(o.email).toLowerCase() : '';
   const list = Array.isArray(events) ? events : [];
+  /** @type {Record<string, string>} csi -> adresse de la titulaire unique */
+  const owners = {};
+  for (const k of Object.keys(o.lineOwners && typeof o.lineOwners === 'object' ? o.lineOwners : {})) {
+    const c = String(k).replace(/\D/g, '');
+    const e = String(o.lineOwners[k] || '').trim().toLowerCase();
+    if (c && e) owners[c] = e;
+  }
 
   /** @type {Map<string, AgentSummary & {_calleeMap: Map<string, number>, _taken: Set<string>}>} */
   const agents = new Map();
@@ -225,10 +251,11 @@ export function summarize(events, opts) {
     let a = agents.get(email);
     if (!a) {
       a = {
-        email, dialed: 0, answered: 0, claimed: 0, taken: 0, transferred: 0, hungUp: 0,
-        ringTotal: 0, ringCount: 0, talkTotal: 0, callees: [], lastTs: 0,
+        email, dialed: 0, answered: 0, claimed: 0, auto: 0, taken: 0, missed: 0, transferred: 0, hungUp: 0,
+        ringTotal: 0, ringCount: 0, talkTotal: 0, callees: [], lines: [], lastTs: 0,
         _calleeMap: new Map(), _taken: new Set(),
       };
+      for (const c of Object.keys(owners)) if (owners[c] === email) a.lines.push(c);
       agents.set(email, a);
     }
     return a;
@@ -274,6 +301,34 @@ export function summarize(events, opts) {
     }
   }
 
+  // Attribution d'office sur les lignes personnelles : un appel observe sur
+  // une ligne a titulaire unique, sans action nominative, est le sien.
+  const autoKeys = new Set();
+  for (const [key, obs] of observed) {
+    const owner = owners[str(obs.csi)];
+    if (!owner || attributed.has(key)) continue;
+    if (only && owner !== only) { autoKeys.add(key); continue; }
+    const a = agentOf(owner);
+    const t = Number(obs.ts) || 0;
+    if (t > a.lastTs) a.lastTs = t;
+    if (obs.answered === 1) {
+      autoKeys.add(key);
+      if (obs.dir === DIR_OUT) {
+        a.dialed++;
+        const to = str(obs.peer);
+        if (to && to !== 'anonymous') a._calleeMap.set(to, (a._calleeMap.get(to) || 0) + 1);
+      } else if (!a._taken.has(key)) {
+        a._taken.add(key);
+        a.auto++;
+        a.taken++;
+        if (nat(obs.ring) > 0) { a.ringTotal += nat(obs.ring); a.ringCount++; }
+        a.talkTotal += nat(obs.duration);
+      }
+    } else if (obs.dir === DIR_IN) {
+      a.missed++;
+    }
+  }
+
   // Les durees des appels pris viennent de preference de l'observation (elle
   // est complete : sonnerie ET duree finale), l'action ayant pu etre
   // enregistree avant la fin de l'appel.
@@ -286,7 +341,7 @@ export function summarize(events, opts) {
   }
 
   const calls = {
-    observed: 0, answered: 0, missed: 0, attributed: 0, unattributed: 0,
+    observed: 0, answered: 0, missed: 0, attributed: 0, unattributed: 0, auto: 0,
     ringAnsweredTotal: 0, ringAnsweredCount: 0, ringMissedTotal: 0, ringMissedCount: 0,
   };
   for (const [key, obs] of observed) {
@@ -295,7 +350,9 @@ export function summarize(events, opts) {
     if (obs.answered === 1) {
       calls.answered++;
       if (isIn && nat(obs.ring) > 0) { calls.ringAnsweredTotal += nat(obs.ring); calls.ringAnsweredCount++; }
-      if (attributed.has(key)) calls.attributed++; else calls.unattributed++;
+      if (attributed.has(key)) calls.attributed++;
+      else if (autoKeys.has(key)) { calls.attributed++; calls.auto++; }
+      else calls.unattributed++;
     } else if (isIn) {
       calls.missed++;
       if (nat(obs.ring) > 0) { calls.ringMissedTotal += nat(obs.ring); calls.ringMissedCount++; }

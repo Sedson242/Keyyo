@@ -18,7 +18,7 @@
 
 import * as cti from './cti.js';
 import * as journal from './journal.js';
-import { qs, on, html, raw, mount, icon } from './dom.js';
+import { qs, on, html, raw, mount, mountKeyed, icon } from './dom.js';
 import { formatNumber } from '../shared/phone.js';
 import { fmtDurationShort } from './format.js';
 
@@ -163,8 +163,14 @@ function paint(snap) {
     }
   }
 
+  // Les cartes d'appel ne sont remontees que si la liste change de structure :
+  // repeintes chaque seconde pour leurs compteurs, elles relancaient leur
+  // animation de sonnerie et clignotaient. Les durees sont des textes vivants.
   const calls = qs('#cb-calls', _host);
-  if (calls) mount(calls, snap.calls.length ? snap.calls.map((c) => raw(callCard(c))) : '');
+  if (calls) {
+    const key = snap.calls.map((c) => [c.callref, c.state, c.dir, c.peer, c.answered ? 1 : 0, c.mine ? 1 : 0, c.claimed ? 1 : 0, _busy === c.callref ? 1 : 0].join(':')).join('|');
+    mountKeyed(calls, snap.calls.length ? html`${snap.calls.map((c) => raw(callCard(c)))}` : '', key);
+  }
 
   const dial = /** @type {HTMLButtonElement|null} */ (qs('#cb-dial', _host));
   if (dial) dial.disabled = !snap.connected || _busy === 'dial';
@@ -212,7 +218,7 @@ function callCard(c) {
     <span class="call-icon" aria-hidden="true">${raw(icon(missed ? 'missed' : (c.dir === 'in' ? 'in' : 'out')))}</span>
     <div class="call-body">
       <div class="call-peer">${label}${number && number !== label ? raw(html` <span class="faint">${number}</span>`) : ''}</div>
-      <div class="call-meta">${meta}</div>
+      <div class="call-meta"><span data-live="meta:${c.callref}">${meta}</span></div>
     </div>
     <div class="call-actions">${raw(buttons.join(''))}</div>
   </div>`;

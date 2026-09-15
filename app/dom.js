@@ -167,6 +167,46 @@ export function mount(target, htmlString) {
   return /** @type {HTMLElement} */ (el);
 }
 
+/** @type {WeakMap<Element, string>} cle du dernier rendu de chaque cible. */
+const _renderKeys = new WeakMap();
+
+/**
+ * Montage a cle : ne remplace le DOM que quand la STRUCTURE change.
+ *
+ * Pourquoi : une vue repeinte chaque seconde (chronometre d'un appel qui
+ * sonne) qui remplace tout son balisage relance a chaque fois les animations
+ * d'entree et fait clignoter la fenetre d'appel — c'est exactement ce que les
+ * agents voyaient. Ici l'appelant fournit une CLE qui resume tout ce qui
+ * n'est pas un compteur ; tant qu'elle ne change pas, seuls les elements
+ * marques `data-live="…"` voient leur texte mis a jour, en place.
+ *
+ * @param {Element|string} target
+ * @param {string|{__html: string}} htmlString  rendu complet, comme pour `mount`
+ * @param {string} key  resume de la structure ; un changement remonte tout
+ * @returns {boolean} vrai si le balisage a ete remplace, faux s'il a ete rafraichi en place
+ */
+export function mountKeyed(target, htmlString, key) {
+  const el = typeof target === 'string' ? qs(target) : target;
+  if (!el || el.nodeType !== 1) {
+    throw new Error('dom.mountKeyed : cible introuvable (' + String(target) + ').');
+  }
+  const k = String(key == null ? '' : key);
+  if (_renderKeys.get(el) === k && el.childNodes.length) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = isRaw(htmlString) ? /** @type {any} */ (htmlString).__html : (htmlString == null ? '' : String(htmlString));
+    const fresh = tpl.content.querySelectorAll('[data-live]');
+    for (let i = 0; i < fresh.length; i++) {
+      const id = fresh[i].getAttribute('data-live');
+      const cur = el.querySelector('[data-live="' + String(id).replace(/["\\]/g, '\\$&') + '"]');
+      if (cur && cur.textContent !== fresh[i].textContent) cur.textContent = fresh[i].textContent;
+    }
+    return false;
+  }
+  mount(el, htmlString);
+  _renderKeys.set(el, k);
+  return true;
+}
+
 // -----------------------------------------------------------------------------
 //  Construction d'elements
 // -----------------------------------------------------------------------------
