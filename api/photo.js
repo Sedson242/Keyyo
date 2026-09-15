@@ -24,16 +24,33 @@ import { requireRole, readAuthConfig } from './_auth.js';
 import { archiveEnabled, readBlobBytes, writeBlobBytes, readBlobJson, writeBlobJson } from './_archive.js';
 import { fetchUserPhoto, PHOTO_SIZES } from './_graph.js';
 
-/** Duree pendant laquelle une absence de photo n'est pas redemandee. */
-const NONE_TTL_MS = 7 * 24 * 3600 * 1000;
+/** Duree pendant laquelle une absence de photo n'est pas redemandee, selon la raison. */
+const NONE_TTL_MS = Object.freeze({
+  'no-photo': 7 * 24 * 3600 * 1000, // la personne existe, sans photo
+  'no-user': 24 * 3600 * 1000, // adresse inconnue d'Entra : peut etre rapprochee plus tard
+});
 
 /** Duree du cache navigateur d'une photo. */
 const CACHE_PRIVATE = 'private, max-age=86400';
 
-/** @param {string} email @param {number} size @returns {string} chemin Blob, sans l'adresse en clair. */
+/** Duree pendant laquelle un refus de Graph n'est pas redemande (memoire de l'instance). */
+const REFUSAL_TTL_MS = 5 * 60 * 1000;
+
+/** @type {{until: number, hint: string}|null} */
+let _refusal = null;
+
+/** Duree du cache navigateur d'une absence de photo : courte, pour qu'une photo ajoutee apparaisse vite. */
+const CACHE_NONE = 'private, max-age=3600';
+
+/**
+ * Chemin Blob, sans l'adresse en clair. Le segment `v2` date de la recherche par
+ * adresse de messagerie : les absences memorisees avant (adresses prises pour
+ * inconnues) sont ignorees.
+ * @param {string} email @param {number} size @returns {string}
+ */
 function blobPath(email, size) {
   const h = createHash('sha256').update(String(email).toLowerCase()).digest('hex').slice(0, 24);
-  return 'keyyo/photos/' + h + '/' + size;
+  return 'keyyo/photos/v2/' + h + '/' + size;
 }
 
 /**
@@ -61,26 +78,33 @@ export default async function handler(req, res) {
       const cached = await readBlobBytes(path + '.jpg');
       if (cached) return sendImage(res, cached.bytes, cached.contentType);
       const none = await readBlobJson(path + '.none.json');
-      if (none && Date.now() - Date.parse(String(none.at || '')) < NONE_TTL_MS) return sendNone(res);
+      const ttl = none && NONE_TTL_MS[/** @type {'no-photo'|'no-user'} */ (none.reason)] || NONE_TTL_MS['no-user'];
+      if (none && Date.now() - Date.parse(String(none.at || '')) < ttl) return sendNone(res, String(none.reason || ''));
     } catch (err) {
       // Un store en panne ne prive pas de photo : on passe par Graph.
     }
   }
 
-  // 2. Graph.
+  // 2. Graph. Un refus (permission absente) vaut pour tout le monde : on le
+  // garde cinq minutes en memoire plutot que de le redemander pour chaque avatar.
+  if (_refusal && Date.now() < _refusal.until) {
+    return sendJson(res, 503, { error: 'Photo indisponible', hint: _refusal.hint }, 'no-store');
+  }
   const auth = readAuthConfig();
   let photo;
   try {
     photo = await fetchUserPhoto(auth, email, size);
   } catch (err) {
-    return sendJson(res, 503, { error: 'Photo indisponible', hint: errorMessage(err) }, 'no-store');
+    const hint = errorMessage(err);
+    if (/refuse|permission/i.test(hint)) _refusal = { until: Date.now() + REFUSAL_TTL_MS, hint };
+    return sendJson(res, 503, { error: 'Photo indisponible', hint }, 'no-store');
   }
 
   if (photo.status === 'none') {
     if (archiveEnabled()) {
-      try { await writeBlobJson(path + '.none.json', { at: new Date().toISOString() }); } catch (err) { /* sans memoire, on redemandera */ }
+      try { await writeBlobJson(path + '.none.json', { at: new Date().toISOString(), reason: photo.reason }); } catch (err) { /* sans memoire, on redemandera */ }
     }
-    return sendNone(res);
+    return sendNone(res, photo.reason);
   }
   if (archiveEnabled()) {
     try { await writeBlobBytes(path + '.jpg', photo.bytes, photo.contentType); } catch (err) { /* servie quand meme */ }
@@ -98,9 +122,14 @@ function sendImage(res, bytes, contentType) {
   res.end(bytes);
 }
 
-/** @param {any} res */
-function sendNone(res) {
+/**
+ * 404 sans corps. `X-Photo-Reason` dit pourquoi (no-photo, no-user) : lisible
+ * dans l'onglet Réseau du navigateur, sans changer le repli sur les initiales.
+ * @param {any} res @param {string} [reason]
+ */
+function sendNone(res, reason) {
   res.statusCode = 404;
-  res.setHeader('Cache-Control', CACHE_PRIVATE);
+  res.setHeader('Cache-Control', CACHE_NONE);
+  if (reason) res.setHeader('X-Photo-Reason', reason);
   res.end();
 }

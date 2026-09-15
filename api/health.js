@@ -109,11 +109,19 @@ export default async function handler(req, res) {
   await check('photos', 'Photos de profil (Microsoft Graph)', async () => {
     const auth = readAuthConfig();
     const photo = await fetchUserPhoto(auth, session.email, 48);
+    let message;
+    if (photo.status === 'ok') {
+      message = 'Graph répond : votre photo est lisible (' + photo.bytes.length + ' octets'
+        + (photo.via === 'mail' ? ', personne retrouvée par son adresse de messagerie' : '') + '). Les avatars afficheront les photos Entra.';
+    } else if (photo.reason === 'no-user') {
+      message = 'Graph répond, mais aucune personne du locataire ne porte l’adresse ' + session.email
+        + ' (ni comme nom d’utilisateur, ni comme adresse de messagerie). Les photos des collaborateurs dont l’adresse Keyyo diffère de l’adresse Entra resteront des initiales.';
+    } else {
+      message = 'Graph répond : la permission est accordée, mais votre compte n’a pas de photo. Les personnes sans photo gardent leurs initiales.';
+    }
     return {
-      message: photo.status === 'ok'
-        ? 'Graph répond : votre photo est lisible (' + photo.bytes.length + ' octets). Les avatars afficheront les photos Entra.'
-        : 'Graph répond : la permission est accordée, mais votre compte n’a pas de photo. Les personnes sans photo gardent leurs initiales.',
-      detail: { size: 48, status: photo.status, blobCache: archiveEnabled() ? 'keyyo/photos/<empreinte>/<taille>.jpg' : 'aucun (store Blob absent)' },
+      message,
+      detail: { size: 48, status: photo.status, reason: photo.status === 'none' ? photo.reason : undefined, via: photo.status === 'ok' ? photo.via : undefined, blobCache: archiveEnabled() ? 'keyyo/photos/v2/<empreinte>/<taille>.jpg' : 'aucun (store Blob absent)' },
     };
   });
 
