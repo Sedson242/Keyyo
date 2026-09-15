@@ -240,7 +240,7 @@ function paintPicker() {
   const transfer = _mode.kind === 'transfer';
 
   const row = (c) => html`<button class="pick-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}">
-    <span class="avatar avatar--sm" aria-hidden="true">${initials(c.name)}</span>
+    <span class="avatar avatar--sm" aria-hidden="true">${initials(c.name)}${c.photo && /^\/api\/photo\?/.test(String(c.photo)) ? raw(html`<img class="avatar-img" src="${c.photo}" alt="" loading="lazy" decoding="async">`) : ''}</span>
     <span class="pick-body">
       <span class="pick-name">${c.name}${c.manager ? raw(html` <span class="tag tag--ok"><span class="tag-dot" aria-hidden="true"></span>Manager</span>`) : ''}</span>
       <span class="pick-sub">${formatNumber(c.number) || c.number} · ${c.numberKind}${c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : ''}</span>

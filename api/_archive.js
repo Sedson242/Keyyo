@@ -109,6 +109,46 @@ export async function writeBlobJson(pathname, obj) {
   }
 }
 
+/**
+ * Lit un objet BINAIRE du store (une photo). `null` s'il n'existe pas.
+ * @param {string} pathname
+ * @returns {Promise<{bytes: Buffer, contentType: string}|null>}
+ */
+export async function readBlobBytes(pathname) {
+  if (!archiveEnabled()) return null;
+  let result;
+  try {
+    result = await get(pathname, { access: blobAccess() });
+  } catch (err) {
+    const msg = reason(err);
+    if (/not.?found|404|does not exist/i.test(msg)) return null;
+    throw new Error('Lecture Blob impossible (' + pathname + ') : ' + msg);
+  }
+  if (!result || !result.stream) return null;
+  const bytes = Buffer.from(await new Response(result.stream).arrayBuffer());
+  const type = result.blob && result.blob.contentType ? String(result.blob.contentType) : '';
+  return { bytes, contentType: type || 'application/octet-stream' };
+}
+
+/**
+ * Ecrit un objet BINAIRE dans le store, a un chemin stable.
+ * @param {string} pathname
+ * @param {Buffer} bytes
+ * @param {string} contentType
+ * @returns {Promise<void>}
+ */
+export async function writeBlobBytes(pathname, bytes, contentType) {
+  const access = blobAccess();
+  /** @type {any} */
+  const options = { access, contentType: contentType || 'application/octet-stream', addRandomSuffix: false, allowOverwrite: true };
+  if (access === 'public') options.cacheControlMaxAge = 0;
+  try {
+    await put(pathname, bytes, options);
+  } catch (err) {
+    throw new Error('Ecriture Blob impossible (' + pathname + ') : ' + reason(err));
+  }
+}
+
 /** @param {unknown} err @returns {string} */
 function reason(err) {
   const s = (err && /** @type {any} */ (err).message ? String(/** @type {any} */ (err).message) : String(err))

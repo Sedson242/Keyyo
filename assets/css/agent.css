@@ -183,6 +183,8 @@
   letter-spacing: 0.02em;
   flex: 0 0 auto;
 }
+.ag-avatar { position: relative; overflow: hidden; }
+.ag-avatar .avatar-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .ag-avatar--lg { width: 84px; height: 84px; font-size: 26px; }
 .ag-avatar--sm { width: 30px; height: 30px; font-size: 11px; }
 .ag-avatar--dark { background: rgba(255, 255, 255, 0.14); color: #fff; }

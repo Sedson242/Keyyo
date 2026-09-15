@@ -60,6 +60,18 @@ comme rappelé s'il existe, strictement après lui, un appel sortant vers le mê
 correspondant, depuis n'importe quelle ligne du parc. Les manques sont regroupés
 par personne, parce que c'est une personne qu'on rappelle, pas un appel.
 
+### Photos de profil
+
+Les avatars montrent la photo Microsoft Entra de chaque personne (page agent,
+Attribution, Collaborateurs, Administration, barre d'appel). L'application lit
+les photos dans Microsoft Graph avec sa propre inscription Entra, en tant
+qu'application : il faut lui ajouter la permission d'application **Microsoft
+Graph › User.ReadBasic.All** et accorder le consentement administrateur. Sans
+cette permission, les avatars gardent leurs initiales et le contrôle « Photos
+de profil » du Diagnostic dit pourquoi. Les photos sont gardées dans le store
+Blob (jamais l'adresse en clair dans le chemin) et servies uniquement aux
+personnes connectées.
+
 ### Qui a décroché, et transférer à une personne
 
 Sur ce parc, chaque site a **une ligne Keyyo partagée** par toute son équipe :

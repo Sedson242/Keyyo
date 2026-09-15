@@ -19,10 +19,10 @@
 // =============================================================================
 
 import * as session from './session.js';
-import { getAccess, postAccess } from './api.js';
-import { qs, on, html, raw, mount, icon } from './dom.js';
+import { getAccess, postAccess, photoUrl } from './api.js';
+import { qs, on, html, raw, mount, icon, watchBrokenImages } from './dom.js';
 import { fmtRelative, fmtInt, pluralize } from './format.js';
-import { card, notice, empty, skeleton, tag } from './ui.js';
+import { card, notice, empty, skeleton, tag, avatar } from './ui.js';
 import { initialsOf } from '../shared/identity.js';
 import { ROLES, ROLE_ADMIN, ROLE_DIRECTION, ROLE_AGENT, roleLabel } from '../shared/roles.js';
 import { normalizeAccess, upsertMember, removeMember, adminCount } from '../shared/access.js';
@@ -133,7 +133,7 @@ function membersCard() {
   // aucune ne se masque, les cases a cocher passent a la ligne.
   const rows = members.map((m, idx) => html`<tr data-member="${m.email}">
     <td data-label="Personne" class="break">
-      <div class="row"><span class="avatar avatar--sm" aria-hidden="true">${initialsOf(m.name || m.email)}</span>
+      <div class="row">${raw(avatar(m.name || m.email, { size: 'sm', photo: photoUrl(m.email, 48) }))}
         <div class="adm-person"><div class="strong">${m.name || '—'}</div><div class="faint" style="font: var(--t-micro)">${m.email}</div></div></div>
     </td>
     <td data-label="Rôle">
@@ -367,6 +367,7 @@ export function boot() {
     if (s.state !== 'ready') { showGate(s); return; }
     if (!session.isAdmin()) { showGate({ state: 'forbidden', user: s.user }); return; }
     hideGate();
+    watchBrokenImages();
     paintHeader();
     load();
   });

@@ -389,6 +389,22 @@ export async function getHealth(opts) {
 }
 
 /**
+ * Adresse de la photo de profil Entra d'une personne, servie par /api/photo
+ * (jamais par Graph directement : la page n'a aucun jeton Microsoft, et la
+ * CSP n'autorise que nos images). Une personne sans photo repond 404 : les
+ * avatars retombent alors sur les initiales (dom.watchBrokenImages).
+ * @param {string} email
+ * @param {number} [size]  48, 64, 96 (defaut), 120, 240 ou 360 pixels
+ * @returns {string} '' sans adresse
+ */
+export function photoUrl(email, size) {
+  const e = String(email == null ? '' : email).trim().toLowerCase();
+  if (!e || e.indexOf('@') < 0) return '';
+  const s = [48, 64, 96, 120, 240, 360].indexOf(Number(size)) >= 0 ? Number(size) : 96;
+  return '/api/photo?u=' + encodeURIComponent(e) + '&s=' + s;
+}
+
+/**
  * Qui est connecte. Repond 200 avec `{ authenticated, user }`, 401 sans
  * session, 503 si la connexion n'est pas configuree — les deux derniers
  * arrivent en ApiError, que app/session.js traduit en etat d'ecran.

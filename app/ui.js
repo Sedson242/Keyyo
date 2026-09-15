@@ -396,17 +396,27 @@ export function tag(label, tone) {
  *
  * L'element est `aria-hidden` : il double toujours un nom deja lisible a cote.
  *
+ * Avec `photo`, la photo de profil (servie par /api/photo) couvre les
+ * initiales ; si elle ne se charge pas (pas de photo, Graph refuse), le
+ * navigateur retire l'image et les initiales reapparaissent — voir
+ * dom.watchBrokenImages. Seule une adresse de notre origine est acceptee :
+ * la CSP n'en chargerait pas d'autre, et on ne veut pas d'URL exterieure
+ * dans un attribut src.
+ *
  * @param {string} label
  * @param {object} [opts]
  * @param {'sm'|'md'|'lg'} [opts.size]  Defaut : 'md'.
  * @param {'out'|'missed'|'dark'} [opts.tone]
+ * @param {string} [opts.photo]  adresse relative de la photo (`/api/photo?u=…`)
  * @returns {string}
  */
 export function avatar(label, opts) {
   const o = opts || {};
   const size = AVATAR_SIZES.indexOf(String(o.size)) >= 0 ? ' avatar--' + o.size : '';
   const cls = 'avatar' + size + toneMod('avatar', o.tone, AVATAR_TONES);
-  return html`<span class="${raw(cls)}" aria-hidden="true">${initialsOf(label)}</span>`;
+  const photo = typeof o.photo === 'string' && /^\/api\/photo\?/.test(o.photo) ? o.photo : '';
+  const img = photo ? html`<img class="avatar-img" src="${photo}" alt="" loading="lazy" decoding="async">` : '';
+  return html`<span class="${raw(cls)}" aria-hidden="true">${initialsOf(label)}${raw(img)}</span>`;
 }
 
 /**

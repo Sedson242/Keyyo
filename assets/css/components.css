@@ -318,6 +318,10 @@
   text-transform: uppercase;
   user-select: none;
 }
+/* Photo de profil Entra par-dessus les initiales ; retiree si elle ne se
+   charge pas (dom.watchBrokenImages), les initiales restent. */
+.avatar { position: relative; overflow: hidden; }
+.avatar-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .avatar--sm { width: 26px; height: 26px; font-size: 10px; }
 .avatar--lg { width: 46px; height: 46px; font-size: 14px; }
 .avatar--out { background: var(--out-soft); color: var(--out); }

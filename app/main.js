@@ -35,7 +35,7 @@ import {
   state, setFilter, subscribe, load, status,
   getRows, filtered, getLines, lineByCsi, labelOf, callbackAnalysis,
 } from './store.js';
-import { qs, qsa, on, html, raw, mount } from './dom.js';
+import { qs, qsa, on, html, raw, mount, watchBrokenImages } from './dom.js';
 import {
   fmtInt, fmtDate, fmtTime, fmtDuration, fmtDurationShort,
   fmtRelative, fmtClock, fmtPct, pluralize,
@@ -964,6 +964,7 @@ export function boot() {
       return;
     }
     hideGate();
+    watchBrokenImages();
     startApp();
   });
 }

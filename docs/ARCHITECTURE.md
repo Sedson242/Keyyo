@@ -470,7 +470,8 @@ troncature ; tant qu'il ne l'est pas, il figure dans `store.missingMonths`.
 | `GET /api/health` | direction | `{ status: 'ok'\|'empty'\|'error', calls, period, lines, checks[], elapsedMs }` |
 | `GET /api/sync` | direction ou cron | `{ ok, at, store, period, warnings }` — cible du cron |
 | `GET /api/oauth` | direction, si `KEYYO_OAUTH_SETUP=1` | page HTML : refresh token Keyyo avec `cti_admin` |
-| `GET /api/me` | connecté | `{ user, line, lines[], colleagues[], managers[], journal, warnings }` — ma ligne, mes collègues avec un numéro chacun |
+| `GET /api/me` | connecté | `{ user, line, lines[], colleagues[], managers[], journal, warnings }` — ma ligne, mes collègues avec un numéro et une `photo` chacun |
+| `GET /api/photo` | connecté | `?u=<adresse>&s=<48…360>` → `image/jpeg` (cache privé 1 j), `404` sans photo, `503` si Graph refuse. Photo Entra lue par `api/_graph.js` avec le jeton d'**application** (permission `User.ReadBasic.All`, consentement admin), gardée dans le Blob `keyyo/photos/<empreinte>/<taille>.jpg`, l'absence mémorisée 7 j |
 | `POST /api/cti-token` | connecté | `{ csi, number, token, expiresAt, line, lines[] }` — jeton CSI (1 h) ; `409` + `lines` si aucune ligne rattachée |
 | `POST /api/events` | connecté | `{ accepted, rejected, byMonth }` — écrit dans la partition de la session |
 | `GET /api/events` | connecté (`scope=all` : direction) | `{ month, scope, events[], partitions, summary, lineOwners }` — `summary` applique l'attribution d'office des lignes personnelles |
@@ -571,6 +572,8 @@ export function raw(s): {__html: string}          // marque une valeur déjà s�
 export function mount(target, htmlString): HTMLElement
 export function mountKeyed(target, htmlString, key): boolean   // ne remonte le DOM que si `key` change ;
                                                                // sinon rafraîchit le texte des [data-live] en place
+export function watchBrokenImages(): void                      // retire toute .avatar-img qui ne se charge pas
+                                                               // (les initiales reviennent) — une fois par page
 export function qs(sel, root?): HTMLElement|null
 export function qsa(sel, root?): HTMLElement[]
 export function on(root, event, selector, handler): void   // délégation d'évènements
@@ -659,6 +662,7 @@ export async function getDirectory(): Promise<any>
 export async function getHealth(): Promise<any>
 export async function getMe(): Promise<any>        // /api/auth?action=me, jamais mis en cache
 export async function getProfile(opts?): Promise<any>        // /api/me
+export function photoUrl(email, size?): string               // '/api/photo?u=…&s=96' ; '' sans adresse
 export async function postCtiToken(opts?): Promise<any>      // { csi? }
 export async function postEvents(events, opts?): Promise<any> // { keepalive? }
 export async function getEvents(opts?): Promise<any>         // { month?, scope? }

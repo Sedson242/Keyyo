@@ -26,6 +26,7 @@ import {
 } from './_keyyo.js';
 import { archiveEnabled, loadArchive } from './_archive.js';
 import { requireRole, readAuthConfig, authSummary } from './_auth.js';
+import { fetchUserPhoto } from './_graph.js';
 import { resolveLineIdentities } from '../shared/identity.js';
 import { isoDaysAgo, todayIso, nextDay } from '../shared/time.js';
 import { SCHEMA_VERSION, F } from '../shared/schema.js';
@@ -99,6 +100,20 @@ export default async function handler(req, res) {
             + 'changer ce dernier déconnectera tout le monde.'
           : ''),
       detail: summary,
+    };
+  });
+
+  // -- 0 bis. Photos de profil (Microsoft Graph) ------------------------------
+  // On demande la photo de la personne connectee avec le jeton d'application :
+  // 200 ou 404 prouvent la permission ; 403 dit ce qu'il manque.
+  await check('photos', 'Photos de profil (Microsoft Graph)', async () => {
+    const auth = readAuthConfig();
+    const photo = await fetchUserPhoto(auth, session.email, 48);
+    return {
+      message: photo.status === 'ok'
+        ? 'Graph répond : votre photo est lisible (' + photo.bytes.length + ' octets). Les avatars afficheront les photos Entra.'
+        : 'Graph répond : la permission est accordée, mais votre compte n’a pas de photo. Les personnes sans photo gardent leurs initiales.',
+      detail: { size: 48, status: photo.status, blobCache: archiveEnabled() ? 'keyyo/photos/<empreinte>/<taille>.jpg' : 'aucun (store Blob absent)' },
     };
   });
 

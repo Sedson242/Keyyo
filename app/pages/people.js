@@ -28,6 +28,7 @@ import { fmtInt, fmtPct, fmtHms, fmtDate, pluralize } from '../format.js';
 import { sectionHead, card, notice, empty, skeleton, table, tag, avatar, meter, kpi } from '../ui.js';
 import { barChart, attachChartTips } from '../charts.js';
 import { state, status, getRows, getLines, byLine, stats, setFilter } from '../store.js';
+import { photoUrl } from '../api.js';
 import { F } from '../../shared/schema.js';
 import { formatCsi } from '../../shared/identity.js';
 
@@ -387,7 +388,7 @@ function personCard(p) {
 
   return html`<article class="person">
     <div class="person-head">
-      ${raw(avatar(p.label, { size: 'lg', tone: person || p.shared ? undefined : 'missed' }))}
+      ${raw(avatar(p.label, { size: 'lg', tone: person || p.shared ? undefined : 'missed', photo: person && person.email ? photoUrl(person.email, 96) : '' }))}
       <div class="grow">
         <div class="person-name truncate">${p.name}</div>
         <div class="person-mail">${p.mail}</div>
@@ -452,7 +453,7 @@ function comparisonTable(people) {
 
     return [
       html`<div class="cell-id">
-        ${raw(avatar(p.label, { tone: person || p.shared ? undefined : 'missed' }))}
+        ${raw(avatar(p.label, { tone: person || p.shared ? undefined : 'missed', photo: person && person.email ? photoUrl(person.email, 48) : '' }))}
         <div class="cell-id-body">
           <div class="cell-id-name">${p.name}</div>
           <div class="cell-id-sub">${sub}</div>

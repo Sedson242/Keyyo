@@ -20,6 +20,7 @@
 import { html, raw, mount, on } from '../dom.js';
 import { card, sectionHead, table, tag, avatar, notice, empty, skeleton, kpi } from '../ui.js';
 import { journal, loadJournal, labelOf, getLines, lineByCsi } from '../store.js';
+import { photoUrl } from '../api.js';
 import { fmtInt, fmtPct, fmtDurationShort, fmtRelative, fmtMonth, pluralize } from '../format.js';
 import { formatNumber } from '../../shared/phone.js';
 import { monthOf } from '../../shared/journal.js';
@@ -196,7 +197,7 @@ function agentsCard(agents) {
     if (a.auto) detail.push(fmtInt(a.auto) + ' d’office');
     return [
       html`<button class="cell-id" type="button" data-person="${a.email}" aria-expanded="${open ? 'true' : 'false'}" title="${open ? 'Fermer la fiche' : 'Ouvrir la fiche de ' + name}">
-        ${raw(avatar(name, { size: 'sm' }))}
+        ${raw(avatar(name, { size: 'sm', photo: photoUrl(a.email, 48) }))}
         <div class="cell-id-body"><div class="cell-id-name">${name}</div><div class="cell-id-sub">${a.email}${a.lines && a.lines.length ? ' · ligne personnelle' : ''}</div></div>
       </button>`,
       html`<span class="tnum">${fmtInt(a.taken)}</span>${detail.length ? raw(html` <span class="faint" title="déclarés : pris au téléphone puis déclarés ici · d’office : décrochés sur sa ligne personnelle">(${detail.join(', ')})</span>`) : ''}`,
@@ -308,7 +309,7 @@ function personCard(a, events) {
   });
 
   return card({
-    title: name,
+    title: raw(html`<span class="row">${raw(avatar(name, { size: 'lg', photo: photoUrl(email, 96) }))}<span>${name}</span></span>`),
     sub: email + (own.size ? ' · ligne personnelle : ' + Array.from(own).map((c) => { const l = lineByCsi(c); return l ? l.label : formatNumber(c); }).join(', ') : ' · pas de ligne personnelle : seules ses actions dans l’application comptent'),
     action: raw(html`<button class="btn btn--sm btn--ghost" type="button" data-person="${email}" data-person-card>Fermer</button>`),
     body: raw(html`<div class="diag-grid">

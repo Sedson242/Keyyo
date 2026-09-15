@@ -162,10 +162,10 @@ const CONTRACT = [
   ['../shared/journal.js', ['EVENT_TYPES', 'JOURNAL_VERSION', 'DIR_IN', 'DIR_OUT', 'eventId', 'normalizeEvent', 'isValidEvent', 'mergeEvents', 'monthOf', 'summarize']],
 
   ['../app/format.js', ['fmtInt', 'fmtPct', 'fmtDuration', 'fmtDurationShort', 'fmtHms', 'fmtDate', 'fmtDateLong', 'fmtDayShort', 'fmtTime', 'fmtMonth', 'fmtClock', 'fmtRelative', 'WEEKDAYS', 'pluralize']],
-  ['../app/dom.js', ['esc', 'h', 'html', 'raw', 'mount', 'mountKeyed', 'qs', 'qsa', 'on', 'icon']],
+  ['../app/dom.js', ['esc', 'h', 'html', 'raw', 'mount', 'mountKeyed', 'watchBrokenImages', 'qs', 'qsa', 'on', 'icon']],
   ['../app/charts.js', ['barChart', 'areaChart', 'donutChart', 'heatmap', 'sparkline', 'attachChartTips']],
   ['../app/ui.js', ['card', 'sectionHead', 'kpi', 'statbar', 'table', 'tag', 'avatar', 'avatarStack', 'meter', 'split', 'rankRow', 'empty', 'notice', 'skeleton', 'toolbar']],
-  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'getAccess', 'postAccess', 'postSync', 'ApiError']],
+  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'getAccess', 'postAccess', 'postSync', 'photoUrl', 'ApiError']],
   ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'isAdmin', 'roleLabel', 'loginUrl', 'forget']],
   // admin.js ne s'amorce que si #admin-root est present : importable ici.
   ['../app/admin.js', ['boot']],
@@ -989,6 +989,7 @@ if (need(roles, 'shared/roles.js', 'shared/roles.js')) suite('shared/roles.js', 
     eq(canAccess('/api/sync', 'agent'), false);
     eq(canAccess('/api/directory', 'agent'), true);
     eq(canAccess('/api/directory', 'direction'), true);
+    eq(canAccess('/api/photo', 'agent'), true, 'les photos sont visibles de toute personne connectee');
   });
 
   test('la query est ignoree pour retrouver la route', () => {
@@ -1875,6 +1876,16 @@ if (need(ui, 'app/ui.js', 'app/ui.js')) suite('app/ui.js', () => {
     has(out, 'Colonne A');
     has(out, 'quatre');
     ok(typeof table({ columns: [], rows: [] }) === 'string', 'un tableau vide ne leve pas');
+  });
+
+  test('avatar : une photo de notre origine couvre les initiales, toute autre adresse est ignoree', () => {
+    const withPhoto = avatar('Marie Dupont', { size: 'sm', photo: '/api/photo?u=marie%40bios.fr&s=48' });
+    has(withPhoto, 'MD', 'les initiales restent derriere la photo');
+    has(withPhoto, 'class="avatar-img"');
+    has(withPhoto, 'src="/api/photo?u=marie%40bios.fr&amp;s=48"');
+    lacks(avatar('Marie Dupont', { photo: 'https://evil.example/x.jpg' }), '<img', 'jamais d’adresse exterieure');
+    lacks(avatar('Marie Dupont', { photo: 'javascript:alert(1)' }), '<img');
+    lacks(avatar('Marie Dupont'), '<img');
   });
 
   test('tag, avatar et avatarStack restent lisibles en toute circonstance', () => {

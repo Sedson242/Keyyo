@@ -167,6 +167,23 @@ export function mount(target, htmlString) {
   return /** @type {HTMLElement} */ (el);
 }
 
+let _imagesWatched = false;
+
+/**
+ * Retire toute image `.avatar-img` qui ne se charge pas : les initiales
+ * qu'elle couvrait reapparaissent. Un seul ecouteur, en phase de capture
+ * (l'evenement `error` d'une image ne remonte pas), pose une fois par page.
+ * La CSP interdit les gestionnaires en ligne : c'est la seule facon de faire.
+ */
+export function watchBrokenImages() {
+  if (_imagesWatched || typeof document === 'undefined') return;
+  _imagesWatched = true;
+  document.addEventListener('error', function (ev) {
+    const t = /** @type {any} */ (ev && ev.target);
+    if (t && t.tagName === 'IMG' && t.classList && t.classList.contains('avatar-img') && t.parentNode) t.parentNode.removeChild(t);
+  }, true);
+}
+
 /** @type {WeakMap<Element, string>} cle du dernier rendu de chaque cible. */
 const _renderKeys = new WeakMap();
 

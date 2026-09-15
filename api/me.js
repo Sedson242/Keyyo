@@ -26,6 +26,11 @@ import { toE164 } from '../shared/phone.js';
 /** Cache prive et court : le profil bouge peu, mais il est nominatif. */
 const CACHE_PRIVATE = 'private, max-age=120';
 
+/** @param {string} email @returns {string} adresse de la photo Entra, servie par /api/photo. */
+function photoUrl(email) {
+  return '/api/photo?u=' + encodeURIComponent(String(email).toLowerCase()) + '&s=96';
+}
+
 /**
  * @param {any} req
  * @param {any} res
@@ -111,6 +116,7 @@ export default async function handler(req, res) {
           numberKind: admin ? 'direct' : (direct ? 'poste' : (own ? 'direct' : 'ligne du site')),
           lines: line ? [line.label] : [],
           manager: !!m.email && directionSet.has(m.email),
+          photo: m.email ? photoUrl(m.email) : '',
         });
       }
     }
@@ -126,6 +132,7 @@ export default async function handler(req, res) {
           numberKind: 'direct',
           lines: labels,
           manager: directionSet.has(m.email),
+          photo: photoUrl(m.email),
         });
       }
     }
@@ -138,7 +145,7 @@ export default async function handler(req, res) {
 
     res.setHeader('Vary', 'Cookie');
     sendJson(res, 200, {
-      user: Object.assign(publicUser(session), { roleLabel: roleLabel(session.role) }),
+      user: Object.assign(publicUser(session), { roleLabel: roleLabel(session.role), photo: photoUrl(session.email) }),
       line: myLines.length === 1 ? myLines[0] : null,
       lines,
       colleagues,

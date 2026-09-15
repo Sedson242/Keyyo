@@ -27,8 +27,8 @@
 import * as session from './session.js';
 import * as cti from './cti.js';
 import * as journal from './journal.js';
-import { getProfile, getDirectory } from './api.js';
-import { qs, on, html, raw, mount, mountKeyed, icon } from './dom.js';
+import { getProfile, getDirectory, photoUrl } from './api.js';
+import { qs, on, html, raw, mount, mountKeyed, icon, watchBrokenImages } from './dom.js';
 import { fmtInt, fmtDurationShort, fmtRelative, pluralize, fmtDate, fmtTime } from './format.js';
 import { card, notice, empty, skeleton, tag } from './ui.js';
 import { toE164, formatNumber, numberKind } from '../shared/phone.js';
@@ -185,12 +185,30 @@ function hueOf(label) {
  * @param {string} label
  * @param {'sm'|'md'|'lg'} [size]
  * @param {boolean} [dark]
+ * @param {string} [photo]  adresse de la photo Entra (/api/photo?…), couvre les initiales
  * @returns {string}
  */
-function avatarOf(label, size, dark) {
+function avatarOf(label, size, dark, photo) {
   const cls = 'ag-avatar' + (size === 'lg' ? ' ag-avatar--lg' : (size === 'sm' ? ' ag-avatar--sm' : '')) + (dark ? ' ag-avatar--dark' : '');
   const ini = /^\+?\d/.test(String(label || '')) ? '#' : (initialsOf(label) || '?');
-  return html`<span class="${cls}" style="--hue:${hueOf(label)}" aria-hidden="true">${ini}</span>`;
+  const src = typeof photo === 'string' && /^\/api\/photo\?/.test(photo) ? photo : '';
+  const px = size === 'lg' ? 240 : 96;
+  const img = src ? html`<img class="avatar-img" src="${src.replace(/&s=\d+$/, '&s=' + px)}" alt="" loading="lazy" decoding="async">` : '';
+  return html`<span class="${cls}" style="--hue:${hueOf(label)}" aria-hidden="true">${ini}${raw(img)}</span>`;
+}
+
+/**
+ * Photo d'un numero : celle du collegue qui le porte, sinon rien (un
+ * correspondant exterieur n'a pas de photo Entra).
+ * @param {string} number
+ * @returns {string}
+ */
+function photoOfNumber(number) {
+  // Le numero d'une ligne de site est porte par toute une equipe : aucune
+  // photo ne serait la bonne.
+  if (lineByNumber(number)) return '';
+  const c = colleagueByNumber(number);
+  return c && c.photo ? String(c.photo) : '';
 }
 
 /** @param {number} unix @returns {string} `HH:MM` si aujourd'hui, sinon `jj/mm`. */
@@ -326,7 +344,7 @@ function paintSide() {
   const av = qs('#ag-user-avatar');
   if (name && u) { name.textContent = u.name; name.setAttribute('title', u.email); }
   if (role && u) role.textContent = u.roleLabel;
-  if (av && u) mount(av, avatarOf(u.name, 'sm'));
+  if (av && u) mount(av, avatarOf(u.name, 'sm', false, _profile && _profile.user && _profile.user.photo ? _profile.user.photo : photoUrl(u.email)));
 
   const link = qs('#link-supervision');
   if (link) link.hidden = !session.isDirection();
@@ -426,7 +444,7 @@ function paintList() {
     const managers = list.filter((c) => c.manager);
     const others = list.filter((c) => !c.manager);
     const row = (c, i) => html`<button class="ag-row${_selected.kind === 'colleague' && _selected.id === String(i) ? ' is-selected' : ''}" type="button" data-colleague="${i}">
-      ${raw(avatarOf(c.name))}
+      ${raw(avatarOf(c.name, undefined, false, c.photo))}
       <span class="ag-row-body">
         <span class="ag-row-name">${c.name}</span>
         <span class="ag-row-status">${c.manager ? raw(tag('Manager', 'ok')) : ''}${formatNumber(c.number) || c.number} · ${numberKindLabel(c)}</span>
@@ -467,7 +485,7 @@ function callRow(c) {
   const st = statusOf(c);
   const selected = _selected.kind === 'call' && _selected.id === c.callref;
   return html`<button class="ag-row${c.live ? ' is-live' : ''}${selected ? ' is-selected' : ''}" type="button" data-call="${c.callref}">
-    ${raw(avatarOf(label))}
+    ${raw(avatarOf(label, undefined, false, photoOfNumber(c.peer)))}
     <span class="ag-row-body">
       <span class="ag-row-name">${label}</span>
       <span class="ag-row-status ${st.cls}">${raw(icon(st.icon))}${raw(live('row:' + c.callref, st.text))}</span>
@@ -553,7 +571,7 @@ function callDetail(c) {
   if (c.dir === 'in' && c.answered) facts.push(['Pris par', c.mine ? 'vous' : 'non attribué']);
 
   return html`<div class="ag-detail-head">
-      ${raw(avatarOf(label, 'lg'))}
+      ${raw(avatarOf(label, 'lg', false, photoOfNumber(c.peer)))}
       <div>
         <h2 class="ag-detail-name">${label}</h2>
         <p class="ag-detail-sub">${number ? number + ' · ' : ''}${kind}</p>
@@ -569,7 +587,7 @@ function colleagueDetail(c) {
   const snap = cti.snapshot();
   const live = snap.calls.find((x) => x.state === 'CONNECT' || x.state === 'SETUP');
   return html`<div class="ag-detail-head">
-      ${raw(avatarOf(c.name, 'lg'))}
+      ${raw(avatarOf(c.name, 'lg', false, c.photo))}
       <div>
         <h2 class="ag-detail-name">${c.name}</h2>
         <p class="ag-detail-sub">${formatNumber(c.number) || c.number} · ${c.numberKind}${c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : ''}</p>
@@ -612,7 +630,7 @@ function activityView() {
 
   const callees = me && me.callees.length
     ? html`<div class="ag-simple">${me.callees.slice(0, 8).map((c) => raw(html`<div class="ag-simple-row">
-        ${raw(avatarOf(labelOf(c.to), 'sm'))}
+        ${raw(avatarOf(labelOf(c.to), 'sm', false, photoOfNumber(c.to)))}
         <div><div class="ag-simple-main">${labelOf(c.to)}</div><div class="ag-simple-sub">${formatNumber(c.to)}${lineByNumber(c.to) ? ' · ligne partagée : la personne visée est dans « Derniers faits »' : ''}</div></div>
         <div class="ag-simple-metric">${fmtInt(c.count)}</div>
       </div>`))}</div>`
@@ -762,7 +780,7 @@ function paintPopup() {
       <button type="button" data-popup-close aria-label="Fermer" title="Fermer cette fenêtre (l’appel continue)">${raw(icon('close'))}</button>
     </div>
     <div class="call-card-body">
-      ${raw(avatarOf(label, 'lg', true))}
+      ${raw(avatarOf(label, 'lg', true, photoOfNumber(c.peer)))}
       <div class="call-card-name">${label}</div>
       <div class="call-card-sub">${sub}</div>
       <div class="call-card-timer">${raw(timer)}</div>
@@ -798,7 +816,7 @@ function paintDialer() {
       ? 'via la ligne ' + viaLine.label + ' (' + (formatNumber(c.number) || c.number) + ') · sonne pour tout le site'
       : (formatNumber(c.number) || c.number) + ' · ' + numberKindLabel(c) + (c.lines && c.lines.length ? ' · ' + c.lines.join(', ') : '');
     return html`<button class="dl-row" type="button" data-pick-number="${c.number}" data-pick-name="${c.name}">
-    ${raw(avatarOf(c.name, 'sm'))}
+    ${raw(avatarOf(c.name, 'sm', false, c.photo))}
     <span><span class="dl-row-name">${c.name}${c.manager ? raw(tag('Manager', 'ok')) : ''}</span><span class="dl-row-sub">${sub}</span></span>
     <span class="dl-row-go">${transfer ? 'Transférer' : 'Appeler'}</span>
   </button>`;
@@ -1017,6 +1035,7 @@ async function loadActivity() {
 
 async function startApp() {
   hideGate();
+  watchBrokenImages();
   _month = monthOf(Math.floor(Date.now() / 1000));
   wire();
   paintSide();
