@@ -26,7 +26,7 @@ import {
 } from './_keyyo.js';
 import { archiveEnabled, loadArchive } from './_archive.js';
 import { requireRole, readAuthConfig, authSummary } from './_auth.js';
-import { fetchUserPhoto } from './_graph.js';
+import { fetchUserPhoto, graphTokenRoles } from './_graph.js';
 import { resolveLineIdentities } from '../shared/identity.js';
 import { isoDaysAgo, todayIso, nextDay } from '../shared/time.js';
 import { SCHEMA_VERSION, F } from '../shared/schema.js';
@@ -108,6 +108,21 @@ export default async function handler(req, res) {
   // 200 ou 404 prouvent la permission ; 403 dit ce qu'il manque.
   await check('photos', 'Photos de profil (Microsoft Graph)', async () => {
     const auth = readAuthConfig();
+    // Les permissions d'application sont lues dans le jeton : sans « roles »,
+    // inutile d'interroger Graph, et on sait exactement quoi dire.
+    const roles = await graphTokenRoles(auth);
+    if (!roles.some((r) => /^User\.(ReadBasic\.All|Read\.All|ReadWrite\.All)$/.test(r))) {
+      return {
+        level: 'warn',
+        message: (roles.length
+          ? 'Le jeton d’application Graph porte ' + roles.length + ' permission(s) (' + roles.join(', ') + '), mais pas « User.ReadBasic.All ». '
+          : 'Le jeton d’application Graph ne porte AUCUNE permission : le consentement administrateur n’a pas été donné. ')
+          + 'Les avatars restent des initiales. Dans Entra › Inscriptions d’applications › cette application › API autorisées : '
+          + '« Ajouter une autorisation » › Microsoft Graph › Autorisations d’application › User.ReadBasic.All, '
+          + 'puis « Accorder un consentement d’administrateur ». Effet sous quelques minutes, sans redéploiement.',
+        detail: { roles, wanted: 'User.ReadBasic.All (application)' },
+      };
+    }
     const photo = await fetchUserPhoto(auth, session.email, 48);
     let message;
     if (photo.status === 'ok') {
@@ -121,7 +136,7 @@ export default async function handler(req, res) {
     }
     return {
       message,
-      detail: { size: 48, status: photo.status, reason: photo.status === 'none' ? photo.reason : undefined, via: photo.status === 'ok' ? photo.via : undefined, blobCache: archiveEnabled() ? 'keyyo/photos/v2/<empreinte>/<taille>.jpg' : 'aucun (store Blob absent)' },
+      detail: { roles, size: 48, status: photo.status, reason: photo.status === 'none' ? photo.reason : undefined, via: photo.status === 'ok' ? photo.via : undefined, blobCache: archiveEnabled() ? 'keyyo/photos/v2/<empreinte>/<taille>.jpg' : 'aucun (store Blob absent)' },
     };
   });
 

@@ -77,6 +77,25 @@ export async function graphToken(auth) {
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 
 /**
+ * Permissions d'application portees par le jeton Graph (revendication `roles`),
+ * lues dans le jeton lui-meme sans le divulguer. Vide = aucun consentement
+ * administrateur n'a ete donne a l'application : Graph refusera tout.
+ * @param {import('./_auth.js').AuthConfig} auth
+ * @returns {Promise<string[]>}
+ */
+export async function graphTokenRoles(auth) {
+  const token = await graphToken(auth);
+  const parts = token.split('.');
+  if (parts.length < 2) return [];
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    return Array.isArray(payload.roles) ? payload.roles.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Code et message d'erreur d'une reponse Graph, sans jamais lever.
  * @param {Response} answer
  * @returns {Promise<{code: string, message: string}>}
