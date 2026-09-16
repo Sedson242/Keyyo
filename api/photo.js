@@ -96,7 +96,9 @@ export default async function handler(req, res) {
     photo = await fetchUserPhoto(auth, email, size);
   } catch (err) {
     const hint = errorMessage(err);
-    if (/refuse|permission/i.test(hint)) _refusal = { until: Date.now() + REFUSAL_TTL_MS, hint };
+    // Seul un refus du JETON (permission absente) vaut pour tout le monde :
+    // un echec propre a une adresse ne doit pas priver les autres de photo.
+    if (err && /** @type {any} */ (err).code === 'graph-refused') _refusal = { until: Date.now() + REFUSAL_TTL_MS, hint };
     // Le Diagnostic (?deep=1 non requis) reste le juge : il ne passe pas par ce cache.
     return sendJson(res, 503, { error: 'Photo indisponible', hint }, 'no-store');
   }

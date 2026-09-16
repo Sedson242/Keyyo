@@ -124,8 +124,11 @@ async function refused(answer, what) {
   _token = { value: '', expiresAt: 0 }; // le prochain appel repart d'un jeton neuf
   const e = await graphError(answer);
   const detail = e.message || e.code;
-  throw new Error('Graph refuse ' + what + ' (HTTP ' + answer.status + (detail ? ', ' + detail.slice(0, 160) : '') + '). '
+  const err = new Error('Graph refuse ' + what + ' (HTTP ' + answer.status + (detail ? ', ' + detail.slice(0, 160) : '') + '). '
     + 'Dans l’inscription Entra de l’application, ajouter la permission d’application Microsoft Graph « User.ReadBasic.All » et accorder le consentement administrateur.');
+  // Marque lue par api/photo.js : ce refus-la vaut pour tout le monde.
+  /** @type {any} */ (err).code = 'graph-refused';
+  throw err;
 }
 
 /**
@@ -145,8 +148,12 @@ async function findUserIdByMail(token, email) {
   for (const filter of filters) {
     const url = GRAPH + '/users?$select=id&$top=1&$filter=' + encodeURIComponent(filter);
     const answer = await timedFetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
-    if (answer.status === 400) continue; // filtre non accepte : forme plus simple
-    if (answer.status === 401 || answer.status === 403) return refused(answer, 'la recherche d’une personne par adresse');
+    // 400 : filtre non accepte ; 403 : ce filtre (proxyAddresses) demande plus
+    // que User.ReadBasic.All. Dans les deux cas, on essaie la forme plus
+    // simple, et a defaut la personne est simplement inconnue — jamais une
+    // erreur, la permission de lire les photos, elle, fonctionne.
+    if (answer.status === 400 || answer.status === 403) continue;
+    if (answer.status === 401) return refused(answer, 'la recherche d’une personne par adresse');
     if (!answer.ok) throw new Error('Graph a répondu HTTP ' + answer.status + ' à la recherche de ' + email + '.');
     const j = await answer.json();
     const first = j && Array.isArray(j.value) && j.value[0] ? j.value[0] : null;
