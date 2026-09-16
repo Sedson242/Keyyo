@@ -48,7 +48,7 @@ const MAX_SERIES_DAYS = 731;
  *
  * @type {{ page: string, from: string, to: string, preset: number|string,
  *          csi: string, dir: ''|'in'|'out'|'missed', search: string,
- *          granularity: 'day'|'week'|'month' }}
+ *          granularity: 'auto'|'day'|'week'|'month' }}
  */
 export const state = {
   page: 'monitoring',
@@ -58,14 +58,34 @@ export const state = {
   csi: '',
   dir: '',
   search: '',
-  granularity: 'day',
+  granularity: 'auto',
 };
 
 /** Cles reconnues de `state` : un patch qui en contient d'autres est signale. */
 const STATE_KEYS = Object.keys(state);
 
 const DIRECTIONS = ['', 'in', 'out', 'missed'];
-const GRANULARITIES = ['day', 'week', 'month'];
+const GRANULARITIES = ['auto', 'day', 'week', 'month'];
+
+/** Jusqu'a un mois, la granularite automatique est le jour ; jusqu'a six mois, la semaine. */
+const AUTO_DAY_MAX = 31;
+const AUTO_WEEK_MAX = 186;
+
+/**
+ * Granularite EFFECTIVE d'une serie : celle choisie, ou, en automatique,
+ * celle qui garde le graphique lisible sur la periode courante — 92 points
+ * d'un jour ne se lisent pas, 13 semaines si.
+ * @param {string} [unit]  defaut : `state.granularity`
+ * @returns {'day'|'week'|'month'}
+ */
+export function effectiveGranularity(unit) {
+  const u = unit == null ? state.granularity : String(unit);
+  if (u === 'day' || u === 'week' || u === 'month') return u;
+  const days = state.from && state.to ? daysBetween(state.from, state.to) + 1 : 0;
+  if (days <= AUTO_DAY_MAX) return 'day';
+  if (days <= AUTO_WEEK_MAX) return 'week';
+  return 'month';
+}
 
 // -----------------------------------------------------------------------------
 //  Etat interne
@@ -219,7 +239,7 @@ function coerce(key, value) {
     case 'dir':
       return DIRECTIONS.indexOf(String(value == null ? '' : value)) >= 0 ? String(value == null ? '' : value) : '';
     case 'granularity':
-      return GRANULARITIES.indexOf(String(value)) >= 0 ? String(value) : 'day';
+      return GRANULARITIES.indexOf(String(value)) >= 0 ? String(value) : 'auto';
     case 'preset':
       return value === 'all' ? 'all' : (Number(value) > 0 ? Math.floor(Number(value)) : DEFAULT_DAYS);
     default:
@@ -736,7 +756,7 @@ export function heatMatrix(rows) {
  */
 export function trend(rows, unit) {
   const list = Array.isArray(rows) ? rows : [];
-  const u = GRANULARITIES.indexOf(String(unit)) >= 0 ? String(unit) : state.granularity;
+  const u = effectiveGranularity(GRANULARITIES.indexOf(String(unit)) >= 0 ? String(unit) : undefined);
 
   if (u === 'month') return byMonth(list).map(flatten);
   if (u === 'day') return byDay(list).map(flatten);

@@ -1487,7 +1487,7 @@ if (need(format, 'app/format.js', 'app/format.js')) suite('app/format.js', () =>
     eq(ws(ago(250)), 'il y a 4 min');
     eq(ws(ago(3 * 3600)), 'il y a 3 h');
     eq(ago(30 * 3600), 'hier');
-    ok(/\d{2}\/\d{2}\/\d{4}/.test(ago(10 * 86400)), 'au-dela de deux jours : la date');
+    ok(/^\d{2}\/\d{2}\/\d{2}$/.test(ago(10 * 86400)), 'au-dela de deux jours : la date en jj/mm/aa');
     eq(fmtRelative('pas une date'), '—');
     eq(ago(-60), "à l'instant", 'horloge en avance : jamais de duree negative');
   });

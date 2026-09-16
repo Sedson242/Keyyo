@@ -39,7 +39,7 @@ import { barChart, areaChart, attachChartTips } from '../charts.js';
 import {
   state, setFilter, filtered, getRows, stats,
   byDay, byMonth, byLine, callbackAnalysis,
-  labelOf, lineByCsi, status, journal, loadJournal, nameOfEmail, firstNameOfEmail,
+  labelOf, lineByCsi, status, journal, loadJournal, nameOfEmail, firstNameOfEmail, effectiveGranularity,
 } from '../store.js';
 import { photoUrl } from '../api.js';
 import {
@@ -284,7 +284,10 @@ function rateChart(rows) {
  * @returns {string}
  */
 function granularitySelect(current) {
+  const auto = effectiveGranularity('auto');
+  const names = { day: 'jour', week: 'semaine', month: 'mois' };
   const options = [
+    { value: 'auto', label: 'Automatique (par ' + names[auto] + ')' },
     { value: 'month', label: 'Par mois' },
     { value: 'week', label: 'Par semaine' },
     { value: 'day', label: 'Par jour' },
@@ -345,14 +348,15 @@ function deltaHtml(current, previous) {
  */
 function rateSeries(rows) {
   const range = { from: state.from, to: state.to };
+  const unit = effectiveGranularity();
 
-  if (state.granularity === 'month') {
+  if (unit === 'month') {
     return byMonth(rows, range).map((p) => ratePoint(fmtMonth(p.label), p.in, p.missed));
   }
 
   const days = byDay(rows, range);
 
-  if (state.granularity === 'week') {
+  if (unit === 'week') {
     // La semaine n'est pas fournie avec `in` et `missed` : on agrege les points
     // journaliers sur leur lundi. `byDay` rend une serie continue et
     // chronologique, donc l'ordre des cles suit l'ordre des semaines.
@@ -368,7 +372,8 @@ function rateSeries(rows) {
     }
     return order.map((key) => {
       const b = buckets.get(key);
-      return ratePoint(fmtDayShort(key), b.in, b.missed);
+      // Une semaine se lit par son lundi : « sem. du 07/09 ».
+      return ratePoint('sem. ' + fmtDayShort(key), b.in, b.missed);
     });
   }
 
