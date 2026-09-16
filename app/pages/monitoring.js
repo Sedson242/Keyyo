@@ -220,7 +220,7 @@ function rateCard(rows, s, lines) {
   return card({
     cls: 'rate-card',
     title,
-    sub: 'Un appel manqué est un entrant de durée nulle : le taux vaut (entrants − manqués) / entrants. Une période sans entrant est un trou, pas un zéro.',
+    sub: 'Un appel manqué est un entrant de durée nulle : le taux vaut (entrants − manqués) / entrants. Une période sans appel entrant n’est pas tracée.',
     action: raw(granularitySelect(state.granularity)),
     body: raw(html`<div class="rate-body">
       <div class="rate-figure">
@@ -268,11 +268,19 @@ function rateChart(rows) {
       format,
     });
   }
+  // En courbe, les periodes sans entrant sont simplement OMISES : un trou par
+  // week-end hachait le trace en morceaux et en points isoles, illisible. La
+  // courbe relie donc les seuls jours qui ont recu des appels, et l'axe ne
+  // porte que ces jours-la.
+  const points = series.filter((p) => p.value != null);
+  if (!points.length) {
+    return areaChart({ series: [], height: 240, format });
+  }
   return areaChart({
-    series: [{ name: 'Taux de réponse', color: 'var(--in)', points: series }],
+    series: [{ name: 'Taux de réponse', color: 'var(--in)', points }],
     height: 240,
     maxTicks: 5,
-    showDots: false,
+    showDots: points.length <= 20,
     format,
   });
 }
