@@ -16,6 +16,7 @@
 //  fausse.
 // =============================================================================
 
+import { createHash } from 'node:crypto';
 import { archiveEnabled, readBlobJson, writeBlobJson } from './_archive.js';
 import { HANDOFF_WINDOW_SEC } from '../shared/journal.js';
 
@@ -72,4 +73,74 @@ export async function pendingHandoffs(csi) {
   } catch (err) { return []; }
   const now = Math.floor(Date.now() / 1000);
   return list.filter((x) => x && Number(x.at) > now - HANDOFF_WINDOW_SEC - 30);
+}
+
+// -----------------------------------------------------------------------------
+//  Annonces d'appel : « Emma appelle Aicha »
+//
+//  Quand Emma compose le numero d'une collegue depuis l'application, ce qui
+//  sonne chez Aicha est le numero de la ligne d'Emma — souvent celui du site,
+//  partage par vingt personnes : impossible de dire qui appelle. L'annonce le
+//  dit : { d'Emma, pour Aicha, depuis ce numero, quand }. Rangee PAR PERSONNE
+//  VISEE (`keyyo/handoff/to/<empreinte de l'adresse>.json`) et relue par son
+//  navigateur avec les passages d'appel (GET /api/events?handoff=). Fenetre
+//  courte : un appel sonne dans les secondes qui suivent.
+// -----------------------------------------------------------------------------
+
+/** Fenetre de validite d'une annonce, en secondes. */
+export const INTENT_WINDOW_SEC = 90;
+
+/** @param {string} email @returns {string} */
+function intentPathOf(email) {
+  const h = createHash('sha256').update(String(email).toLowerCase()).digest('hex').slice(0, 24);
+  return 'keyyo/handoff/to/' + h + '.json';
+}
+
+/**
+ * @typedef {object} Intent
+ * @property {'dial'} kind
+ * @property {string} peer     numero qui va sonner chez la personne visee (ligne de l'appelant)
+ * @property {string} toEmail  personne visee
+ * @property {string} byEmail  qui appelle
+ * @property {string} byName
+ * @property {number} at       secondes Unix
+ */
+
+/**
+ * Enregistre une annonce d'appel vers une personne.
+ * @param {string} toEmail
+ * @param {Intent} intent
+ * @returns {Promise<void>}
+ */
+export async function recordIntent(toEmail, intent) {
+  const e = String(toEmail || '').trim().toLowerCase();
+  if (!archiveEnabled() || !e) return;
+  const path = intentPathOf(e);
+  let list = [];
+  try {
+    const cur = await readBlobJson(path);
+    if (cur && Array.isArray(cur.intents)) list = cur.intents;
+  } catch (err) { list = []; }
+  const now = Math.floor(Date.now() / 1000);
+  list = list.filter((x) => x && Number(x.at) > now - 600);
+  list.push(intent);
+  if (list.length > KEEP) list = list.slice(list.length - KEEP);
+  await writeBlobJson(path, { toEmail: e, savedAt: new Date().toISOString(), intents: list });
+}
+
+/**
+ * Annonces encore valables pour une personne.
+ * @param {string} email
+ * @returns {Promise<Intent[]>}
+ */
+export async function pendingIntents(email) {
+  const e = String(email || '').trim().toLowerCase();
+  if (!archiveEnabled() || !e) return [];
+  let list = [];
+  try {
+    const cur = await readBlobJson(intentPathOf(e));
+    if (cur && Array.isArray(cur.intents)) list = cur.intents;
+  } catch (err) { return []; }
+  const now = Math.floor(Date.now() / 1000);
+  return list.filter((x) => x && Number(x.at) > now - INTENT_WINDOW_SEC);
 }

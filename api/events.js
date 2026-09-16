@@ -28,7 +28,7 @@ import { normalizeEvent, monthOf, summarize } from '../shared/journal.js';
 import { journalEnabled, appendEvents, readUserMonth, readMonth } from './_journal.js';
 import { loadAccess } from './_access.js';
 import { lineOwners } from '../shared/access.js';
-import { recordHandoff, pendingHandoffs } from './_handoff.js';
+import { recordHandoff, pendingHandoffs, recordIntent, pendingIntents } from './_handoff.js';
 
 /** Plafond d'evenements par envoi : au-dela, c'est une erreur de la page. */
 const MAX_BATCH = 200;
@@ -89,12 +89,21 @@ export default async function handler(req, res) {
       // la ligne, pour que le navigateur du collegue reconnaisse l'appel.
       for (const ym of Object.keys(byMonth)) {
         for (const e of byMonth[ym]) {
-          if (e.type !== 'transfer' || !e.toEmail || !e.peer || !e.csi) continue;
+          if (!e.toEmail || !e.csi) continue;
           try {
-            await recordHandoff(e.csi, {
-              peer: e.peer, toEmail: e.toEmail, toName: String(e.toName || ''),
-              byEmail: session.email, byName: String(session.name || ''), at: e.ts,
-            });
+            if (e.type === 'transfer' && e.peer) {
+              await recordHandoff(e.csi, {
+                peer: e.peer, toEmail: e.toEmail, toName: String(e.toName || ''),
+                byEmail: session.email, byName: String(session.name || ''), at: e.ts,
+              });
+            } else if (e.type === 'dial' && e.toEmail !== session.email) {
+              // Annonce d'appel : ce qui sonnera chez la personne visee est le
+              // numero de la ligne de l'appelant (son CSI), pas le sien.
+              await recordIntent(e.toEmail, {
+                kind: 'dial', peer: String(e.csi), toEmail: e.toEmail,
+                byEmail: session.email, byName: String(session.name || ''), at: e.ts,
+              });
+            }
           } catch (err) { /* le journal a le fait ; le passage en direct est un plus */ }
         }
       }
@@ -116,9 +125,12 @@ export default async function handler(req, res) {
     if (params.handoff != null) {
       const csi = String(params.handoff || '').replace(/\D/g, '');
       if (!csi) return sendJson(res, 400, { error: 'Paramètre handoff invalide', hint: 'Attendu : ?handoff=<numéro de la ligne>' }, 'no-store');
-      const handoffs = await pendingHandoffs(csi);
+      // Les passages sur la ligne, plus les annonces d'appel qui visent la
+      // personne connectee : un collegue qui l'appelle depuis une ligne de
+      // site est nomme, alors que le numero qui sonne est celui du site.
+      const [handoffs, intents] = await Promise.all([pendingHandoffs(csi), pendingIntents(session.email)]);
       res.setHeader('Vary', 'Cookie');
-      return sendJson(res, 200, { csi, handoffs, updatedAt: new Date().toISOString() }, 'no-store');
+      return sendJson(res, 200, { csi, handoffs: handoffs.concat(intents), updatedAt: new Date().toISOString() }, 'no-store');
     }
 
     let month = String(params.month || '').trim();

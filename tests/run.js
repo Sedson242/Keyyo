@@ -1286,6 +1286,11 @@ if (need(journalMod, 'shared/journal.js', 'shared/journal.js')) suite('shared/jo
     eq(t.toEmail, aicha, 'adresse normalisee');
     eq(t.peer, '+33611111111');
     eq(normalizeEvent({ type: 'transfer', to: '4012', toEmail: 'pas une adresse' }, ctx).toEmail, undefined);
+    // Un appel compose vers un collegue porte aussi l'adresse visee : c'est
+    // l'annonce d'appel (son navigateur affiche qui l'appelle).
+    const d = normalizeEvent({ type: 'dial', csi: '33175433361', to: '33175433361', toName: 'Aicha', toEmail: 'Aicha@Bios.fr' }, ctx);
+    eq(d.toEmail, 'aicha@bios.fr', 'dial : adresse visee normalisee');
+    eq(normalizeEvent({ type: 'dial', to: '4012' }, ctx).toEmail, undefined, 'dial sans adresse : rien');
     const ev = [
       // c1 : Emma decroche puis passe M. X (0611111111) a Aicha.
       normalizeEvent({ type: 'observed', csi: '33175433361', callref: 'c1', dir: 'in', peer: '+33611111111', ring: 5, duration: 30, answered: true, ts: NOW - 340 }, { email: emma, now: NOW }),

@@ -83,14 +83,51 @@ let _busy = '';
 let _frame = 0;
 
 /**
- * Passages d'appel reconnus : callref -> { toEmail, toName, byName, byEmail }.
- * Un correspondant transfere par un collegue en visant quelqu'un resonne
- * pour tout le site ; la fenetre, elle, n'apparait que chez la personne visee.
- * @type {Map<string, {toEmail: string, toName: string, byName: string, byEmail: string}>}
+ * Passages d'appel et annonces reconnus : callref -> { kind, toEmail, toName,
+ * byName, byEmail }. `kind` vaut 'transfer' (un collegue m'a passe ce
+ * correspondant : la fenetre n'apparait que chez moi) ou 'dial' (un collegue
+ * m'appelle depuis une ligne de site : la fenetre montre son nom et sa photo,
+ * pas le numero du site).
+ * @type {Map<string, {kind: string, toEmail: string, toName: string, byName: string, byEmail: string}>}
  */
 const _handoffs = new Map();
 /** @type {Set<string>} appels deja verifies (avec ou sans passage). */
 const _handoffChecked = new Set();
+
+/**
+ * Dernier appel que J'AI compose vers un collegue : son nom et sa photo
+ * s'affichent sur ma fenetre d'appel sortant, meme si le numero compose est
+ * celui de son site.
+ * @type {{to: string, toName: string, toEmail: string, at: number}|null}
+ */
+let _lastDial = null;
+
+/** Fenetre pendant laquelle un appel sortant est rapproche de `_lastDial`, en secondes. */
+const LAST_DIAL_SEC = 120;
+
+/** @param {unknown} n @returns {string} neuf derniers chiffres. */
+function tail9(n) {
+  return String(n == null ? '' : n).replace(/\D/g, '').slice(-9);
+}
+
+/**
+ * Le collegue derriere cet appel, quand on le connait : celui qui m'appelle
+ * (annonce), celui a qui on m'a passe l'appel (passage), ou celui que j'ai
+ * appele (mon dernier appel). Sinon null : l'appel s'affiche par son numero.
+ * @param {CallItem} c
+ * @returns {{name: string, email: string, photo: string, how: 'calls'|'handoff'|'called'}|null}
+ */
+function colleagueOfCall(c) {
+  const h = _handoffs.get(c.callref);
+  if (h && h.kind === 'dial' && h.byEmail) {
+    return { name: h.byName || colleagueNameByEmail(h.byEmail) || h.byEmail, email: h.byEmail, photo: photoUrl(h.byEmail, 240), how: 'calls' };
+  }
+  if (c.dir === 'out' && _lastDial && _lastDial.toEmail && tail9(c.peer) === _lastDial.to
+    && Number(c.ts || 0) >= _lastDial.at - LAST_DIAL_SEC) {
+    return { name: _lastDial.toName || colleagueNameByEmail(_lastDial.toEmail) || _lastDial.toEmail, email: _lastDial.toEmail, photo: photoUrl(_lastDial.toEmail, 240), how: 'called' };
+  }
+  return null;
+}
 
 /** @returns {string} mon adresse, en minuscules. */
 function myEmail() {
@@ -756,11 +793,19 @@ function trackHandoffs() {
     let found = false;
     for (const c of fresh) {
       const peer = String(c.peer || '').replace(/\D/g, '').slice(-9);
+      // Une annonce d'appel (« Emma appelle ») vaut 90 s : au-dela, un appel
+      // du meme site est celui de quelqu'un d'autre. Un passage vaut la
+      // fenetre du transfert.
       const hit = list
-        .filter((h) => h && String(h.peer || '').replace(/\D/g, '').slice(-9) === peer && peer && Number(h.at) > now - 240)
+        .filter((h) => h && String(h.peer || '').replace(/\D/g, '').slice(-9) === peer && peer
+          && Number(h.at) > now - (h.kind === 'dial' ? 90 : 240))
         .sort((a, b) => Number(b.at) - Number(a.at))[0];
       if (!hit) continue;
-      _handoffs.set(c.callref, { toEmail: String(hit.toEmail || '').toLowerCase(), toName: String(hit.toName || ''), byName: String(hit.byName || ''), byEmail: String(hit.byEmail || '').toLowerCase() });
+      _handoffs.set(c.callref, {
+        kind: hit.kind === 'dial' ? 'dial' : 'transfer',
+        toEmail: String(hit.toEmail || '').toLowerCase(), toName: String(hit.toName || ''),
+        byName: String(hit.byName || ''), byEmail: String(hit.byEmail || '').toLowerCase(),
+      });
       found = true;
     }
     if (found) schedule();
@@ -778,8 +823,9 @@ function handoffLabel(c) {
   const h = _handoffs.get(c.callref);
   if (!h) return '';
   const me = myEmail();
-  const who = h.toEmail === me ? 'vous' : (h.toName || colleagueNameByEmail(h.toEmail) || h.toEmail);
   const by = h.byEmail === me ? 'vous' : (h.byName || colleagueNameByEmail(h.byEmail) || 'un collègue');
+  if (h.kind === 'dial') return 'appel de ' + by;
+  const who = h.toEmail === me ? 'vous' : (h.toName || colleagueNameByEmail(h.toEmail) || h.toEmail);
   return 'pour ' + who + ' · passé par ' + by;
 }
 
@@ -805,14 +851,17 @@ function paintPopup() {
   }
   if (_popupClosed.has(c.callref)) { popup.hidden = true; pill.hidden = true; return; }
 
-  const label = labelOf(c.peer);
+  // Un collegue connu (il m'appelle, ou je l'appelle) prend la place du
+  // numero : son nom en titre, sa photo en avatar — comme sur Teams.
+  const who = colleagueOfCall(c);
+  const label = who ? who.name : labelOf(c.peer);
   const number = c.peer === 'anonymous' ? '' : formatNumber(c.peer);
   const snap = cti.snapshot();
   // Cle de structure : la fenetre n'est remontee que si l'appel change d'etat
   // ou d'aspect. Repeinte chaque seconde pour son chronometre, elle relancait
   // son animation d'entree a chaque fois — le clignotement signale par les
   // agents. Les compteurs sont des textes vivants, mis a jour en place.
-  const key = ['popup', callsKey([c]), _busy === c.callref ? 1 : 0, label, number, snap.line ? snap.line.label : '', _popupMin ? 1 : 0].join('|');
+  const key = ['popup', callsKey([c]), _busy === c.callref ? 1 : 0, label, number, who ? who.email : '', snap.line ? snap.line.label : '', _popupMin ? 1 : 0].join('|');
 
   if (_popupMin) {
     popup.hidden = true;
@@ -826,9 +875,14 @@ function paintPopup() {
   const ringingIn = c.state === 'SETUP' && c.dir === 'in';
   const busy = _busy === c.callref;
   const hand = _handoffs.get(c.callref);
-  let kicker = ringingIn ? (hand ? 'Appel passé pour vous' : 'Appel entrant') : (c.state === 'SETUP' ? 'Appel sortant' : 'En ligne');
+  const passed = hand && hand.kind === 'transfer';
+  let kicker = ringingIn
+    ? (passed ? 'Appel passé pour vous' : (who && who.how === 'calls' ? 'Un collègue vous appelle' : 'Appel entrant'))
+    : (c.state === 'SETUP' ? 'Appel sortant' : 'En ligne');
   let sub = ringingIn
-    ? (hand ? 'vous est passé par ' + (hand.byName || colleagueNameByEmail(hand.byEmail) || 'un collègue') + ' : décrochez sur Keyyo Phone' : 'vous appelle')
+    ? (passed
+      ? 'vous est passé par ' + (hand.byName || colleagueNameByEmail(hand.byEmail) || 'un collègue') + ' : décrochez sur Keyyo Phone'
+      : (who && who.how === 'calls' ? 'vous appelle depuis ' + (lineByNumber(c.peer) ? 'la ligne ' + lineByNumber(c.peer).label : (number || 'sa ligne')) : 'vous appelle'))
     : (c.state === 'SETUP' ? 'sonne…' : 'en conversation');
   let timer = live('timer', c.state === 'CONNECT' ? clock(c.duration) : clock(c.ring));
 
@@ -861,7 +915,7 @@ function paintPopup() {
       <button type="button" data-popup-close aria-label="Fermer" title="Fermer cette fenêtre (l’appel continue)">${raw(icon('close'))}</button>
     </div>
     <div class="call-card-body">
-      ${raw(avatarOf(label, 'lg', true, photoOfNumber(c.peer)))}
+      ${raw(avatarOf(label, 'lg', true, who ? who.photo : photoOfNumber(c.peer)))}
       <div class="call-card-name">${label}</div>
       <div class="call-card-sub">${sub}</div>
       <div class="call-card-timer">${raw(timer)}</div>
@@ -1082,7 +1136,10 @@ function wire() {
     const ref = _dialer.callref;
     closeDialer();
     if (mode === 'transfer') run(ref, function () { return cti.transfer(ref, number, { supervised: false, toName: name, toEmail }); }, transferToast(name, number, toEmail));
-    else run('dial', function () { return cti.dial(number, { toName: name }); }, 'Appel vers ' + name + ' lancé.');
+    else {
+      _lastDial = { to: tail9(number), toName: name, toEmail: String(toEmail || '').toLowerCase(), at: Math.floor(Date.now() / 1000) };
+      run('dial', function () { return cti.dial(number, { toName: name, toEmail }); }, 'Appel vers ' + name + ' lancé.');
+    }
   });
 
   document.addEventListener('keydown', function (ev) {

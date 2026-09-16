@@ -137,13 +137,15 @@ export function normalizeEvent(raw, ctx) {
     // « ligne TNR », alors que l'agent voulait joindre quelqu'un de precis.
     const toName = str(raw.toName);
     if (toName) e.toName = toName.slice(0, 80);
+    // La personne visee (adresse). Pour un transfert, c'est le PASSAGE
+    // D'APPEL entre collegues d'une meme ligne partagee : quand le
+    // correspondant resonne sur la ligne juste apres, l'appel est pour elle.
+    // Pour un appel compose, c'est l'ANNONCE : le collegue appele voit qui
+    // l'appelle (nom, photo) alors que le numero qui sonne est celui du site.
+    const toEmail = str(raw.toEmail).toLowerCase();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) e.toEmail = toEmail;
     if (type === 'transfer') {
       e.supervised = !!raw.supervised;
-      // PASSAGE D'APPEL entre collegues d'une meme ligne partagee : la
-      // personne visee (adresse) et le correspondant transfere. Quand ce
-      // correspondant resonne sur la ligne juste apres, l'appel est pour elle.
-      const toEmail = str(raw.toEmail).toLowerCase();
-      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) e.toEmail = toEmail;
       const peer = str(raw.peer).replace(/[^\d+]/g, '') || (raw.peer === 'anonymous' ? 'anonymous' : '');
       if (peer) e.peer = peer;
     }

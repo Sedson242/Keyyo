@@ -618,8 +618,10 @@ function mark(callref, patch) {
 /**
  * Compose un numero depuis la ligne.
  * @param {string} number
- * @param {{toName?: string}} [opts] personne visee, quand le numero est celui
- *        d'une ligne partagee : c'est elle que le journal doit retenir.
+ * @param {{toName?: string, toEmail?: string}} [opts] personne visee, quand le
+ *        numero est celui d'une ligne partagee : c'est elle que le journal
+ *        doit retenir, et son adresse declenche l'annonce d'appel (son
+ *        navigateur affiche qui l'appelle).
  * @returns {Promise<void>}
  */
 export async function dial(number, opts) {
@@ -639,8 +641,14 @@ export async function dial(number, opts) {
     csi: _state.line ? _state.line.csi : '',
     to,
     toName: String(o.toName || ''),
+    // L'ANNONCE : avec l'adresse du collegue appele, le serveur lui signale
+    // qui l'appelle, et sa fenetre d'appel affiche le nom et la photo de
+    // l'appelant au lieu du numero du site.
+    toEmail: String(o.toEmail || ''),
     dir: 'out',
   });
+  // Partie tout de suite : le collegue doit la connaitre avant que ca sonne.
+  if (o.toEmail) journal.flush();
   emit();
 }
 

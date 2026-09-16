@@ -345,7 +345,7 @@ function wire() {
       if (input) input.value = number;
       _pickerOpen = false;
       paintPicker();
-      run('dial', function () { return cti.dial(number); }, 'Appel vers ' + name + ' lancé.');
+      run('dial', function () { return cti.dial(number, { toName: name, toEmail }); }, 'Appel vers ' + name + ' lancé.');
     }
   });
 
