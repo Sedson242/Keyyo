@@ -363,9 +363,10 @@ function linePath(pts, smooth) {
 /**
  * areaChart({ series, height, showDots })
  *
- * series : [{ name, color, points:[{ label, value }] }] — 3 series au maximum
+ * series : [{ name, color, points:[{ label, value, hint? }] }] — 3 series au maximum
  * Les points dont la valeur n'est pas finie sont des TROUS : la ligne est
  * coupee, elle ne saute pas d'un point a l'autre en pretendant une continuite.
+ * `hint` s'ajoute a l'info-bulle du point (detail de la valeur).
  */
 export function areaChart(opts) {
   var o = opts || {};
@@ -527,6 +528,12 @@ export function areaChart(opts) {
       var txt = sp && isPlottable(sp.value) ? fv(fmt, sp.value) : '—';
       parts.push(esc(series[i].name) + ' <b>' + esc(txt) + '</b>');
       plainParts.push(series[i].name + ' : ' + txt);
+      // `hint` d'un point : le detail derriere la valeur (« 12 entrants,
+      // 1 manque »), meme contrat que barChart.
+      if (sp && sp.hint !== null && sp.hint !== undefined && sp.hint !== '') {
+        parts.push(esc(String(sp.hint)));
+        plainParts.push(String(sp.hint));
+      }
     }
     var tipHtml = (lab ? esc(lab) + ' · ' : '') + parts.join(' · ');
     var plain = (lab ? lab + ' — ' : '') + plainParts.join(', ');

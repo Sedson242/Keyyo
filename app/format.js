@@ -221,14 +221,15 @@ export function fmtHms(seconds) {
 // -----------------------------------------------------------------------------
 
 /**
- * Date numerique : `2026-09-03` -> `03/09/2026`.
+ * Date numerique courte, LE format de toutes les dates de l'application :
+ * `2026-09-03` -> `03/09/26` (jj/mm/aa).
  * @param {unknown} iso
  * @returns {string} `—` si la date est absente ou invalide.
  */
 export function fmtDate(iso) {
   const d = dayDate(iso);
   if (!d) return DASH;
-  return dtf('date', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
+  return dtf('date', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: '2-digit' }).format(d);
 }
 
 /**
@@ -243,7 +244,7 @@ export function fmtDateLong(iso) {
 }
 
 /**
- * Jour abrege pour les axes de graphiques : `2026-09-03` -> `mer. 3 sept.`.
+ * Jour court pour les axes de graphiques : `2026-09-03` -> `03/09` (jj/mm).
  * @param {unknown} iso
  * @returns {string} chaine VIDE si la date est invalide : un tiret sur un axe
  *          de graphique serait un repere trompeur.
@@ -251,7 +252,7 @@ export function fmtDateLong(iso) {
 export function fmtDayShort(iso) {
   const d = dayDate(iso);
   if (!d) return '';
-  return dtf('dayShort', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+  return dtf('dayShort', { timeZone: 'UTC', day: '2-digit', month: '2-digit' }).format(d);
 }
 
 /**

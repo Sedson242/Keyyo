@@ -110,6 +110,15 @@ let _pageIndex = 0;
 /** Texte de recherche courant. Survit aux rendus, donc au sondage de fond. */
 let _search = '';
 
+/**
+ * Filtre pose par un clic sur un indicateur de tete : '' (tout), 'answered'
+ * (decroches), 'missed' (manques). Il ne touche qu'au tableau, jamais aux
+ * chiffres des indicateurs — sinon cliquer « Manqués » ferait tomber
+ * « Appels » au nombre de manques, et plus rien ne se comparerait.
+ * @type {''|'answered'|'missed'}
+ */
+let _kpiFilter = '';
+
 /** Identifiant du temporisateur de recherche, 0 quand aucun n'est arme. */
 let _searchTimer = 0;
 
@@ -174,7 +183,7 @@ export function render(root) {
   }
 
   // -- Etat 3 : le journal. ---------------------------------------------------
-  const shown = selectRows(buildView(rows), needleOf(_search));
+  const shown = applyKpiFilter(selectRows(buildView(rows), needleOf(_search)));
   clampPage(shown.length);
 
   const focus = captureFocus();
@@ -291,29 +300,32 @@ function toolbarHtml() {
 function kpiGridHtml(rows) {
   const s = stats(rows);
 
-  const total = kpi({
+  // Les trois premiers indicateurs sont aussi des FILTRES du tableau : le
+  // clic ne montre que les appels comptes dans le chiffre. `data-kpi-filter`
+  // porte la cle ; `wire` bascule le filtre et rafraichit le tableau.
+  const total = filterable(kpi({
     label: 'Appels',
     value: fmtInt(s.total),
     foot: fmtInt(s.in) + ' ' + pluralize(s.in, 'entrant', 'entrants')
       + ' · ' + fmtInt(s.out) + ' ' + pluralize(s.out, 'sortant', 'sortants'),
-    why: 'Nombre d’enregistrements d’appel retenus par la période, la ligne et le sens choisis dans la barre du haut. La recherche du journal n’entre pas dans ce total.',
-  });
+    why: 'Nombre d’enregistrements d’appel retenus par la période, la ligne et le sens choisis dans la barre du haut. La recherche du journal n’entre pas dans ce total. Cliquer ici montre tous les appels dans le tableau.',
+  }), '');
 
-  const answered = kpi({
+  const answered = filterable(kpi({
     label: 'Décrochés',
     value: fmtInt(s.answered),
     tone: 'ok',
     foot: 'Taux de réponse des entrants : ' + fmtPct(s.answerRate, 1),
-    why: 'Un appel est compté décroché quand sa durée facturée dépasse zéro seconde, entrants et sortants confondus. Le taux affiché juste au-dessus ne porte, lui, que sur les entrants : entrants décrochés divisés par entrants.',
-  });
+    why: 'Un appel est compté décroché quand sa durée facturée dépasse zéro seconde, entrants et sortants confondus. Le taux affiché juste au-dessus ne porte, lui, que sur les entrants : entrants décrochés divisés par entrants. Cliquer ici ne montre que les appels décrochés dans le tableau.',
+  }), 'answered');
 
-  const missed = kpi({
+  const missed = filterable(kpi({
     label: 'Manqués',
     value: fmtInt(s.missed),
     tone: 'missed',
     foot: 'sur ' + fmtInt(s.in) + ' ' + pluralize(s.in, 'entrant', 'entrants'),
-    why: 'L’API Keyyo ne fournit aucun indicateur de décroché : un appel manqué est donc déduit, c’est un appel entrant dont la durée facturée est nulle. Un appel décroché puis raccroché dans la même seconde serait compté ici, et un sortant sans réponse ne l’est jamais.',
-  });
+    why: 'L’API Keyyo ne fournit aucun indicateur de décroché : un appel manqué est donc déduit, c’est un appel entrant dont la durée facturée est nulle. Un appel décroché puis raccroché dans la même seconde serait compté ici, et un sortant sans réponse ne l’est jamais. Cliquer ici ne montre que les appels manqués dans le tableau.',
+  }), 'missed');
 
   const duration = kpi({
     label: 'Durée cumulée',
@@ -326,6 +338,36 @@ function kpiGridHtml(rows) {
 }
 
 /**
+ * Pose sur un indicateur la cle de filtre et son etat actif. `ui.kpi` rend un
+ * `<button class="kpi …">` : on complete sa balise d'ouverture, sans toucher au
+ * reste du balisage.
+ * @param {string} kpiHtml
+ * @param {''|'answered'|'missed'} key
+ * @returns {string}
+ */
+function filterable(kpiHtml, key) {
+  const active = _kpiFilter === key;
+  const attrs = ' data-kpi-filter="' + key + '" aria-pressed="' + (active ? 'true' : 'false') + '"';
+  return kpiHtml.replace('<button class="kpi', '<button' + attrs + ' class="kpi' + (active ? ' is-active' : ''));
+}
+
+/**
+ * Applique le filtre d'indicateur a des lignes.
+ * @param {any[][]} rows
+ * @returns {any[][]} le tableau lui-meme quand aucun filtre n'est pose.
+ */
+function applyKpiFilter(rows) {
+  if (!_kpiFilter) return rows;
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const isAnswered = row[F.answered] === 1;
+    if (_kpiFilter === 'answered' ? isAnswered : (row[F.dir] === 0 && !isAnswered)) out.push(row);
+  }
+  return out;
+}
+
+/**
  * Bornes de la periode, en sous-titre de section.
  * @returns {string}
  */
@@ -333,7 +375,8 @@ function periodLabel() {
   const from = state.from ? fmtDate(state.from) : '';
   const to = state.to ? fmtDate(state.to) : '';
   const range = from && to ? 'Du ' + from + ' au ' + to : 'Toute la période collectée';
-  return range + ' · ' + fmtInt(PAGE_SIZE) + ' appels par page';
+  const filter = _kpiFilter === 'answered' ? ' · appels décrochés seulement' : (_kpiFilter === 'missed' ? ' · appels manqués seulement' : '');
+  return range + filter + ' · ' + fmtInt(PAGE_SIZE) + ' appels par page';
 }
 
 // -----------------------------------------------------------------------------
@@ -443,14 +486,18 @@ function footHtml(total) {
   const first = total ? page * PAGE_SIZE + 1 : 0;
   const last = Math.min(total, (page + 1) * PAGE_SIZE);
 
-  const count = fmtInt(total) + ' ' + pluralize(total, 'appel', 'appels');
+  const kind = _kpiFilter === 'answered' ? 'décroché' : (_kpiFilter === 'missed' ? 'manqué' : 'appel');
+  const count = fmtInt(total) + ' ' + pluralize(total, kind, kind + 's');
   const scope = _search
     ? count + ' ' + pluralize(total, 'correspond', 'correspondent') + ' à la recherche'
     : count + ' sur la période et les filtres choisis';
+  const clear = _kpiFilter
+    ? html` <button class="link" type="button" data-kpi-filter="">Tout afficher</button>`
+    : '';
 
   const left = total
-    ? html`<span>Affichage ${fmtInt(first)}–${fmtInt(last)} · ${scope}</span>`
-    : html`<span>${scope}</span>`;
+    ? html`<span>Affichage ${fmtInt(first)}–${fmtInt(last)} · ${scope}${raw(clear)}</span>`
+    : html`<span>${scope}${raw(clear)}</span>`;
 
   const pager = html`<span class="row">
     <button class="btn btn--sm" id="${PREV_ID}" type="button"${raw(page <= 0 ? ' disabled' : '')}>Précédent</button>
@@ -574,9 +621,9 @@ function filterKey() {
   return state.from + '|' + state.to + '|' + state.csi + '|' + state.dir;
 }
 
-/** @returns {any[][]} lignes retenues par la periode, les filtres ET la recherche. */
+/** @returns {any[][]} lignes retenues par la periode, les filtres, l'indicateur clique ET la recherche. */
 function currentRows() {
-  return selectRows(buildView(filtered()), needleOf(_search));
+  return applyKpiFilter(selectRows(buildView(filtered()), needleOf(_search)));
 }
 
 /**
@@ -758,11 +805,27 @@ function wire(root) {
   // -- Export. ---------------------------------------------------------------
   on(root, 'click', '#' + EXPORT_ID, () => { exportCsv(); });
 
+  // -- Indicateur cliquable : FILTRE du tableau. ------------------------------
+  // Un clic sur « Manqués » ne montre que les manques ; un second clic retire
+  // le filtre. « Appels » remet tout. La page entiere est re-rendue : le
+  // sous-titre de section et les indicateurs (etat actif) changent aussi.
+  on(root, 'click', '[data-kpi-filter]', (ev, el) => {
+    const key = String(el.getAttribute('data-kpi-filter') || '');
+    const next = key === '' ? '' : (_kpiFilter === key ? '' : key);
+    if (next === _kpiFilter && key !== '') return;
+    _kpiFilter = /** @type {any} */ (next);
+    _pageIndex = 0;
+    render(root);
+  });
+
   // -- Explication d'un indicateur. -----------------------------------------
   // `ui.kpi` pose aria-expanded="false" ; c'est a la page de basculer la classe
-  // ET l'attribut, le noyau ne cable rien.
+  // ET l'attribut, le noyau ne cable rien. Seul l'indicateur sans filtre
+  // (duree cumulee) se deplie au clic : sur les trois autres, le clic est le
+  // filtre, et l'explication est deja portee par le sous-titre de section.
   on(root, 'click', '.kpi', (ev, el) => {
     if (!el.hasAttribute('aria-expanded')) return;   // indicateur sans explication
+    if (el.hasAttribute('data-kpi-filter')) return;  // le clic filtre, l'explication reste repliee
     const open = el.classList.toggle('is-open');
     el.setAttribute('aria-expanded', open ? 'true' : 'false');
   });

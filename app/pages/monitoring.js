@@ -33,24 +33,36 @@
 import { html, raw, mount, on } from '../dom.js';
 import {
   card, sectionHead, statbar, split, table, rankRow,
-  avatar, avatarStack, meter, empty, notice, skeleton,
+  avatar, avatarStack, meter, empty, notice, skeleton, tag,
 } from '../ui.js';
-import { barChart, attachChartTips } from '../charts.js';
+import { barChart, areaChart, attachChartTips } from '../charts.js';
 import {
   state, setFilter, filtered, getRows, stats,
   byDay, byMonth, byLine, callbackAnalysis,
-  labelOf, lineByCsi, status,
+  labelOf, lineByCsi, status, journal, loadJournal, nameOfEmail, firstNameOfEmail,
 } from '../store.js';
+import { photoUrl } from '../api.js';
 import {
-  fmtInt, fmtPct, fmtHms, fmtTime, fmtDate, fmtDayShort, fmtMonth, pluralize,
+  fmtInt, fmtPct, fmtHms, fmtTime, fmtDate, fmtDayShort, fmtMonth, fmtDurationShort, pluralize,
 } from '../format.js';
 import { F, isIncoming, isOutgoing, isMissed } from '../../shared/schema.js';
+import { summarize, monthOf } from '../../shared/journal.js';
+import { showPerson } from './agents.js';
 
 /** Nombre de rappels listes dans la carte sombre : au-dela, c'est la vue Manques. */
 const FEED_MAX = 5;
 
-/** Taille du classement « Top collaborateurs ». */
+/** Taille des classements « Top collaborateurs » et « Top lignes ». */
 const RANK_MAX = 5;
+
+/**
+ * Au-dela de ce nombre de points, l'histogramme du taux de reponse devient
+ * une courbe : 92 barres d'un jour sur 600 px ne se lisent pas.
+ */
+const RATE_BARS_MAX = 16;
+
+/** Lignes dont le detail (collaborateurs rattaches) est deplie, par CSI en chiffres. */
+const _openLines = new Set();
 
 /** Ecart minimal, en points, en dessous duquel le taux est dit stable. */
 const DELTA_EPSILON = 0.5;
@@ -99,6 +111,12 @@ export function render(root) {
   const callbacks = callbackAnalysis(rows);
   const lines = byLine(rows);
 
+  // Le journal du mois nomme les personnes (Top collaborateurs, collaborateurs
+  // d'une ligne) : demande une fois, il notifie a l'arrivee.
+  const j = journal();
+  const month = monthOf(Math.floor(Date.now() / 1000));
+  if (j.month !== month && !j.loading) loadJournal(month);
+
   mount(root, html`${raw(head)}<div class="dash">
     <div class="dash-left">
       ${raw(countersCard(s))}
@@ -109,7 +127,7 @@ export function render(root) {
       ${raw(splitCard(s))}
     </div>
     <div class="dash-wide">
-      ${raw(sectionHead('Lignes et collaborateurs', periodLabel()))}
+      ${raw(sectionHead('Lignes et collaborateurs', periodLabel() + ' · cliquez un CSI pour voir qui travaille sur la ligne'))}
       ${raw(linesCard(lines, s))}
     </div>
   </div>`);
@@ -195,18 +213,14 @@ function countersCard(s) {
  * @returns {string}
  */
 function rateCard(rows, s, lines) {
-  const series = rateSeries(rows);
-  const chart = barChart({
-    data: series,
-    maxTicks: 5,
-    showTrack: true,
-    format: (v) => fmtPct(v, 0),
-  });
+  const title = state.from && state.to
+    ? 'Taux de réponse sur la période : ' + fmtDate(state.from) + ' au ' + fmtDate(state.to)
+    : 'Taux de réponse sur la période';
 
   return card({
     cls: 'rate-card',
-    title: 'Taux de réponse',
-    sub: 'Un appel manqué est un entrant de durée nulle : le taux vaut (entrants − manqués) / entrants.',
+    title,
+    sub: 'Un appel manqué est un entrant de durée nulle : le taux vaut (entrants − manqués) / entrants. Une période sans entrant est un trou, pas un zéro.',
     action: raw(granularitySelect(state.granularity)),
     body: raw(html`<div class="rate-body">
       <div class="rate-figure">
@@ -214,13 +228,52 @@ function rateCard(rows, s, lines) {
           <div class="metric-xl">${fmtPct(s.answerRate, 1)}</div>
           ${raw(deltaHtml(s, previousStats()))}
         </div>
-        ${raw(chart)}
+        ${raw(rateChart(rows))}
       </div>
       <div class="rate-rank">
-        <p class="rate-rank-title">Top collaborateurs</p>
-        ${raw(rankList(lines))}
+        <div class="rate-rank-cols">
+          <div>
+            <p class="rate-rank-title">Top collaborateurs</p>
+            <p class="rate-rank-hint muted">Ce mois-ci, d’après les actions faites dans l’application.</p>
+            ${raw(peopleRank())}
+          </div>
+          <div>
+            <p class="rate-rank-title">Top lignes</p>
+            <p class="rate-rank-hint muted">Sur la période, appels décrochés par ligne.</p>
+            ${raw(lineRank(lines))}
+          </div>
+        </div>
       </div>
     </div>`),
+  });
+}
+
+/**
+ * Graphique du taux : des barres tant qu'elles restent lisibles (mois,
+ * semaines, ou une quinzaine de jours), une courbe au-dela. Les periodes sans
+ * entrant sont des trous dans la courbe, pas des zeros qui feraient plonger
+ * le trace chaque week-end.
+ * @param {any[][]} rows
+ * @returns {string}
+ */
+function rateChart(rows) {
+  const series = rateSeries(rows);
+  const format = (v) => fmtPct(v, 0);
+
+  if (series.length <= RATE_BARS_MAX) {
+    return barChart({
+      data: series.map((p) => ({ label: p.label, value: p.value == null ? 0 : p.value, hint: p.hint })),
+      maxTicks: 5,
+      showTrack: true,
+      format,
+    });
+  }
+  return areaChart({
+    series: [{ name: 'Taux de réponse', color: 'var(--in)', points: series }],
+    height: 240,
+    maxTicks: 5,
+    showDots: false,
+    format,
   });
 }
 
@@ -323,19 +376,19 @@ function rateSeries(rows) {
 }
 
 /**
- * Point de l'histogramme. Une periode sans entrant vaut 0 : l'info-bulle le
- * distingue d'un vrai taux nul.
+ * Point du graphique. Une periode sans entrant vaut `null` : un trou dans la
+ * courbe, et l'info-bulle le dit — pas un zero qui se lirait comme un echec.
  * @param {string} label
  * @param {number} incoming
  * @param {number} missed
- * @returns {{label: string, value: number, hint: string}}
+ * @returns {{label: string, value: number|null, hint: string}}
  */
 function ratePoint(label, incoming, missed) {
   const inc = Number(incoming) || 0;
   const lost = Number(missed) || 0;
   return {
     label: label,
-    value: inc ? ((inc - lost) / inc) * 100 : 0,
+    value: inc ? ((inc - lost) / inc) * 100 : null,
     hint: inc
       ? fmtInt(inc) + ' ' + pluralize(inc, 'entrant', 'entrants')
         + ', ' + fmtInt(lost) + ' ' + pluralize(lost, 'manqué', 'manqués')
@@ -344,46 +397,64 @@ function ratePoint(label, incoming, missed) {
 }
 
 /**
- * Classement par nombre d'appels traites (appels decroches).
- *
- * Une ligne dont l'identite est resolue porte un prenom. Une ligne PARTAGEE
- * par une equipe n'en porte aucun, et aucun reglage ne lui en donnera : sur
- * ce parc, les trois lignes le sont. Le classement montre alors les lignes
- * elles-memes, et renvoie a la vue Attribution pour la repartition par
- * personne — pas au Diagnostic, qui ne peut rien y changer.
+ * Top collaborateurs : DES PERSONNES, nommees par leur adresse e-mail, d'apres
+ * le journal d'attribution du mois. Les releves Keyyo ne disent jamais qui a
+ * decroche une ligne partagee : seul le journal le sait. Le clic ouvre la
+ * fiche de la personne dans la vue Attribution.
+ * @returns {string}
+ */
+function peopleRank() {
+  const j = journal();
+  if (j.loading && !j.summary) return skeleton('text') + skeleton('text') + skeleton('text');
+  if (j.error) {
+    return notice({ tone: 'warn', title: 'Journal indisponible.', body: html`${j.error}` });
+  }
+  const agents = j.summary && Array.isArray(j.summary.agents) ? j.summary.agents.slice() : [];
+  const active = agents.filter((a) => (a.taken + a.dialed) > 0);
+  if (!active.length) {
+    return html`<p class="rate-rank-hint muted">Aucun appel pris ni émis depuis l’application ce mois-ci. Les personnes apparaissent ici dès qu’elles décrochent, appellent ou passent un appel depuis la barre d’appel.</p>`;
+  }
+  active.sort((a, b) => (b.taken - a.taken) || (b.dialed - a.dialed) || a.email.localeCompare(b.email));
+  const top = active.slice(0, RANK_MAX);
+
+  let out = '';
+  for (let i = 0; i < top.length; i++) {
+    const a = top[i];
+    const rate = (a.taken + a.missed) > 0 && a.lines && a.lines.length ? (a.taken / (a.taken + a.missed)) * 100 : null;
+    out += html`<div data-person-open="${a.email}" title="Ouvrir la fiche de ${nameOfEmail(a.email)} dans la vue Attribution">${raw(rankRow({
+      rank: i + 1,
+      label: firstNameOfEmail(a.email),
+      sub: fmtInt(a.taken) + ' ' + pluralize(a.taken, 'pris', 'pris') + ' · ' + fmtInt(a.dialed) + ' ' + pluralize(a.dialed, 'émis', 'émis'),
+      metric: rate == null ? fmtInt(a.taken + a.dialed) : fmtPct(rate, 0),
+      photo: photoUrl(a.email, 48),
+    }))}</div>`;
+  }
+  return html`<div class="rank-list">${raw(out)}</div>`;
+}
+
+/**
+ * Top lignes : les lignes du parc classees par appels decroches sur la
+ * periode. Le clic filtre toute l'application sur la ligne.
  * @param {any[]} lines  Sortie de `byLine()`.
  * @returns {string}
  */
-function rankList(lines) {
-  const named = [];
-  const sharedLines = [];
+function lineRank(lines) {
+  const ranked = [];
   for (let i = 0; i < lines.length; i++) {
-    const person = lines[i].person;
-    const first = person ? (person.firstName || person.displayName) : '';
     // `incoming` est conserve pour distinguer « 0 % de reponse » d'un « aucun
-    // entrant a decrocher » : un poste exclusivement sortant afficherait sinon
-    // un taux de 0 % qui se lit comme un reproche.
-    const entry = {
+    // entrant a decrocher » : une ligne exclusivement sortante afficherait
+    // sinon un taux de 0 % qui se lit comme un reproche.
+    ranked.push({
       csi: lines[i].csi,
-      name: first || lines[i].label,
+      name: lines[i].label,
       handled: lines[i].answered,
       rate: lines[i].answerRate,
       incoming: lines[i].in,
-    };
-    if (first) { named.push(entry); continue; }
-    const line = lineByCsi(lines[i].csi);
-    if (line && line.shared) sharedLines.push(entry);
-  }
-
-  const ranked = named.length ? named : sharedLines;
-  if (!ranked.length) {
-    return notice({
-      tone: 'warn',
-      title: 'Aucune ligne identifiée.',
-      body: html`Associez chaque ligne à une adresse e-mail depuis la page <button class="link" type="button" data-goto="diagnostics">Diagnostic</button>.`,
     });
   }
-
+  if (!ranked.length) {
+    return html`<p class="rate-rank-hint muted">Aucune ligne n’a d’appel sur la période.</p>`;
+  }
   ranked.sort((a, b) => b.handled - a.handled);
   const top = ranked.slice(0, RANK_MAX);
 
@@ -391,17 +462,14 @@ function rankList(lines) {
   for (let i = 0; i < top.length; i++) {
     // Le csi voyage sur une enveloppe : `rankRow` ne pose pas d'attribut, et
     // c'est la delegation sur `[data-csi]` qui rend la ligne actionnable.
-    out += html`<div data-csi="${top[i].csi}">${raw(rankRow({
+    out += html`<div data-csi="${top[i].csi}" title="Filtrer l’application sur cette ligne">${raw(rankRow({
       rank: i + 1,
       label: top[i].name,
-      sub: fmtInt(top[i].handled) + ' ' + pluralize(top[i].handled, 'appel traité', 'appels traités'),
+      sub: fmtInt(top[i].handled) + ' ' + pluralize(top[i].handled, 'appel décroché', 'appels décrochés'),
       metric: top[i].incoming ? fmtPct(top[i].rate, 0) : '—',
     }))}</div>`;
   }
-  const hint = named.length
-    ? ''
-    : html`<p class="rate-rank-hint muted">Lignes partagées par une équipe : la répartition par personne est dans la vue <button class="link" type="button" data-goto="agents">Attribution</button>.</p>`;
-  return html`<div class="rank-list">${raw(out)}</div>${raw(hint)}`;
+  return html`<div class="rank-list">${raw(out)}</div>`;
 }
 
 // -----------------------------------------------------------------------------
@@ -523,14 +591,21 @@ function linesCard(lines, s) {
     const e = lines[i];
     const line = lineByCsi(e.csi);
     const person = e.person;
+    const shared = !person && !!(line && line.shared);
+    const team = line && Array.isArray(line.team) ? line.team.length : 0;
     const name = (person && (person.firstName || person.displayName)) || e.label;
-    const mail = person && person.email ? person.email : 'identité non résolue';
+    const mail = person && person.email
+      ? person.email
+      : (shared ? 'ligne partagée' + (team ? ' par ' + fmtInt(team) + ' ' + pluralize(team, 'personne', 'personnes') : '') : 'identité non résolue');
     const lineName = (line && (line.name || line.formattedCsi)) || e.csi;
+    const key = digitsOf(e.csi);
+    const open = _openLines.has(key);
 
     rows.push([
-      html`<button class="link" type="button" data-csi="${e.csi}" title="Filtrer l’application sur cette ligne">${e.csi}</button>`,
+      // Le CSI deplie la ligne : qui y travaille, et ce que chacun y a fait.
+      html`<button class="link line-toggle" type="button" data-line-toggle="${e.csi}" aria-expanded="${open ? 'true' : 'false'}" title="${open ? 'Replier' : 'Voir les collaborateurs de cette ligne'}"><span class="line-toggle-chevron" aria-hidden="true">${open ? '▾' : '▸'}</span>${e.csi}</button>`,
       html`<div class="cell-id">
-        ${raw(avatar(name))}
+        ${raw(avatar(name, { photo: person && person.email ? photoUrl(person.email, 48) : '' }))}
         <div class="cell-id-body">
           <div class="cell-id-name">${name}</div>
           <div class="cell-id-sub">${mail}</div>
@@ -546,6 +621,7 @@ function linesCard(lines, s) {
       </div>`,
       html`${fmtHms(e.seconds)}`,
     ]);
+    if (open) rows.push({ span: raw(lineDetail(e, line)), cls: 'line-detail-row' });
   }
 
   const reset = state.csi
@@ -556,7 +632,7 @@ function linesCard(lines, s) {
     flush: true,
     // Sans defilement : le nom de ligne double souvent le libelle du
     // collaborateur (lignes partagees), la duree et le detail des sens sont
-    // secondaires. Le CSI reste : c'est le bouton de filtre de la ligne.
+    // secondaires. Le CSI reste : c'est le bouton qui deplie la ligne.
     body: raw(table({
       columns: [
         { label: 'CSI', cls: 'shrink', nowrap: true },
@@ -572,6 +648,108 @@ function linesCard(lines, s) {
       foot: raw(html`<span>${fmtInt(lines.length)} ${pluralize(lines.length, 'ligne', 'lignes')} · ${fmtInt(s.total)} ${pluralize(s.total, 'appel', 'appels')}</span>${raw(reset)}`),
     })),
   });
+}
+
+/** @param {unknown} v @returns {string} chiffres seuls, forme de comparaison des CSI. */
+function digitsOf(v) {
+  return String(v == null ? '' : v).replace(/\D/g, '');
+}
+
+/**
+ * Detail d'une ligne : LES PERSONNES qui y travaillent (equipe de la ligne,
+ * plus toute personne dont le journal porte un fait sur cette ligne), avec ce
+ * que chacune y a fait ce mois-ci d'apres le journal d'attribution — pris,
+ * manques, emis, taux de reponse. Une ligne partagee ne dit pas qui a
+ * decroche : seules les actions faites dans l'application comptent, et la
+ * carte le dit plutot que de laisser lire des zeros comme des absences.
+ * @param {any} e     Agregat `byLine` de la ligne.
+ * @param {any} line  Ligne du parc, ou null.
+ * @returns {string}
+ */
+function lineDetail(e, line) {
+  const j = journal();
+  const key = digitsOf(e.csi);
+  const owners = j.lineOwners || {};
+  const ownerOf = owners[key] ? String(owners[key]).toLowerCase() : '';
+
+  // Faits du mois sur cette ligne, resumes par personne.
+  const events = (j.events || []).filter((ev) => digitsOf(ev.csi) === key);
+  const perPerson = new Map();
+  if (events.length) {
+    const sum = summarize(events, { lineOwners: owners });
+    for (const a of sum.agents) perPerson.set(String(a.email).toLowerCase(), a);
+  }
+
+  // Equipe de la ligne (annuaire Keyyo / configuration), puis les personnes
+  // vues dans le journal mais absentes de l'equipe.
+  /** @type {Map<string, {email: string, name: string}>} */
+  const people = new Map();
+  for (const m of (line && Array.isArray(line.team) ? line.team : [])) {
+    const email = m && m.email ? String(m.email).toLowerCase() : '';
+    if (!email || people.has(email)) continue;
+    people.set(email, { email, name: m.name ? String(m.name) : nameOfEmail(email) });
+  }
+  for (const email of perPerson.keys()) {
+    if (!people.has(email)) people.set(email, { email, name: nameOfEmail(email) });
+  }
+
+  const shared = !(e.person && e.person.email) && !!(line && line.shared);
+  const scope = j.month ? fmtMonth(j.month) : 'ce mois-ci';
+
+  if (!people.size) {
+    return html`<div class="line-detail">
+      ${raw(empty('Aucun collaborateur rattaché', 'Aucune adresse n’est associée à cette ligne dans l’annuaire Keyyo ni dans l’Administration, et personne n’y a agi depuis l’application ce mois-ci.'))}
+    </div>`;
+  }
+
+  const list = Array.from(people.values());
+  list.sort((a, b) => {
+    const sa = perPerson.get(a.email); const sb = perPerson.get(b.email);
+    return ((sb ? sb.taken + sb.dialed : 0) - (sa ? sa.taken + sa.dialed : 0)) || a.name.localeCompare(b.name, 'fr');
+  });
+
+  let rowsHtml = '';
+  for (const p of list) {
+    const a = perPerson.get(p.email) || null;
+    const isOwner = ownerOf === p.email;
+    const taken = a ? a.taken : 0;
+    const missed = a ? a.missed : 0;
+    const dialed = a ? a.dialed : 0;
+    const rate = isOwner && (taken + missed) > 0 ? (taken / (taken + missed)) * 100 : null;
+    const ring = a && a.ringCount ? Math.round(a.ringTotal / a.ringCount) : 0;
+    rowsHtml += html`<div class="line-agent">
+      <button class="cell-id" type="button" data-person-open="${p.email}" title="Ouvrir la fiche de ${p.name} dans la vue Attribution">
+        ${raw(avatar(p.name, { size: 'sm', photo: photoUrl(p.email, 48) }))}
+        <div class="cell-id-body">
+          <div class="cell-id-name">${p.name}</div>
+          <div class="cell-id-sub">${p.email}${isOwner ? ' · titulaire de la ligne' : ''}</div>
+        </div>
+      </button>
+      <div class="line-agent-stats">
+        <div class="line-agent-stat"><span class="line-agent-value">${fmtInt(taken)}</span><span class="line-agent-label">pris</span></div>
+        <div class="line-agent-stat"><span class="line-agent-value">${isOwner ? fmtInt(missed) : '—'}</span><span class="line-agent-label">manqués</span></div>
+        <div class="line-agent-stat"><span class="line-agent-value">${fmtInt(dialed)}</span><span class="line-agent-label">émis</span></div>
+        <div class="line-agent-stat"><span class="line-agent-value">${rate == null ? '—' : fmtPct(rate, 0)}</span><span class="line-agent-label">réponse</span></div>
+        <div class="line-agent-stat"><span class="line-agent-value">${ring ? fmtDurationShort(ring) : '—'}</span><span class="line-agent-label">sonnerie</span></div>
+      </div>
+    </div>`;
+  }
+
+  const note = shared
+    ? 'Ligne partagée : Keyyo ne dit pas qui décroche. Les chiffres viennent des actions faites dans l’application (' + scope + ') ; les manqués et le taux ne se calculent que pour une titulaire unique.'
+    : 'D’après le journal d’attribution (' + scope + ').';
+
+  return html`<div class="line-detail">
+    <div class="line-detail-head">
+      <span class="strong">${fmtInt(list.length)} ${pluralize(list.length, 'collaborateur rattaché', 'collaborateurs rattachés')}</span>
+      ${raw(tag(shared ? 'ligne partagée' : 'ligne personnelle', shared ? 'in' : 'ok'))}
+      <span class="toolbar-spacer"></span>
+      <button class="btn btn--sm btn--ghost" type="button" data-csi="${e.csi}">Filtrer sur cette ligne</button>
+      <button class="btn btn--sm btn--ghost" type="button" data-goto="agents">Vue Attribution</button>
+    </div>
+    <div class="line-agents">${raw(rowsHtml)}</div>
+    <p class="faint line-detail-note">${note}</p>
+  </div>`;
 }
 
 /**
@@ -601,12 +779,30 @@ function wire(root) {
   if (_wiredRoots.has(root)) return;
   _wiredRoots.add(root);
 
-  // Filtre de ligne : classement, tableau, et bouton de remise a zero
-  // (`data-csi` vide) partagent le meme point d'entree.
+  // Filtre de ligne : classement, detail d'une ligne, et bouton de remise a
+  // zero (`data-csi` vide) partagent le meme point d'entree.
   on(root, 'click', '[data-csi]', (ev, el) => {
     const csi = el.getAttribute('data-csi');
     if (csi === null) return;
     setFilter({ csi: csi });
+  });
+
+  // Depliage d'une ligne : qui y travaille. Rendu local, sans passer par le
+  // store — l'etat deplie survit aux collectes de fond.
+  on(root, 'click', '[data-line-toggle]', (ev, el) => {
+    const key = digitsOf(el.getAttribute('data-line-toggle'));
+    if (!key) return;
+    if (_openLines.has(key)) _openLines.delete(key); else _openLines.add(key);
+    render(root);
+  });
+
+  // Fiche d'une personne : la vue Attribution l'ouvre.
+  on(root, 'click', '[data-person-open]', (ev, el) => {
+    const email = el.getAttribute('data-person-open') || '';
+    if (!email) return;
+    showPerson(email);
+    setFilter({ page: 'agents' });
+    if (location.hash !== '#/agents') location.hash = '#/agents';
   });
 
   // Pas de gestionnaire `[data-goto]` ici : app/main.js en pose un sur le
@@ -682,8 +878,8 @@ function previousStats() {
 
 /** @returns {string} libelle de la periode courante, ou chaine vide. */
 function periodLabel() {
-  if (!state.from || !state.to) return '';
-  return 'Période du ' + fmtDate(state.from) + ' au ' + fmtDate(state.to);
+  if (!state.from || !state.to) return 'Toute la période';
+  return 'Du ' + fmtDate(state.from) + ' au ' + fmtDate(state.to);
 }
 
 /**

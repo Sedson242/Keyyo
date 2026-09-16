@@ -562,9 +562,9 @@ export function fmtPct(n, digits?): string        // 63,89 %
 export function fmtDuration(seconds): string      // 4 min 12 s
 export function fmtDurationShort(seconds): string // 4m12
 export function fmtHms(seconds): string           // 12 h 40
-export function fmtDate(iso): string              // 03/09/2026
+export function fmtDate(iso): string              // 03/09/26 — jj/mm/aa, LE format de toutes les dates affichées
 export function fmtDateLong(iso): string          // 3 septembre 2026
-export function fmtDayShort(iso): string          // mer. 3 sept.
+export function fmtDayShort(iso): string          // 03/09 — jj/mm, pour les axes
 export function fmtTime(hour, minute): string     // 14:05
 export function fmtMonth(ym): string              // sept. 2026
 export function fmtClock(isoDateTime): string     // 14:05:31
@@ -597,7 +597,8 @@ Tout contenu venant de l'API (noms, numéros, messages d'erreur) passe par là.
 export function barChart(opts): string
    // { data:[{label, value, hint?}], height?, maxTicks?, gradient?, color?, showTrack?, format? }
 export function areaChart(opts): string
-   // { series:[{name, color, points:[{label, value}]}], height?, showDots? }
+   // { series:[{name, color, points:[{label, value, hint?}]}], height?, showDots? }
+   // value null/non fini = trou dans la courbe ; hint s'ajoute à l'info-bulle
 export function donutChart(opts): string
    // { slices:[{label, value, color}], size?, thickness?, center? }
 export function heatmap(opts): string
@@ -622,6 +623,8 @@ export function getLines(): Line[]                // lignes Keyyo + identités
 export function lineByCsi(csi): Line|null
 export function nameOf(number): string|null       // annuaire
 export function labelOf(number): string           // nom, sinon numéro formaté
+export function nameOfEmail(email): string        // nom d'une adresse : équipe des lignes, sinon partie locale mise en forme
+export function firstNameOfEmail(email): string   // prénom (premier mot du nom)
 export function stats(rows): Stats
 export function byDay(rows, range?): Array<{label, value, in, out, missed}>
 export function byMonth(rows, range?): Array<{label, value, in, out, missed}>
@@ -634,10 +637,14 @@ export function heatMatrix(rows): number[][]      // [7][24]
 export function byLine(rows): Array<LineStats>
 export function byPeer(rows): Array<PeerStats>
 export function callbackAnalysis(rows): { pending, done }
+        // un manqué est soldé par un sortant vers le numéro APRÈS lui (toute ligne),
+        // ou par un rappel du correspondant DÉCROCHÉ dans les CALLBACK_WINDOW_SEC (24 h) ;
+        // chaque entrée porte calledBackVia : 'out' | 'in' | ''
+export const CALLBACK_WINDOW_SEC: number           // 86400
 export function trend(rows, unit): Array<{label, value}>
 export async function load(opts?): Promise<void>  // { force?, full? }
 export function status(): { kind, at, warning, empty, store, diag, meta }
-export function journal(): { month, loading, error, events, summary, partitions, at }
+export function journal(): { month, loading, error, events, summary, lineOwners, partitions, at }
 export async function loadJournal(month, opts?): Promise<void>   // { force? } — /api/events?scope=all
 ```
 `Stats` : `{ total, in, out, missed, answered, answerRate, avgDuration,
@@ -649,15 +656,16 @@ export function card(opts): string        // { title?, sub?, lead?, action?, bod
 export function sectionHead(title, sub?, action?): string
 export function kpi(opts): string         // { label, value, foot?, why?, tone? }
 export function statbar(items): string    // [{ label, value, icon, tone }]
-export function table(opts): string       // { columns:[{key,label,align?,cls?,priority?,nowrap?,breakAnywhere?}], rows:[cells[]], foot? }
+export function table(opts): string       // { columns:[{key,label,align?,cls?,priority?,nowrap?,breakAnywhere?}], rows:[cells[] | {span, cls?}], foot? }
                                            // jamais de défilement horizontal : priority 'lg' masquée sous 900 px
-                                           // de conteneur, 'md' sous 620 px, lignes empilées sous 460 px
+                                           // de conteneur, 'md' sous 620 px, lignes empilées sous 460 px ;
+                                           // une ligne { span } est une ligne de détail sur toute la largeur (dépliage)
 export function tag(label, tone): string  // tone : in|out|missed|ok|neutral
 export function avatar(label, opts?): string
 export function avatarStack(labels, max?): string
 export function meter(pct, tone?): string
 export function split(opts): string       // { label, value, pct, tone }
-export function rankRow(opts): string     // { rank, label, sub, metric, tone? }
+export function rankRow(opts): string     // { rank, label, sub, metric, tone?, photo? }
 export function empty(title, sub?): string
 export function notice(opts): string      // { tone, title, body }
 export function skeleton(kind?): string

@@ -174,7 +174,7 @@ const CONTRACT = [
   ['../app/callbar.js', ['init', 'setColleagues', 'setLabelOf']],
   // agent.js ne s'amorce que si #agent-root est present : importable ici.
   ['../app/agent.js', ['boot']],
-  ['../app/store.js', ['state', 'setFilter', 'subscribe', 'getRows', 'filtered', 'getLines', 'lineByCsi', 'nameOf', 'labelOf', 'stats', 'byDay', 'byMonth', 'byHour', 'byWeekday', 'heatMatrix', 'byLine', 'byPeer', 'callbackAnalysis', 'trend', 'load', 'status', 'journal', 'loadJournal']],
+  ['../app/store.js', ['state', 'setFilter', 'subscribe', 'getRows', 'filtered', 'getLines', 'lineByCsi', 'nameOf', 'labelOf', 'nameOfEmail', 'firstNameOfEmail', 'stats', 'byDay', 'byMonth', 'byHour', 'byWeekday', 'heatMatrix', 'byLine', 'byPeer', 'callbackAnalysis', 'CALLBACK_WINDOW_SEC', 'trend', 'load', 'status', 'journal', 'loadJournal']],
   ['../app/router.js', ['ROUTES', 'start', 'go', 'current']],
   ['../app/alerts.js', ['init', 'check', 'toast', 'renderCenter', 'unreadCount', 'markAllRead']],
 
@@ -183,7 +183,7 @@ const CONTRACT = [
   ['../app/pages/missed.js', ['render']],
   ['../app/pages/peers.js', ['render']],
   ['../app/pages/people.js', ['render']],
-  ['../app/pages/agents.js', ['render']],
+  ['../app/pages/agents.js', ['render', 'showPerson']],
   ['../app/pages/lines.js', ['render']],
   ['../app/pages/diagnostics.js', ['render']],
 
@@ -1459,8 +1459,9 @@ if (need(format, 'app/format.js', 'app/format.js')) suite('app/format.js', () =>
   });
 
   test('les dates calendaires sont lues sans decalage de fuseau', () => {
-    eq(fmtDate('2026-09-03'), '03/09/2026');
-    eq(fmtDate('2026-01-01'), '01/01/2026', 'un 1er janvier ne doit pas reculer au 31 decembre');
+    eq(fmtDate('2026-09-03'), '03/09/26', 'jj/mm/aa : le format unique des dates de l’application');
+    eq(fmtDate('2026-01-01'), '01/01/26', 'un 1er janvier ne doit pas reculer au 31 decembre');
+    eq(fmtDayShort('2026-09-03'), '03/09', 'jj/mm sur les axes');
     eq(fmtDate('pas une date'), '—');
     eq(fmtDate('2026-02-31'), '—', 'date rebouclee : refusee');
 
@@ -1752,6 +1753,30 @@ if (need(store && schema, 'app/store.js', 'app/store.js ou shared/schema.js')) s
     eq(pending.length, 1, 'le dernier manque n’est pas rappele');
     eq(done.length, 0);
     eq(pending[0].count, 1, 'seul le manque posterieur au dernier sortant compte');
+  });
+
+  test('un correspondant qui rappelle lui-meme dans les 24 h et est decroche est solde', () => {
+    // Manque a 1000 sur une ligne, il rappelle a 4000 sur une AUTRE ligne et
+    // on decroche : il n’attend plus rien.
+    const rows = [
+      row({ dir: 0, peer: '+33677777777', seconds: 0, ts: 1000, csi: '33100000001' }),
+      row({ dir: 0, peer: '+33677777777', seconds: 45, ts: 4000, csi: '33100000002' }),
+    ];
+    const { pending, done } = callbackAnalysis(rows);
+    eq(pending.length, 0, 'plus rien a rappeler');
+    eq(done.length, 1);
+    eq(done[0].calledBackTs, 4000);
+    eq(done[0].calledBackVia, 'in', 'solde par son propre rappel');
+  });
+
+  test('un rappel de sa part au-dela de 24 h ne solde pas le manque', () => {
+    const rows = [
+      row({ dir: 0, peer: '+33688888888', seconds: 0, ts: 1000 }),
+      row({ dir: 0, peer: '+33688888888', seconds: 45, ts: 1000 + 24 * 3600 + 1 }),
+    ];
+    const { pending, done } = callbackAnalysis(rows);
+    eq(pending.length, 1, 'trop tard : c’est un nouvel echange');
+    eq(done.length, 0);
   });
 
   test('un sortant a la seconde exacte du manque n’est pas un rappel', () => {

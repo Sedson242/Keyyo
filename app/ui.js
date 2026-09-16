@@ -305,8 +305,10 @@ export function statbar(items) {
  *        (ex. 'shrink', 'strong'). `nowrap` interdit le passage a la ligne
  *        (dates, etats courts) ; `breakAnywhere` autorise la coupure d'une
  *        chaine insecable longue (URL, e-mail, identifiant).
- * @param {Array<Array<any>>} opts.rows  Tableau de lignes, chaque ligne etant un
- *        tableau de cellules HTML deja sures.
+ * @param {Array<Array<any>|{span: any, cls?: string}>} opts.rows  Tableau de
+ *        lignes, chaque ligne etant un tableau de cellules HTML deja sures. Une
+ *        ligne `{ span }` est une LIGNE DE DETAIL : une seule cellule sur toute
+ *        la largeur (`colspan`), HTML deja sur — le depliage d'une ligne.
  * @param {any} [opts.foot]     HTML DEJA SUR, rendu dans `table-foot`.
  * @param {number} [opts.minWidth]  Ignore : conserve pour compatibilite. Un
  *        tableau ne force plus jamais de largeur minimale, c'est ce qui
@@ -350,7 +352,13 @@ export function table(opts) {
     body = html`<tr><td colspan="${span}">${raw(empty('Aucune donnée', 'Aucune ligne ne correspond à la période et aux filtres choisis.'))}</td></tr>`;
   } else {
     for (let r = 0; r < rows.length; r++) {
-      const cells = Array.isArray(rows[r]) ? rows[r] : [rows[r]];
+      const entry = rows[r];
+      if (entry && !Array.isArray(entry) && typeof entry === 'object' && 'span' in entry) {
+        const cls = 'table-detail' + (has(entry.cls) ? ' ' + txt(entry.cls) : '');
+        body += html`<tr class="${cls}"><td colspan="${span}">${raw(frag(entry.span))}</td></tr>`;
+        continue;
+      }
+      const cells = Array.isArray(entry) ? entry : [entry];
       const count = Math.max(cells.length, columns.length);
       let tds = '';
       for (let c = 0; c < count; c++) {
@@ -512,6 +520,7 @@ export function split(opts) {
  * @param {string} [opts.sub]
  * @param {string|number} [opts.metric]
  * @param {'out'|'missed'|'dark'} [opts.tone]
+ * @param {string} [opts.photo]  adresse relative de la photo (`/api/photo?u=…`)
  * @returns {string}
  */
 export function rankRow(opts) {
@@ -521,7 +530,7 @@ export function rankRow(opts) {
   const metric = has(o.metric) ? html`<div class="rank-metric">${txt(o.metric)}</div>` : '';
 
   return html`<button class="rank-row" type="button">
-    <span class="rank-avatar">${raw(avatar(o.label, { tone: o.tone }))}${raw(badge)}</span>
+    <span class="rank-avatar">${raw(avatar(o.label, { tone: o.tone, photo: o.photo }))}${raw(badge)}</span>
     <span class="rank-body">
       <span class="rank-name">${txt(o.label)}</span>
       ${raw(sub)}

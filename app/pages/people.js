@@ -524,12 +524,12 @@ function charts(people) {
 
   return html`<div class="grid-2">
     ${raw(card({
-      title: 'Appels traités par collaborateur',
+      title: 'Appels par ligne',
       sub: 'Nombre total d\'appels, entrants et sortants confondus.',
       body: raw(volumeBody),
     }))}
     ${raw(card({
-      title: 'Taux de réponse par collaborateur',
+      title: 'Taux de réponse par ligne',
       sub: 'Entrants décrochés ÷ entrants, sur les lignes ayant reçu au moins un appel.',
       body: raw(rateBody),
     }))}
@@ -666,7 +666,13 @@ export function render(root) {
   parts.push(card({ flush: true, body: raw(comparisonTable(people)) }));
 
   if (rows.length) {
-    parts.push(sectionHead('Répartition par collaborateur'));
+    // « Par ligne » et non « par collaborateur » : les releves Keyyo comptent
+    // par ligne, et une ligne partagee par un site ne nomme personne. La
+    // repartition par personne vit dans la vue Attribution.
+    parts.push(sectionHead(
+      'Répartition par ligne',
+      'Les relevés Keyyo comptent par ligne, pas par personne : la répartition par collaborateur est dans la vue Attribution.',
+    ));
     parts.push(charts(people));
   }
 

@@ -219,7 +219,7 @@ function kpiGrid(s, pending, done) {
     value: fmtInt(pending.length),
     foot: fmtInt(pendingCalls) + ' ' + pluralize(pendingCalls, 'appel concerné', 'appels concernés'),
     tone: 'missed',
-    why: "Les appels manqués sont regroupés par correspondant, car on rappelle une personne et non un appel : trois appels manqués du même numéro forment une seule tâche. Un groupe reste en attente tant qu'aucun appel sortant vers ce numéro n'est parti après son dernier manqué. Les appelants masqués sont exclus : ils ne peuvent pas être rappelés.",
+    why: "Les appels manqués sont regroupés par correspondant, car on rappelle une personne et non un appel : trois appels manqués du même numéro forment une seule tâche. Un groupe reste en attente tant que son dernier manqué n'a été soldé ni par un appel sortant vers ce numéro (depuis n'importe quelle ligne), ni par un rappel du correspondant lui-même décroché dans les 24 heures, sur la même ligne ou sur une autre. Les appelants masqués sont exclus : ils ne peuvent pas être rappelés.",
   });
 
   const third = kpi({
@@ -229,7 +229,7 @@ function kpiGrid(s, pending, done) {
       ? 'délai médian ' + fmtHms(medianOf(delays))
       : 'aucun délai mesurable',
     tone: 'ok',
-    why: "Un correspondant est considéré rappelé dès qu'un appel sortant vers son numéro part strictement après son dernier appel manqué. Le rappel peut venir de n'importe quelle ligne du parc : si un collègue a rappelé, l'affaire est traitée. Le rapprochement se fait sur le numéro normalisé, un entrant vu en +33 et un sortant composé en 06 sont donc bien le même correspondant.",
+    why: "Un correspondant est considéré soldé dans deux cas : un appel sortant vers son numéro part strictement après son dernier appel manqué, depuis n'importe quelle ligne du parc ; ou il rappelle lui-même dans les 24 heures et son appel est décroché, sur la même ligne ou sur une autre. Le rapprochement se fait sur le numéro normalisé, un entrant vu en +33 et un sortant composé en 06 sont donc bien le même correspondant.",
   });
 
   const fourth = kpi({
@@ -266,7 +266,7 @@ function callbackColumns(pending, done) {
   const left = card({
     cls: 'callback-col',
     title: 'À rappeler',
-    sub: 'Aucun appel sortant vers ces numéros depuis leur dernier appel manqué.',
+    sub: 'Ni rappelés depuis leur dernier manqué, ni revenus d’eux-mêmes dans les 24 h.',
     body: raw(rowList(pending, false, empty(
       'Rien en attente',
       'Tous les correspondants non décrochés de la période ont été rappelés.',
@@ -276,7 +276,7 @@ function callbackColumns(pending, done) {
   const right = card({
     cls: 'callback-col callback-col--done',
     title: 'Déjà rappelés',
-    sub: 'Délai mesuré entre le dernier appel manqué et l’appel sortant qui a suivi.',
+    sub: 'Délai entre le dernier manqué et l’appel qui l’a soldé : notre rappel, ou le sien décroché.',
     body: raw(rowList(done, true, empty(
       'Aucun rappel sur la période',
       'Un rappel est un appel sortant vers un numéro non décroché, parti après son dernier manqué.',
@@ -335,7 +335,8 @@ function callbackRow(entry, isDone) {
   let meta;
   if (isDone) {
     const delay = callbackDelay(entry);
-    meta = (delay == null ? 'Rappelé' : 'Rappelé après ' + fmtHms(delay))
+    const how = entry.calledBackVia === 'in' ? 'A rappelé lui-même' : 'Rappelé';
+    meta = (delay == null ? how : how + ' après ' + fmtHms(delay))
       + ' · ' + count + ' · dernier le ' + when + ' · ligne ' + lineName;
   } else {
     meta = count + ' · dernière tentative le ' + when + ' · ligne ' + lineName;

@@ -18,6 +18,10 @@
 }
 
 .card--flush { padding: 0; overflow: hidden; }
+/* Une carte sans rembourrage peut porter un en-tete : il reprend alors le
+   rembourrage de la carte, sinon le titre se colle au bord (vu sur « Vers
+   qui on appelle », vue Attribution). */
+.card--flush > .card-head { padding: var(--pad-card) var(--pad-card) 0; margin-bottom: 12px; }
 .card--nested {
   border-radius: var(--r-lg);
   box-shadow: var(--sh-sm);
@@ -178,6 +182,11 @@
   color: var(--ink-muted);
 }
 .kpi.is-open .kpi-why { display: block; }
+
+/* Indicateur qui FILTRE (journal des appels) : l'etat actif se voit. */
+.kpi[data-kpi-filter] { cursor: pointer; }
+.kpi.is-active { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink), var(--sh-sm); }
+.kpi.is-active .kpi-label::after { content: ' · filtre actif'; color: var(--ink); }
 
 .kpi--in .kpi-value { color: var(--in-strong); }
 .kpi--out .kpi-value { color: var(--out); }

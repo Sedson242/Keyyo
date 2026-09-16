@@ -369,6 +369,38 @@ export function getLines() {
 }
 
 /**
+ * Nom affichable d'une ADRESSE E-MAIL : l'equipe des lignes (`/api/team`)
+ * d'abord — c'est elle qui rattache une adresse a un prenom et un nom —, puis
+ * la partie locale de l'adresse mise en forme (`emma.rasolo` -> « Emma
+ * Rasolo »). Jamais vide pour une adresse non vide.
+ * @param {unknown} email
+ * @returns {string}
+ */
+export function nameOfEmail(email) {
+  const e = String(email == null ? '' : email).trim().toLowerCase();
+  if (!e) return '';
+  for (let i = 0; i < _lines.length; i++) {
+    const team = Array.isArray(_lines[i].team) ? _lines[i].team : [];
+    for (let k = 0; k < team.length; k++) {
+      const m = team[k];
+      if (m && m.email && String(m.email).toLowerCase() === e && m.name) return String(m.name);
+    }
+  }
+  const local = e.split('@')[0] || e;
+  return local.split(/[._-]+/).filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') || e;
+}
+
+/**
+ * Prenom d'une adresse : premier mot du nom affichable.
+ * @param {unknown} email
+ * @returns {string}
+ */
+export function firstNameOfEmail(email) {
+  const name = nameOfEmail(email);
+  return name.split(/\s+/)[0] || name;
+}
+
+/**
  * Ligne Keyyo par CSI. Tolerant sur la forme du CSI recu (`33253359565`,
  * `+33253359565`, `0253359565`) : les pages et l'URL n'ont pas le meme.
  * @param {unknown} csi
@@ -881,23 +913,35 @@ export function byPeer(rows) {
  * @property {number} lastMinute
  * @property {string} csi       Ligne Keyyo qui a recu ce dernier manque.
  * @property {number|null} calledBackTs  Horodatage du rappel, si rappele.
+ * @property {'out'|'in'|''} calledBackVia  `out` : on l'a rappele ; `in` : il a
+ *                                   rappele lui-meme et a ete decroche.
  */
+
+/**
+ * Fenetre pendant laquelle un correspondant qui RAPPELLE LUI-MEME, et qu'on
+ * decroche, solde son manque : 24 heures. Au-dela, l'appel decroche est un
+ * nouvel echange, pas la suite du manque.
+ */
+export const CALLBACK_WINDOW_SEC = 24 * 3600;
 
 /**
  * Qui reste a rappeler.
  *
- * REGLE : un appel entrant manque est considere RAPPELE s'il existe, APRES lui
- * (horodatage strictement superieur), un appel SORTANT vers le MEME
- * correspondant. La comparaison se fait sur `peer`, deja normalise en E.164 par
+ * REGLE : un appel entrant manque est considere SOLDE dans deux cas.
+ *   1. Il existe, APRES lui (horodatage strictement superieur), un appel
+ *      SORTANT vers le MEME correspondant, depuis N'IMPORTE QUELLE ligne du
+ *      parc : si un collegue a rappele, l'affaire est traitee.
+ *   2. Le correspondant a RAPPELE LUI-MEME dans les 24 heures qui suivent
+ *      (CALLBACK_WINDOW_SEC) et a ete DECROCHE, sur la meme ligne ou sur une
+ *      autre : il n'attend plus rien.
+ * La comparaison se fait sur `peer`, deja normalise en E.164 par
  * shared/cdr.js — c'est ce qui permet de rapprocher un entrant vu en
- * `+33612345678` et un sortant compose en `06 12 34 56 78`.
- *
- * Le sortant peut partir de n'importe quelle ligne du parc : si un collegue a
- * rappele, l'affaire est traitee. C'est pourquoi on ne compare pas les CSI.
+ * `+33612345678` et un sortant compose en `06 12 34 56 78`. On ne compare
+ * jamais les CSI.
  *
  * On regroupe par correspondant, car c'est la personne qu'on rappelle, pas
  * l'appel : trois manques du meme numero forment UNE tache avec `count` = 3.
- * Le groupe est en attente tant que son DERNIER manque n'a pas ete rappele —
+ * Le groupe est en attente tant que son DERNIER manque n'a pas ete solde —
  * un rappel anterieur ne solde pas un manque survenu apres lui.
  *
  * Comparaison volontairement STRICTE (`>`) : un sortant a la seconde exacte du
@@ -912,7 +956,7 @@ export function byPeer(rows) {
  */
 export function callbackAnalysis(rows) {
   const list = Array.isArray(rows) ? rows : [];
-  /** @type {Map<string, {missed: number[], outs: number[], last: any[]|null}>} */
+  /** @type {Map<string, {missed: number[], outs: number[], ins: number[], last: any[]|null}>} */
   const groups = new Map();
 
   for (let i = 0; i < list.length; i++) {
@@ -922,13 +966,14 @@ export function callbackAnalysis(rows) {
 
     const incoming = row[F.dir] === 0;
     const answered = row[F.answered] === 1;
-    if (incoming && answered) continue;              // ni un manque, ni un rappel
 
     let g = groups.get(peer);
-    if (!g) { g = { missed: [], outs: [], last: null }; groups.set(peer, g); }
+    if (!g) { g = { missed: [], outs: [], ins: [], last: null }; groups.set(peer, g); }
 
     const ts = Number(row[F.ts]) || 0;
-    if (incoming) {
+    if (incoming && answered) {
+      g.ins.push(ts);                                // il a rappele, on a decroche
+    } else if (incoming) {
       g.missed.push(ts);
       if (!g.last || ts > (Number(g.last[F.ts]) || 0)) g.last = row;
     } else {
@@ -942,16 +987,26 @@ export function callbackAnalysis(rows) {
   const done = [];
 
   for (const [peer, g] of groups) {
-    if (!g.missed.length || !g.last) continue;       // que des sortants : rien a rappeler
+    if (!g.missed.length || !g.last) continue;       // aucun manque : rien a rappeler
 
     const missed = g.missed.sort((a, b) => a - b);
     const outs = g.outs.sort((a, b) => a - b);
+    const ins = g.ins.sort((a, b) => a - b);
     const lastMissedTs = missed[missed.length - 1];
 
-    // Premier sortant strictement posterieur au dernier manque.
+    // 1. Premier sortant strictement posterieur au dernier manque.
     let calledBackTs = null;
+    /** @type {'out'|'in'|''} */
+    let calledBackVia = '';
     for (let i = 0; i < outs.length; i++) {
-      if (outs[i] > lastMissedTs) { calledBackTs = outs[i]; break; }
+      if (outs[i] > lastMissedTs) { calledBackTs = outs[i]; calledBackVia = 'out'; break; }
+    }
+    // 2. Le correspondant a rappele lui-meme dans les 24 h et a ete decroche.
+    for (let i = 0; i < ins.length; i++) {
+      if (ins[i] <= lastMissedTs) continue;
+      if (ins[i] - lastMissedTs > CALLBACK_WINDOW_SEC) break;
+      if (calledBackTs == null || ins[i] < calledBackTs) { calledBackTs = ins[i]; calledBackVia = 'in'; }
+      break;
     }
 
     const row = g.last;
@@ -965,19 +1020,22 @@ export function callbackAnalysis(rows) {
       lastMinute: Number(row[F.minute]) || 0,
       csi: String(row[F.csi] || ''),
       calledBackTs,
+      calledBackVia,
     };
 
     if (calledBackTs != null) {
       entry.count = missed.length;                   // tous les manques sont soldes
       done.push(entry);
     } else {
-      // Aucun sortant apres le dernier manque : les manques encore en attente
-      // sont ceux qu'aucun sortant ne suit, donc ceux posterieurs au dernier
-      // sortant connu.
-      const lastOutTs = outs.length ? outs[outs.length - 1] : -1;
+      // Rien ne solde le dernier manque : les manques encore en attente sont
+      // ceux posterieurs au dernier evenement qui a pu en solder (sortant vers
+      // lui, ou rappel de sa part decroche).
+      let lastSettledTs = -1;
+      if (outs.length) lastSettledTs = outs[outs.length - 1];
+      if (ins.length && ins[ins.length - 1] > lastSettledTs) lastSettledTs = ins[ins.length - 1];
       let n = 0;
       for (let i = missed.length - 1; i >= 0; i--) {
-        if (missed[i] >= lastOutTs) n++; else break;  // tableau trie : on peut sortir
+        if (missed[i] >= lastSettledTs) n++; else break;  // tableau trie : on peut sortir
       }
       entry.count = n;
       pending.push(entry);
@@ -1105,8 +1163,8 @@ export async function load(opts) {
 //  dire « chargement », « rien », « indisponible » sans rien deviner.
 // -----------------------------------------------------------------------------
 
-/** @type {{month: string, loading: boolean, error: string, events: any[], summary: any, partitions: number, at: string}} */
-let _journal = { month: '', loading: false, error: '', events: [], summary: null, partitions: 0, at: '' };
+/** @type {{month: string, loading: boolean, error: string, events: any[], summary: any, lineOwners: Record<string, string>, partitions: number, at: string}} */
+let _journal = { month: '', loading: false, error: '', events: [], summary: null, lineOwners: {}, partitions: 0, at: '' };
 
 /** @returns {typeof _journal} dernier etat connu du journal, sans requete. */
 export function journal() {
@@ -1137,6 +1195,9 @@ export async function loadJournal(month, opts) {
       error: '',
       events: Array.isArray(res && res.events) ? res.events : [],
       summary: res && res.summary ? res.summary : null,
+      // Titulaires uniques des lignes (csi -> adresse) : la regle
+      // d'attribution d'office, rejouee par les pages sur un sous-ensemble.
+      lineOwners: res && res.lineOwners && typeof res.lineOwners === 'object' ? res.lineOwners : {},
       partitions: Number(res && res.partitions) || 0,
       at: res && res.updatedAt ? String(res.updatedAt) : nowIso(),
     };

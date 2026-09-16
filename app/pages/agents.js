@@ -19,7 +19,7 @@
 
 import { html, raw, mount, on } from '../dom.js';
 import { card, sectionHead, table, tag, avatar, notice, empty, skeleton, kpi } from '../ui.js';
-import { journal, loadJournal, labelOf, getLines, lineByCsi } from '../store.js';
+import { journal, loadJournal, labelOf, lineByCsi, nameOfEmail } from '../store.js';
 import { photoUrl } from '../api.js';
 import { fmtInt, fmtPct, fmtDurationShort, fmtRelative, fmtMonth, pluralize } from '../format.js';
 import { formatNumber } from '../../shared/phone.js';
@@ -42,6 +42,19 @@ let _person = '';
 
 /** Nombre de faits listes dans une fiche. */
 const PERSON_EVENTS_MAX = 40;
+
+/** Filtre des faits de la fiche ouverte : '' (tout), 'taken', 'dialed', 'missed', 'transfer'. */
+let _personFilter = '';
+
+/**
+ * Ouvre la fiche d'une personne au prochain rendu de la vue. Appelee par une
+ * autre vue (Monitoring) avant de naviguer ici.
+ * @param {string} email
+ */
+export function showPerson(email) {
+  _person = String(email || '').toLowerCase();
+  _personFilter = '';
+}
 
 // -----------------------------------------------------------------------------
 //  Rendu
@@ -93,14 +106,16 @@ export function render(root) {
   const selected = _person ? s.agents.find((a) => a.email === _person) : null;
   mount(root, html`${raw(head)}
     ${raw(kpiRow(s.calls))}
-    ${raw(sectionHead('Par personne', 'D’après les actions faites dans l’application et les lignes personnelles. Cliquez une personne pour le détail de son mois.'))}
+    ${raw(sectionHead('Par personne', 'Cliquez une personne pour le détail de son mois.'))}
     ${raw(agentsCard(s.agents))}
     ${selected ? raw(personCard(selected, j.events)) : ''}
-    <div class="dash" style="margin-top: var(--gap-5)">
+    ${raw(sectionHead('Destinations et méthode', 'Depuis l’application, ' + fmtMonth(wanted)))}
+    <div class="dash">
       <div class="dash-left">${raw(calleesCard(s.agents))}</div>
       <div class="dash-right">${raw(methodCard(s.calls, j))}</div>
     </div>`);
   wire(root);
+  if (_person && !selected) _person = '';
 }
 
 // -----------------------------------------------------------------------------
@@ -169,23 +184,6 @@ function kpiRow(c) {
   </div>`;
 }
 
-/**
- * Nom affichable d'une adresse : l'annuaire des lignes (equipes) d'abord,
- * sinon la partie locale de l'adresse.
- * @param {string} email
- * @returns {string}
- */
-function nameOfEmail(email) {
-  const e = String(email || '').toLowerCase();
-  for (const line of getLines()) {
-    for (const m of line.team || []) {
-      if (m && m.email && String(m.email).toLowerCase() === e && m.name) return String(m.name);
-    }
-  }
-  const local = e.split('@')[0] || e;
-  return local.split(/[._-]+/).filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') || e;
-}
-
 /** @param {any[]} agents @returns {string} */
 function agentsCard(agents) {
   const rows = agents.map((a) => {
@@ -223,9 +221,21 @@ function agentsCard(agents) {
         { key: 'last', label: 'Dernière action', align: 'right', priority: 'md' },
       ],
       rows,
-      foot: html`<span class="faint">« Pris » = décroché depuis l’application, déclaré pris, ou décroché sur sa ligne personnelle ; un même appel ne compte qu’une fois.</span>`,
+      foot: html`<span class="faint">D’après les actions faites dans l’application et les lignes personnelles. « Pris » = décroché depuis l’application, déclaré pris, ou décroché sur sa ligne personnelle ; un même appel ne compte qu’une fois.</span>`,
     })),
   });
+}
+
+/**
+ * Horodatage d'un fait : `jj/mm/aa hh:mm`, dans le fuseau du navigateur.
+ * @param {unknown} unix secondes
+ * @returns {string}
+ */
+function stampOf(unix) {
+  const when = new Date((Number(unix) || 0) * 1000);
+  if (Number.isNaN(when.getTime())) return '—';
+  return when.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+    + ' ' + when.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 /** @param {unknown} n @returns {string} chiffres seuls, pour comparer deux numeros. */
@@ -272,71 +282,123 @@ function personCard(a, events) {
   // appel emis par elle vers le meme numero.
   const missed = list.filter((e) => e.type === 'observed' && e.dir === 'in' && e.answered !== 1 && e.peer && e.peer !== 'anonymous' && (!own.size || own.has(String(e.csi))));
   const dials = mine.filter((e) => e.type === 'dial');
-  let calledBack = 0;
+
+  // Manques rappeles : pour marquer chaque fait « rappelé » dans la liste.
+  const calledBackSet = new Set();
   for (const m of missed) {
     const p = digitsOf(m.peer);
-    if (p && dials.some((d) => Number(d.ts) > Number(m.ts) && digitsOf(d.to).slice(-9) === p.slice(-9))) calledBack++;
+    if (p && dials.some((d) => Number(d.ts) > Number(m.ts) && digitsOf(d.to).slice(-9) === p.slice(-9))) calledBackSet.add(m);
   }
+  const calledBack = calledBackSet.size;
 
   const ring = a.ringCount ? Math.round(a.ringTotal / a.ringCount) : 0;
-  const cells = [
-    ['Pris', fmtInt(a.taken), [a.answered ? fmtInt(a.answered) + ' depuis l’application' : '', a.claimed ? fmtInt(a.claimed) + ' déclarés' : '', a.handoff ? fmtInt(a.handoff) + ' passés par un collègue' : '', (a.auto - (a.handoff || 0)) > 0 ? fmtInt(a.auto - a.handoff) + ' d’office sur sa ligne' : ''].filter(Boolean).join(' · ') || 'aucun'],
-    ['Émis', fmtInt(a.dialed), a.callees.length ? fmtInt(a.callees.length) + ' ' + pluralize(a.callees.length, 'destinataire', 'destinataires') : 'aucun'],
-    ['Manqués', own.size ? fmtInt(a.missed) : '—', own.size ? 'sur sa ligne personnelle' : 'ligne partagée : non attribuable'],
-    ['Rappelés', fmtInt(calledBack), missed.length ? 'sur ' + fmtInt(missed.length) + ' ' + pluralize(missed.length, 'manqué', 'manqués') + (own.size ? ' de sa ligne' : ' du mois') : 'aucun manqué'],
-    ['Transferts', fmtInt(a.transferred), ''],
-    ['Sonnerie moyenne', ring ? fmtDurationShort(ring) : '—', a.ringCount ? 'avant décroché, sur ' + fmtInt(a.ringCount) + ' ' + pluralize(a.ringCount, 'appel', 'appels') : ''],
-    ['En ligne', a.talkTotal ? fmtDurationShort(a.talkTotal) : '—', 'temps de conversation des appels pris'],
-    ['Dernière action', a.lastTs ? fmtRelative(new Date(a.lastTs * 1000).toISOString()) : '—', ''],
+  const takenDetail = [
+    a.answered ? fmtInt(a.answered) + ' depuis l’application' : '',
+    a.claimed ? fmtInt(a.claimed) + ' déclarés' : '',
+    a.handoff ? fmtInt(a.handoff) + ' passés par un collègue' : '',
+    (a.auto - (a.handoff || 0)) > 0 ? fmtInt(a.auto - a.handoff) + ' d’office sur sa ligne' : '',
+  ].filter(Boolean).join(' · ');
+
+  // Les quatre chiffres qui comptent, chacun etant AUSSI un filtre de la liste
+  // des faits en dessous : cliquer « Manqués » ne montre que les manques.
+  /** @type {Array<{key: string, label: string, value: string, sub: string, tone: string}>} */
+  const tiles = [
+    { key: 'taken', label: 'Pris', value: fmtInt(a.taken), sub: takenDetail || 'aucun appel pris', tone: 'ok' },
+    { key: 'dialed', label: 'Émis', value: fmtInt(a.dialed), sub: a.callees.length ? fmtInt(a.callees.length) + ' ' + pluralize(a.callees.length, 'destinataire', 'destinataires') : 'aucun appel émis', tone: 'out' },
+    { key: 'missed', label: 'Manqués', value: own.size ? fmtInt(a.missed) : '—', sub: own.size ? 'sur sa ligne personnelle' : 'ligne partagée : non attribuable', tone: 'missed' },
+    { key: 'callback', label: 'Rappelés', value: fmtInt(calledBack), sub: missed.length ? 'sur ' + fmtInt(missed.length) + ' ' + pluralize(missed.length, 'manqué', 'manqués') + (own.size ? ' de sa ligne' : ' du mois') : 'aucun manqué à rappeler', tone: 'in' },
+  ];
+  const metas = [
+    ['Transferts', fmtInt(a.transferred)],
+    ['Sonnerie moyenne', ring ? fmtDurationShort(ring) : '—'],
+    ['En ligne', a.talkTotal ? fmtDurationShort(a.talkTotal) : '—'],
+    ['Dernière action', a.lastTs ? fmtRelative(new Date(a.lastTs * 1000).toISOString()) : '—'],
   ];
 
-  const facts = mine.concat(auto).sort((x, y) => (Number(y.ts) || 0) - (Number(x.ts) || 0)).slice(0, PERSON_EVENTS_MAX);
+  // Categorie de chaque fait, pour le filtre.
+  const kindOf = (e) => {
+    if (e.type === 'dial') return 'dialed';
+    if (e.type === 'answer' || e.type === 'claim') return 'taken';
+    if (e.type === 'transfer') return 'transfer';
+    if (e.type === 'observed') {
+      if (passed.indexOf(e) >= 0) return 'taken';
+      if (e.dir === 'out') return 'dialed';
+      return e.answered === 1 ? 'taken' : 'missed';
+    }
+    return 'other';
+  };
+  const all = mine.concat(auto).sort((x, y) => (Number(y.ts) || 0) - (Number(x.ts) || 0));
+  const wanted = _personFilter === 'callback' ? 'missed' : _personFilter;
+  const filteredFacts = wanted ? all.filter((e) => kindOf(e) === wanted && (_personFilter !== 'callback' || calledBackSet.has(e))) : all;
+  const facts = filteredFacts.slice(0, PERSON_EVENTS_MAX);
+
   const rows = facts.map((e) => {
-    const when = new Date((Number(e.ts) || 0) * 1000);
-    const stamp = when.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' ' + when.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     let what = '';
     let tone = 'neutral';
-    if (e.type === 'dial') { what = 'Appel émis vers ' + (e.toName ? e.toName + ' (' + labelOf(e.to) + ')' : labelOf(e.to)); tone = 'out'; }
-    else if (e.type === 'answer') { what = 'Décroché depuis l’application · ' + labelOf(e.peer); tone = 'in'; }
-    else if (e.type === 'claim') { what = 'Déclaré pris · ' + labelOf(e.peer); tone = 'in'; }
-    else if (e.type === 'transfer') { what = 'Transféré vers ' + (e.toName ? e.toName + ' (' + labelOf(e.to) + ')' : labelOf(e.to)); tone = 'ok'; }
-    else if (e.type === 'hangup') { what = 'Raccroché'; }
+    let kindLabel = e.type;
+    if (e.type === 'dial') { what = 'Appel émis vers ' + (e.toName ? e.toName + ' (' + labelOf(e.to) + ')' : labelOf(e.to)); tone = 'out'; kindLabel = 'émis'; }
+    else if (e.type === 'answer') { what = 'Décroché depuis l’application · ' + labelOf(e.peer); tone = 'in'; kindLabel = 'pris'; }
+    else if (e.type === 'claim') { what = 'Déclaré pris · ' + labelOf(e.peer); tone = 'in'; kindLabel = 'pris'; }
+    else if (e.type === 'transfer') { what = 'Transféré vers ' + (e.toName ? e.toName + ' (' + labelOf(e.to) + ')' : labelOf(e.to)); tone = 'ok'; kindLabel = 'transfert'; }
+    else if (e.type === 'hangup') { what = 'Raccroché'; kindLabel = 'raccroché'; }
     else if (e.type === 'observed') {
       const viaHandoff = passed.indexOf(e) >= 0;
-      if (viaHandoff) { what = 'Décroché, passé par un collègue · ' + labelOf(e.peer); tone = 'in'; }
-      else if (e.dir === 'out') { what = 'Appel émis depuis son téléphone vers ' + labelOf(e.peer); tone = 'out'; }
-      else if (e.answered === 1) { what = 'Décroché sur sa ligne · ' + labelOf(e.peer); tone = 'in'; }
-      else { what = 'Manqué sur sa ligne · ' + labelOf(e.peer); tone = 'missed'; }
+      if (viaHandoff) { what = 'Décroché, passé par un collègue · ' + labelOf(e.peer); tone = 'in'; kindLabel = 'pris'; }
+      else if (e.dir === 'out') { what = 'Appel émis depuis son téléphone vers ' + labelOf(e.peer); tone = 'out'; kindLabel = 'émis'; }
+      else if (e.answered === 1) { what = 'Décroché sur sa ligne · ' + labelOf(e.peer); tone = 'in'; kindLabel = 'pris'; }
+      else { what = 'Manqué sur sa ligne · ' + labelOf(e.peer); tone = 'missed'; kindLabel = 'manqué'; }
     }
     const extra = [];
     if (e.ring) extra.push('sonnerie ' + fmtDurationShort(e.ring));
     if (e.duration) extra.push('durée ' + fmtDurationShort(e.duration));
+    const back = calledBackSet.has(e) ? raw(' ' + tag('rappelé', 'ok')) : '';
     return [
-      html`<span class="nowrap">${stamp}</span>`,
-      html`${raw(tag(e.type === 'observed' ? 'd’office' : e.type, /** @type {any} */ (tone)))} ${what}`,
+      html`<span class="nowrap tnum">${stampOf(e.ts)}</span>`,
+      html`${raw(tag(kindLabel, /** @type {any} */ (tone)))} ${what}${back}`,
       html`<span class="faint">${extra.join(' · ')}</span>`,
     ];
   });
 
+  const filters = [
+    ['', 'Tout'], ['taken', 'Pris'], ['dialed', 'Émis'], ['missed', 'Manqués'], ['transfer', 'Transferts'],
+  ];
+  const filterLabel = { taken: 'appels pris', dialed: 'appels émis', missed: 'appels manqués', transfer: 'transferts', callback: 'manqués rappelés' };
+
   return card({
+    cls: 'sheet',
     lead: raw(avatar(name, { size: 'lg', photo: photoUrl(email, 96) })),
     title: name,
-    sub: email + (own.size ? ' · ligne personnelle : ' + Array.from(own).map((c) => { const l = lineByCsi(c); return l ? l.label : formatNumber(c); }).join(', ') : ' · pas de ligne personnelle : seules ses actions dans l’application comptent'),
+    sub: email + (own.size ? ' · ligne personnelle : ' + Array.from(own).map((c) => { const l = lineByCsi(c); return l ? l.label : formatNumber(c); }).join(', ') : ' · lignes partagées : seules ses actions dans l’application comptent'),
     action: raw(html`<button class="btn btn--sm btn--ghost" type="button" data-person="${email}" data-person-card>Fermer</button>`),
-    body: raw(html`<div class="diag-grid">
-      ${cells.map(([l, v, sub]) => raw(html`<div class="diag-cell"><div class="diag-cell-label">${l}</div><div class="diag-cell-value">${v}</div>${sub ? raw(html`<div class="faint" style="font: var(--t-micro); margin-top: 2px">${sub}</div>`) : ''}</div>`))}
+    body: raw(html`<div class="sheet-tiles">
+      ${tiles.map((t) => raw(html`<button class="sheet-tile sheet-tile--${raw(t.tone)}" type="button" data-person-filter="${t.key}" aria-pressed="${_personFilter === t.key ? 'true' : 'false'}" title="Ne montrer que ces faits">
+        <span class="sheet-tile-label">${t.label}</span>
+        <span class="sheet-tile-value">${t.value}</span>
+        <span class="sheet-tile-sub">${t.sub}</span>
+      </button>`))}
     </div>
-    <div style="margin-top: var(--gap-4)">${raw(rows.length
-      ? table({
-        columns: [
-          { key: 'when', label: 'Quand', cls: 'shrink', nowrap: true },
-          { key: 'what', label: 'Fait', breakAnywhere: true },
-          { key: 'extra', label: 'Détail', priority: 'md' },
-        ],
-        rows,
-        foot: html`<span class="faint">${fmtInt(facts.length)} ${pluralize(facts.length, 'fait', 'faits')} sur ${fmtInt(mine.length + auto.length)}, du plus récent au plus ancien.</span>`,
-      })
-      : empty('Aucun fait ce mois-ci', 'Rien n’a été fait ni observé pour cette personne sur ce mois.'))}</div>`),
+    <div class="sheet-meta">
+      ${metas.map(([l, v]) => raw(html`<span class="sheet-meta-item"><span class="sheet-meta-label">${l}</span><span class="sheet-meta-value">${v}</span></span>`))}
+    </div>
+    <div class="sheet-facts">
+      <div class="toolbar">
+        <div class="segmented" role="group" aria-label="Faits affichés">
+          ${filters.map(([k, l]) => raw(html`<button type="button" data-person-filter="${k}" class="${_personFilter === k ? 'is-active' : ''}">${l}</button>`))}
+        </div>
+        <span class="toolbar-spacer"></span>
+        <span class="periodbar-info">${fmtInt(filteredFacts.length)} ${pluralize(filteredFacts.length, 'fait', 'faits')}${_personFilter ? ' · ' + (filterLabel[_personFilter] || '') : ''}${filteredFacts.length > facts.length ? ' · les ' + fmtInt(PERSON_EVENTS_MAX) + ' plus récents affichés' : ''}</span>
+      </div>
+      ${raw(rows.length
+        ? table({
+          columns: [
+            { key: 'when', label: 'Quand', cls: 'shrink', nowrap: true },
+            { key: 'what', label: 'Fait', breakAnywhere: true },
+            { key: 'extra', label: 'Détail', priority: 'md' },
+          ],
+          rows,
+        })
+        : empty(_personFilter ? 'Aucun fait de ce type ce mois-ci' : 'Aucun fait ce mois-ci', _personFilter ? 'Choisissez « Tout » pour revoir l’ensemble des faits.' : 'Rien n’a été fait ni observé pour cette personne sur ce mois.'))}
+    </div>`),
   });
 }
 
@@ -367,7 +429,7 @@ function calleesCard(agents) {
   ]);
   return card({
     title: 'Vers qui on appelle',
-    sub: 'Depuis l’application, ce mois-ci',
+    sub: 'Les ' + fmtInt(list.length) + ' destinations les plus appelées',
     flush: true,
     body: raw(table({
       columns: [
@@ -425,9 +487,16 @@ function wire(root) {
   on(root, 'click', '[data-journal-retry]', function () {
     loadJournal(_month || currentMonth(), { force: true });
   });
+  on(root, 'click', '[data-person-filter]', function (ev, el) {
+    const key = String(el.getAttribute('data-person-filter') || '');
+    // Un second clic sur le meme filtre le retire.
+    _personFilter = _personFilter === key ? '' : key;
+    render(root);
+  });
   on(root, 'click', '[data-person]', function (ev, el) {
     const email = String(el.getAttribute('data-person') || '').toLowerCase();
     _person = _person === email ? '' : email;
+    _personFilter = '';
     render(root);
     if (_person) {
       const close = root.querySelector('[data-person-card]');

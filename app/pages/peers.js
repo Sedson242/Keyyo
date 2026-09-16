@@ -31,7 +31,7 @@
 import { html, raw, mount, qs, qsa, on, icon } from '../dom.js';
 import { fmtInt, fmtHms, fmtDate, fmtRelative, pluralize } from '../format.js';
 import { card, sectionHead, kpi, table, tag, avatar, empty, notice, skeleton, toolbar } from '../ui.js';
-import { barChart, attachChartTips } from '../charts.js';
+import { attachChartTips } from '../charts.js';
 import { state, filtered, byPeer, getLines, status } from '../store.js';
 import { toE164, numberKind, formatNumber } from '../../shared/phone.js';
 
@@ -41,11 +41,8 @@ const PAGE_SIZE = 60;
 /** Temporisation de la recherche, en millisecondes. */
 const SEARCH_DELAY = 220;
 
-/** Nombre de correspondants dans l'histogramme de tete. */
+/** Nombre de correspondants dans le classement de tete. */
 const TOP_COUNT = 10;
-
-/** Longueur maximale d'un libelle d'axe (voir le commentaire de topChart). */
-const LABEL_MAX = 14;
 
 /** Cles de tri reconnues. Une valeur inconnue retombe sur 'calls'. */
 const SORTS = ['calls', 'duration', 'missed', 'last'];
@@ -136,23 +133,6 @@ function digitsOf(v) {
 function kindLabel(number) {
   const kind = numberKind(number);
   return KIND_LABELS[kind] || KIND_LABELS.inconnu;
-}
-
-/**
- * Tronque un libelle pour un axe de graphique, en coupant si possible sur une
- * limite de mot : « Boulangerie Martin » vaut mieux que « Boulangerie Mar… ».
- * Le libelle complet reste lisible dans l'info-bulle.
- * @param {unknown} text
- * @param {number} max
- * @returns {string}
- */
-function shorten(text, max) {
-  const s = String(text === null || text === undefined ? '' : text);
-  if (s.length <= max) return s;
-  const cut = s.slice(0, max - 1);
-  const space = cut.lastIndexOf(' ');
-  const base = space >= Math.floor(max / 2) ? cut.slice(0, space) : cut;
-  return base.replace(/[\s.,;:-]+$/, '') + '…';
 }
 
 // -----------------------------------------------------------------------------
@@ -376,14 +356,11 @@ function kpisHtml(list, searching) {
 }
 
 /**
- * Histogramme des dix correspondants les plus appeles.
- *
- * ORIENTATION : charts.barChart ne trace que des barres VERTICALES — il n'a pas
- * d'option horizontale, et une liste horizontale se ferait avec ui.rankRow, pas
- * avec un graphique. Le choix impose est donc le vertical, et un nom
- * d'entreprise sous une barre de quelques pixels de large deborde forcement sur
- * ses voisins : les libelles sont tronques a LABEL_MAX caracteres, le nom
- * complet etant porte par l'info-bulle (et par son aria-label).
+ * Les dix correspondants les plus appeles, en BARRES HORIZONTALES : dix
+ * numeros a dix chiffres sous des barres verticales se chevauchaient et ne se
+ * lisaient plus. Ici chaque ligne porte le nom (ou le numero) en toutes
+ * lettres, le detail entrants / sortants, et une barre proportionnelle au
+ * volume ; le nom ouvre la fiche du correspondant.
  *
  * @param {any[]} list  liste apres recherche
  * @returns {string}
@@ -393,24 +370,35 @@ function topChart(list) {
   // que le titre du bloc annonce, et un « top 10 » qui change de definition
   // avec un selecteur situe ailleurs serait illisible.
   const byVolume = applySort(list, 'calls').slice(0, TOP_COUNT);
+  if (!byVolume.length) return empty('Aucun correspondant', 'Aucun appel avec un numéro exploitable sur la période.');
+  const max = byVolume[0].peer.total || 1;
 
-  const data = [];
+  let out = '';
   for (let i = 0; i < byVolume.length; i++) {
     const item = byVolume[i];
-    const label = shorten(item.peer.label, LABEL_MAX);
-    const full = String(item.peer.label);
-    const parts = [];
-    if (label !== full) parts.push(full);
-    if (item.internal) parts.push('interne');
-    parts.push(fmtInt(item.peer.in) + ' entrants, ' + fmtInt(item.peer.out) + ' sortants');
-    data.push({ label, value: item.peer.total, hint: parts.join(' · ') });
+    const peer = item.peer;
+    const pct = Math.max(2, (peer.total / max) * 100);
+    const detail = fmtInt(peer.in) + ' ' + pluralize(peer.in, 'entrant', 'entrants')
+      + ' · ' + fmtInt(peer.out) + ' ' + pluralize(peer.out, 'sortant', 'sortants')
+      + (peer.missed ? ' · ' + fmtInt(peer.missed) + ' ' + pluralize(peer.missed, 'manqué', 'manqués') : '');
+    out += html`<div class="top-row">
+      <span class="top-rank" aria-hidden="true">${i + 1}</span>
+      <div class="top-body">
+        <div class="top-head">
+          <button class="top-name link" type="button" data-drill="${peer.number}" title="Ouvrir la fiche">${peer.label}</button>
+          ${peer.name ? raw(html`<span class="top-number tnum">${formatNumber(peer.number)}</span>`) : ''}
+          ${item.internal ? raw(tag('Interne', 'ok')) : ''}
+          <span class="toolbar-spacer"></span>
+          <span class="top-total tnum">${fmtInt(peer.total)} ${pluralize(peer.total, 'appel', 'appels')}</span>
+        </div>
+        <div class="top-track" role="img" aria-label="${fmtInt(peer.total)} appels, ${detail}">
+          <span class="top-fill" style="width:${Math.round(pct * 10) / 10}%"></span>
+        </div>
+        <div class="top-detail">${detail}</div>
+      </div>
+    </div>`;
   }
-
-  return barChart({
-    data,
-    height: 240,
-    format: (v) => fmtInt(v),
-  });
+  return html`<div class="top-list">${raw(out)}</div>`;
 }
 
 /**

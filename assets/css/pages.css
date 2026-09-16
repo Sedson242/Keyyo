@@ -302,3 +302,130 @@
   .drill-row { grid-template-columns: 66px minmax(0, 1fr) auto; }
   .drill-row .drill-hide-sm { display: none; }
 }
+
+/* =============================================================================
+   Monitoring : deux classements cote a cote sous le taux de reponse
+   ============================================================================= */
+
+.rate-rank-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: var(--gap-5);
+  align-items: start;
+}
+.rate-rank-cols > div { min-width: 0; }
+.rate-rank-cols .rate-rank-title { margin: 0; }
+.rate-rank-cols .rate-rank-hint { margin: 2px 0 8px; }
+.rate-rank-cols .rank-list { margin-top: 4px; }
+
+/* =============================================================================
+   Monitoring : detail d'une ligne (les collaborateurs rattaches)
+   ============================================================================= */
+
+.line-toggle { display: inline-flex; align-items: center; gap: 6px; }
+.line-toggle-chevron { display: inline-block; width: 10px; color: var(--ink-faint); font-size: 11px; }
+.line-toggle[aria-expanded="true"] .line-toggle-chevron { color: var(--ink); }
+
+/* Ligne de detail d'un tableau : une seule cellule, fond creuse, sans le
+   rembourrage d'une cellule ordinaire (le bloc apporte le sien). */
+.table .table-detail > td { padding: 0; background: var(--surface-sunken); }
+.table .table-detail > td::before { display: none; }
+
+.line-detail { display: grid; gap: 12px; padding: 14px 18px 16px; }
+.line-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.line-agents { display: grid; gap: 6px; }
+.line-agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--sh-xs);
+}
+.line-agent > .cell-id { text-align: left; }
+.line-agent-stats { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: flex-end; }
+.line-agent-stat { display: grid; justify-items: center; min-width: 54px; }
+.line-agent-value { font: var(--t-num-md); color: var(--ink); font-variant-numeric: tabular-nums; }
+.line-agent-label { font: var(--t-micro); color: var(--ink-muted); }
+.line-detail-note { font: var(--t-micro); margin: 0; }
+
+@media (max-width: 620px) {
+  .line-agent { grid-template-columns: minmax(0, 1fr); }
+  .line-agent-stats { justify-content: flex-start; }
+}
+
+/* =============================================================================
+   Attribution : fiche d'une personne
+   ============================================================================= */
+
+.sheet-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  gap: 12px;
+}
+.sheet-tile {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  text-align: left;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: var(--r-lg);
+  background: var(--surface-sunken);
+  border: 1px solid transparent;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.sheet-tile:hover { box-shadow: var(--sh-sm); }
+.sheet-tile[aria-pressed="true"] { background: var(--surface); border-color: var(--ink); box-shadow: var(--sh-sm); }
+.sheet-tile-label { font: var(--t-label); color: var(--ink-muted); }
+.sheet-tile-value { font: var(--t-num-lg); color: var(--ink); letter-spacing: var(--track-tight); font-variant-numeric: tabular-nums; }
+.sheet-tile--ok .sheet-tile-value { color: var(--answered); }
+.sheet-tile--out .sheet-tile-value { color: var(--out); }
+.sheet-tile--missed .sheet-tile-value { color: var(--missed); }
+.sheet-tile--in .sheet-tile-value { color: var(--in-strong); }
+.sheet-tile-sub { font: var(--t-micro); color: var(--ink-faint); overflow-wrap: anywhere; }
+
+.sheet-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 26px;
+  margin-top: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.sheet-meta-item { display: grid; gap: 1px; }
+.sheet-meta-label { font: var(--t-micro); color: var(--ink-muted); }
+.sheet-meta-value { font: var(--t-body-md); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.sheet-facts { margin-top: 14px; }
+.sheet-facts > .toolbar { margin-bottom: 10px; }
+
+/* =============================================================================
+   Correspondants : classement des dix plus appeles, en barres horizontales
+   ============================================================================= */
+
+.top-list { display: grid; gap: 10px; }
+.top-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; align-items: start; }
+.top-rank {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: #fff;
+  font: var(--t-micro);
+  font-weight: 700;
+}
+.top-body { min-width: 0; }
+.top-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.top-name { font: var(--t-body-md); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.top-number { font: var(--t-micro); color: var(--ink-muted); }
+.top-total { font: var(--t-body-md); font-weight: 600; color: var(--ink); white-space: nowrap; }
+.top-track { position: relative; height: 10px; margin-top: 6px; border-radius: var(--r-pill); background: var(--surface-sunken); overflow: hidden; }
+.top-fill { display: block; height: 100%; border-radius: var(--r-pill); background: var(--grad-accent); transition: width var(--dur-slow) var(--ease); }
+.top-detail { margin-top: 4px; font: var(--t-micro); color: var(--ink-muted); }
