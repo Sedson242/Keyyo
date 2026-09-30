@@ -25,6 +25,9 @@ import {
   getAccessToken, fetchVoipLines, fetchEmailAccounts, fetchDirectoryContacts, fetchCallDetail,
 } from './_keyyo.js';
 import { archiveEnabled, loadArchive } from './_archive.js';
+import {
+  contactsEnabled, loadContacts, directoryMapFromContacts, mergeDirectory, coverageOf,
+} from './_contacts.js';
 import { requireRole, readAuthConfig, authSummary } from './_auth.js';
 import { fetchUserPhoto, graphTokenRoles } from './_graph.js';
 import { resolveLineIdentities } from '../shared/identity.js';
@@ -336,6 +339,48 @@ export default async function handler(req, res) {
     };
   });
 
+  // -- 7 bis. Annuaire complementaire (import Keyyo Phone) --------------------
+  // Place apres l'archive pour mesurer, avec ce qu'elle contient, la part des
+  // correspondants qui ont un nom et d'ou il vient. Ce controle ne fait JAMAIS
+  // basculer le verdict : un import absent ou illisible appauvrit les noms, il
+  // ne casse rien. `contacts` est la valeur du controle « directory » ([] s'il
+  // a echoue) ; `archive` celle du controle precedent (null sans archive).
+  await check('contacts_import', 'Annuaire complémentaire (import Keyyo Phone)', async () => {
+    if (!contactsEnabled()) {
+      return { level: 'warn', message: 'Import impossible sans store Blob.' };
+    }
+    try {
+      const imp = await loadContacts({ force: true });
+      if (!imp || !imp.contacts.length) {
+        return {
+          level: 'ok',
+          message: 'Aucun export importé : les correspondants absents de l’annuaire Keyyo restent affichés en numéro. '
+            + 'Import possible depuis la page Administration (export CSV de Keyyo Phone).',
+        };
+      }
+      const merged = mergeDirectory(directoryMapFromContacts(contacts).map, imp);
+      // Le meme compteur que la page Administration : les numeros distincts de
+      // l'import (stats.numbers), a defaut les cles ajoutees plus les collisions.
+      const fromStats = imp.stats ? Number(imp.stats.numbers) : 0;
+      const numbers = Number.isFinite(fromStats) && fromStats > 0 ? fromStats : merged.sources.import + merged.collisions.length;
+      const coverage = archive && Array.isArray(archive.rows) ? coverageOf(archive.rows, merged) : null;
+      return {
+        level: 'ok',
+        message: imp.contacts.length + ' contacts, ' + numbers + ' numéros, importé '
+          + readableDate(imp.importedAt, cfg.tz) + ' par ' + (imp.importedBy || 'une adresse inconnue')
+          + ' (fichier ' + (imp.filename || 'sans nom') + ').'
+          + (coverage
+            ? ' Sur l’archive : ' + coverage.peers + ' correspondants distincts, '
+              + coverage.byDirectory + ' nommés par l’annuaire Keyyo, '
+              + coverage.byImport + ' par l’import, ' + coverage.unnamed + ' sans nom.'
+            : ''),
+        detail: { coverage, importedAt: imp.importedAt, importedBy: imp.importedBy, filename: imp.filename, stats: imp.stats },
+      };
+    } catch (err) {
+      return { level: 'warn', message: 'Annuaire complémentaire illisible : ' + errorMessage(err) };
+    }
+  });
+
   // -- 8. Sonde de releve d'appels (facultative) ------------------------------
   // C'est le seul controle qui prouve la chaine COMPLETE : requete, pagination,
   // normalisation. Il distingue « 0 enregistrement recu » de « enregistrements
@@ -503,6 +548,27 @@ function dateRange(results) {
     }
   }
   return { min: min || null, max: max || null };
+}
+
+/**
+ * Date ISO -> « le 30/09/2026 à 14:05 » dans le fuseau d'affichage, ou
+ * « à une date inconnue » si l'horodatage est illisible.
+ * @param {unknown} iso
+ * @param {string} tz
+ * @returns {string}
+ */
+function readableDate(iso, tz) {
+  const t = Date.parse(String(iso == null ? '' : iso));
+  if (!Number.isFinite(t)) return 'à une date inconnue';
+  try {
+    const parts = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(t));
+    const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+    return 'le ' + p.day + '/' + p.month + '/' + p.year + ' à ' + p.hour + ':' + p.minute;
+  } catch {
+    return 'le ' + new Date(t).toISOString();
+  }
 }
 
 function describeReasons(reasons) {

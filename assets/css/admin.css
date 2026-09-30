@@ -53,3 +53,40 @@
   -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--line);
 }
+
+/* -----------------------------------------------------------------------------
+   Annuaire complementaire : import d'un export de contacts Keyyo Phone.
+   La carte vit hors du cycle « modifications / Enregistrer » : son etat, son
+   apercu et son resultat s'empilent dans la carte, la barre du bas n'y est
+   pour rien. Les briques `btn`, `field`, `table`, `notice` et `tag` viennent
+   de components.css ; ici, seulement leur disposition.
+   ----------------------------------------------------------------------------- */
+
+.adm-import-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font: var(--t-sm); color: var(--ink-soft); }
+.adm-import-state .btn { margin-left: auto; }
+.adm-import-how { margin: 12px 0 0; font: var(--t-sm); color: var(--ink-muted); }
+
+.adm-import-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.adm-import-pick .field { flex: 1 1 260px; max-width: 520px; }
+.adm-import-pick input[type="file"] { font: var(--t-sm); color: var(--ink-soft); cursor: pointer; }
+.adm-import-pick input[type="file"]:disabled { cursor: progress; opacity: 0.6; }
+
+.adm-import-preview, .adm-import-result { display: grid; gap: 12px; margin-top: 14px; }
+.adm-import-preview .notice, .adm-import-result .notice { margin-bottom: 0; }
+.adm-import-filename { font: var(--t-sm); color: var(--ink-soft); overflow-wrap: anywhere; }
+.adm-import-filename .strong { font-weight: 600; color: var(--ink); }
+
+/* Grille de petites valeurs : un compteur par case. Ceux qui signalent des
+   lignes perdues (sans nom, sans numero, rejets, collisions) passent en rouge
+   des qu'ils sont positifs. */
+.adm-import-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(118px, 100%), 1fr)); gap: 8px; }
+.adm-import-stat { min-width: 0; padding: 9px 12px; border-radius: var(--r-md); background: var(--surface-sunken); }
+.adm-import-stat-label { font: var(--t-micro); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adm-import-stat-value { font: var(--t-num-md); color: var(--ink); letter-spacing: var(--track-tight); font-variant-numeric: tabular-nums; }
+.adm-import-stat--warn { background: var(--missed-soft); }
+.adm-import-stat--warn .adm-import-stat-value { color: var(--missed); }
+
+.adm-import-preview .table-wrap { border: 1px solid var(--line); border-radius: var(--r-lg); }
+.adm-import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.adm-import-warnings { margin: 6px 0 0; padding-left: 18px; list-style: disc; display: grid; gap: 3px; }
+.adm-import-result p + p { margin-top: 6px; }

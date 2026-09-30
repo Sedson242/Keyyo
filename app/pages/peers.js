@@ -23,6 +23,11 @@
 //      qui est lui-meme une ligne du compte, n'est pas un client : c'est un
 //      collegue. Personne ne le voit autrement, d'ou l'etiquette « Interne ».
 //
+//   4. LA PROVENANCE D'UN NOM SE VOIT. Un nom venu de l'export de contacts
+//      Keyyo Phone (annuaire complementaire importe par un administrateur)
+//      porte l'etiquette « Keyyo Phone » : l'annuaire Keyyo du compte reste la
+//      reference, et l'ecart entre les deux doit pouvoir s'expliquer.
+//
 //  Etat local du module (recherche, tri, page courante) : il survit aux
 //  re-rendus declenches par le store, ce qui est indispensable pour que la
 //  saisie en cours ne soit pas effacee par un rafraichissement de fond.
@@ -32,7 +37,7 @@ import { html, raw, mount, qs, qsa, on, icon } from '../dom.js';
 import { fmtInt, fmtHms, fmtDate, fmtRelative, pluralize } from '../format.js';
 import { card, sectionHead, kpi, table, tag, avatar, empty, notice, skeleton, toolbar } from '../ui.js';
 import { attachChartTips } from '../charts.js';
-import { state, filtered, byPeer, getLines, status } from '../store.js';
+import { state, filtered, byPeer, getLines, status, nameSource } from '../store.js';
 import { toE164, numberKind, formatNumber } from '../../shared/phone.js';
 
 /** Lignes par page. Au-dela, le navigateur peine et l'oeil decroche. */
@@ -202,6 +207,9 @@ function decorate(peers, own) {
     out.push({
       peer,
       internal,
+      // Nom venu de l'annuaire complementaire (export Keyyo Phone) : le rendu
+      // le signale, et le sous-titre du tableau les compte.
+      imported: !!peer.name && nameSource(peer.number) === 'import',
       // Nom resolu : le numero passe en sous-ligne. Sinon le libelle EST le
       // numero, et la sous-ligne dit de quel type de numero il s'agit.
       sub: peer.name ? formatNumber(peer.number) : kindLabel(peer.number),
@@ -299,6 +307,36 @@ function toolbarHtml() {
 }
 
 /**
+ * Etiquette « Keyyo Phone » d'un nom venu de l'annuaire complementaire. Le
+ * `title` porte l'explication ; ui.tag n'accepte aucun attribut, d'ou
+ * l'enveloppe.
+ * @returns {string}
+ */
+function importTag() {
+  return html`<span title="Nom issu de l’export de contacts Keyyo Phone">${raw(tag('Keyyo Phone', 'neutral'))}</span>`;
+}
+
+/**
+ * Sous-titre du tableau : nombre de correspondants, combien portent un nom et
+ * combien le doivent a l'import Keyyo Phone. Calcule sur la liste ENTIERE
+ * (apres recherche et tri), jamais sur la page affichee : la pagination ne
+ * change pas ce que l'on compte.
+ * @param {any[]} list
+ * @returns {string}
+ */
+function listSubtitle(list) {
+  let named = 0, imported = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].peer.name) named++;
+    if (list[i].imported) imported++;
+  }
+  return fmtInt(list.length) + ' ' + pluralize(list.length, 'correspondant distinct', 'correspondants distincts')
+    + ' — dont ' + fmtInt(named) + ' ' + pluralize(named, 'nommé', 'nommés')
+    + (imported ? ' (' + fmtInt(imported) + ' par l’import Keyyo Phone)' : '')
+    + ' — ' + PAGE_SIZE + ' par page';
+}
+
+/**
  * Les trois indicateurs, calcules sur la liste affichee.
  * @param {any[]} list      liste apres recherche
  * @param {boolean} searching
@@ -387,6 +425,7 @@ function topChart(list) {
         <div class="top-head">
           <button class="top-name link" type="button" data-drill="${peer.number}" title="Ouvrir la fiche">${peer.label}</button>
           ${peer.name ? raw(html`<span class="top-number tnum">${formatNumber(peer.number)}</span>`) : ''}
+          ${item.imported ? raw(importTag()) : ''}
           ${item.internal ? raw(tag('Interne', 'ok')) : ''}
           <span class="toolbar-spacer"></span>
           <span class="top-total tnum">${fmtInt(peer.total)} ${pluralize(peer.total, 'appel', 'appels')}</span>
@@ -410,9 +449,10 @@ function topChart(list) {
 function rowCells(item, now) {
   const peer = item.peer;
 
-  // L'etiquette « Interne » est posee APRES le bloc nom/numero : dans .cell-id
-  // (une boite flexible), elle reste alignee sans tronquer le nom.
-  const badge = item.internal ? tag('Interne', 'ok') : '';
+  // Les etiquettes (« Keyyo Phone » pour un nom venu de l'import, « Interne »)
+  // sont posees APRES le bloc nom/numero : dans .cell-id (une boite flexible),
+  // elles restent alignees sans tronquer le nom.
+  const badges = (item.imported ? importTag() : '') + (item.internal ? tag('Interne', 'ok') : '');
 
   const identity = html`<div class="cell-id">
     ${raw(avatar(peer.label, { size: 'sm', tone: item.internal ? 'out' : undefined }))}
@@ -420,7 +460,7 @@ function rowCells(item, now) {
       <div class="cell-id-name">${peer.label}</div>
       <div class="cell-id-sub">${item.sub}</div>
     </div>
-    ${raw(badge)}
+    ${raw(badges)}
   </div>`;
 
   // Un zero n'est pas une information au meme titre qu'un manque : il s'efface.
@@ -732,11 +772,7 @@ export function render(root) {
         body: raw(topChart(matched)),
       }))}
       <div>
-        ${raw(sectionHead(
-          'Tous les correspondants',
-          fmtInt(list.length) + ' ' + pluralize(list.length, 'correspondant distinct', 'correspondants distincts')
-            + ' — ' + PAGE_SIZE + ' par page',
-        ))}
+        ${raw(sectionHead('Tous les correspondants', listSubtitle(list)))}
         ${raw(card({ flush: true, body: raw(tableHtml(list, searching)) }))}
       </div>
     </div>`);

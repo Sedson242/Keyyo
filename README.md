@@ -24,8 +24,11 @@ dit — trois lignes de site sont partagées par 56 terminaux.
 qui a quel rôle (administrateur, direction, agent), sur quelle ligne chacun
 travaille, et **qui est présenté aux appels entrants** de chaque ligne. Ce
 routage agit dans l'application (fenêtre d'appel, attribution) ; le téléphone
-Keyyo Phone, lui, sonne pour tout le site. Le premier administrateur se
-déclare par `AUTH_ADMIN_EMAILS`, ou par un app role Entra `Admin`.
+Keyyo Phone, lui, sonne pour tout le site. Elle reçoit aussi l'**annuaire
+complémentaire** : l'export CSV des contacts de Keyyo Phone, vérifié dans le
+navigateur avant d'être importé en un clic, et que l'on supprime de la même
+page. Le premier administrateur se déclare par `AUTH_ADMIN_EMAILS`, ou par un
+app role Entra `Admin`.
 
 **Keyyo Phone reste ouvert sur le PC**, réduit, avec le casque : l'API CTI de
 Keyyo est une télécommande, pas un téléphone. Elle pilote le poste enregistré
@@ -49,7 +52,13 @@ audio.
   toujours Keyyo.
 - **Il nomme.** Les numéros deviennent des noms via l'annuaire du compte, et
   chaque ligne se voit attribuer un collaborateur — voir
-  [docs/MAPPING-IDENTITES.md](docs/MAPPING-IDENTITES.md).
+  [docs/MAPPING-IDENTITES.md](docs/MAPPING-IDENTITES.md). Les contacts saisis
+  dans le softphone Keyyo Phone, absents de cet annuaire, s'ajoutent en
+  important leur export CSV depuis la page Administration : les correspondants
+  de l'historique (Journal, Appels manqués, Correspondants, fiche
+  correspondant) prennent alors leur nom, marqué « Keyyo Phone » dans la vue
+  Correspondants, et l'annuaire Keyyo garde la priorité en cas de doublon.
+  L'import est conservé dans le store Blob.
 - **Il dit ce qu'il ne sait pas.** Chaque rapprochement porte sa source et son
   indice de confiance. Une collecte partielle est signalée par un bandeau, jamais
   masquée. La page Diagnostic expose l'état de l'authentification, de la collecte
@@ -119,8 +128,8 @@ agent.html          page agent : ma ligne, mes collègues, mon activité, barre 
 selftest.html       page de vérification (voir plus bas)
 app/                front — main, agent, session, cti, callbar, journal, router, store, api, dom, ui, charts, format, alerts, pages/
 api/                fonctions serverless — auth, me, cti-token, events, calls, team, directory, health, sync, oauth
-                    (+ _auth, _journal, _config, _keyyo, _archive, _collect)
-shared/             noyau pur partagé — phone, time, schema, cdr, identity, roles, journal
+                    (+ _auth, _journal, _config, _keyyo, _archive, _collect, _contacts)
+shared/             noyau pur partagé — phone, time, schema, cdr, identity, roles, journal, contacts
 vendor/             bibliothèques tierces versionnées (Keyyo CTI, SockJS) — voir vendor/README.md
 assets/css/         tokens, base, components, pages, callbar
 tests/run.js        harnais exécuté par selftest.html
@@ -183,7 +192,8 @@ fermée » et ne sert aucune donnée.
 **4. Créer le store Blob.** *Storage > Create Database > Blob* (privé), puis
 relier le store au projet et redéployer. Vercel injecte `BLOB_STORE_ID` et le
 SDK s'authentifie par OIDC. Sans store, l'application fonctionne mais **sans
-mémoire** ni journal d'attribution, et le pied de la barre latérale l'affiche.
+mémoire**, sans journal d'attribution ni annuaire complémentaire, et le pied de
+la barre latérale l'affiche.
 
 **5. Déployer**, puis ouvrir la page **Diagnostic** : elle indique le mode
 d'authentification retenu, les lignes détectées, les mois collectés et les lignes
@@ -204,9 +214,10 @@ une page servie comme le reste du site.
 Ouvrir **`/selftest.html`** sur le déploiement. Elle charge `tests/run.js`, qui
 contrôle que chaque module se charge et respecte le contrat de
 `docs/ARCHITECTURE.md`, puis exécute les fonctions pures : numéros, dates, schéma
-d'appel, normalisation des relevés, identités, mise en forme française,
-échappement HTML et agrégations du store. Le rapport s'affiche dans la page, et
-`window.__selftest` l'expose pour un contrôle automatisé.
+d'appel, normalisation des relevés, identités, import de contacts Keyyo Phone,
+mise en forme française, échappement HTML et agrégations du store. Le rapport
+s'affiche dans la page, et `window.__selftest` l'expose pour un contrôle
+automatisé.
 
 Aucune requête n'est émise vers l'API Keyyo : la page peut être ouverte sur la
 production sans déclencher de collecte ni consommer de quota.
@@ -227,7 +238,8 @@ harnais — c'est le rôle de la page Diagnostic, en conditions réelles.
 | `GET /api/auth` | public | connexion Microsoft (`?action=login`), session courante (`?action=me`), déconnexion (`?action=logout`) |
 | `GET /api/calls` | direction | appels normalisés, lignes, métadonnées, couverture, état de l'archive |
 | `GET /api/team` | direction | lignes avec leur identité, lignes non résolues, réglage suggéré |
-| `GET /api/directory` | connecté | annuaire `numéro → nom` |
+| `GET /api/directory` | connecté | annuaire `numéro → nom` : annuaire Keyyo fusionné avec l'export Keyyo Phone importé, et l'origine de chaque nom |
+| `POST /api/directory` | admin | importe un export de contacts Keyyo Phone (`{ csv, filename }`) ou le supprime (`{ clear: true }`) ; même fonction que la lecture, faute d'une 13ᵉ route Vercel |
 | `GET /api/health` | direction | état global et liste de contrôles |
 | `GET /api/sync` | direction ou cron | déclenche une collecte, cible du cron |
 | `GET /api/oauth` | direction | mise en service : obtient un refresh token portant les bons scopes |

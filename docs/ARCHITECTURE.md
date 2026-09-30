@@ -274,6 +274,78 @@ destinataires), ce que le journal **ne sait pas** : `calls.unattributed`, les
 appels décrochés par on ne sait qui. Une statistique partielle ne doit jamais
 avoir l'air complète.
 
+### `shared/contacts.js` — export de contacts Keyyo Phone
+```js
+export const CONTACTS_VERSION: number                 // 1
+export const CONTACTS_SOURCE: string                  // 'keyyo-phone-csv'
+export function parseCsv(text): string[][]            // RFC 4180 : BOM UTF-8 retiré ; CRLF, LF, CR ; séparateur `,` `;` ou tabulation
+                                                      // détecté sur la PREMIÈRE ligne (le plus fréquent hors guillemets) ; champs entre
+                                                      // guillemets avec virgules, retours à la ligne et `""` ; ligne vide ignorée ; pas de trim
+export function numberFromSip(value): string          // 'sip:33611223344@21.b2bua.sip.internal' → '33611223344' ; `sips:` accepté ;
+                                                      // sans `@` → valeur telle quelle (trim) ; `tel:` et paramètres `;user=phone` retirés ;
+                                                      // PAS de mise en E.164 : c'est `toE164` (shared/phone.js) qui s'en charge ensuite
+export function parseContactsExport(text): { contacts, stats, warnings }
+                                                      // contacts : ImportedContact[], stats : ImportStats, warnings : string[] ;
+                                                      // jette Error('Format non reconnu…') si la première ligne ne contient ni
+                                                      // `display-name` ni aucune colonne numéro/adresse reconnue
+export function contactsToMap(contacts): { map: Record<string, string>, collisions: Array<{ number: string, kept: string, dropped: string }> }
+                                                      // index numéro → nom, premier posé gagne (ordre des contacts)
+export function normalizeImport(raw): ContactsImport  // objet stocké (Blob) valide, depuis n'importe quoi ; jamais d'exception
+export function emptyImport(): ContactsImport         // { version, source, filename: '', importedAt: '', importedBy: '', contacts: [], stats: null }
+```
+Types (`@typedef` du module) :
+```
+ImportedContact = { name: string, numbers: string[], category: string }
+ImportStats     = { rows, contacts, numbers, unnamed, withoutNumber, rejectedNumbers, shortNumbers, collisions }   // nombres
+ContactsImport  = { version: 1, source: 'keyyo-phone-csv', filename: string, importedAt: string, importedBy: string, contacts: ImportedContact[], stats: ImportStats|null }
+```
+
+Le softphone **Keyyo Phone** a son propre carnet (catégories « Amis » /
+« Travail »), absent de `/directory_contacts`. Son export CSV (entêtes de type
+Bria/CounterPath : `business_number…6`, `categories`, `default_address`,
+`display-name`, `given_name`, `surname`, `sip_address…6`, `mobile_number…6`…)
+est analysé par `parseContactsExport`, **le même code dans le navigateur
+(aperçu de la page Administration) et sur le serveur (`POST /api/directory`)** :
+
+- Entêtes en minuscules, trim ; `display-name`, `display_name` et `displayname`
+  sont équivalents.
+- Colonnes de numéros, dans cet ordre de priorité : `business_number`,
+  `business_number2…9`, `mobile_number*`, `home_number*`, `fax_number*`,
+  `other_number*` (regex `^(business|mobile|home|fax|other)_number\d*$`), PUIS
+  les adresses `default_address`, `sip_address*`, `other_address*` (regex
+  `^(default_address|sip_address\d*|other_address\d*)$`), passées par
+  `numberFromSip`. `xmpp_address*`, `email_address*`, `web_page*`, `collab_url`
+  et `guid` sont ignorées.
+- Nom : `display-name` trim, sinon `given_name`, une espace, `surname` (trim,
+  espaces réduits), sinon `''`. Un nom sans AUCUNE lettre (`/\p{L}/u`) — un
+  numéro saisi comme nom — vaut `''`. Espaces multiples réduits à un, pas de
+  recapitalisation (les libellés sont écrits par l'utilisateur).
+- Catégorie : `categories` trim (chaîne, éventuellement vide).
+- Chaque valeur de numéro passe par `toE164` ; `''` ou `'anonymous'` est rejeté
+  (`stats.rejectedNumbers`) ; sinon elle s'ajoute à `contact.numbers` sans
+  doublon, ordre conservé. Un numéro court (sans `+`, ≤ 6 chiffres) est
+  conservé tel quel et compté dans `stats.shortNumbers`.
+- Une ligne sans nom → `stats.unnamed`, ignorée. Une ligne nommée sans aucun
+  numéro exploitable → `stats.withoutNumber`, ignorée. Sinon
+  `{ name, numbers, category }` est ajouté et `stats.contacts` incrémenté.
+- `stats.rows` = lignes de données lues (hors entête, hors lignes vides) ;
+  `stats.numbers` = clés distinctes de `contactsToMap(contacts).map` ;
+  `stats.collisions` = longueur de ses `collisions`.
+- `warnings` (chaînes françaises) : une ligne par collision (« Le numéro
+  07 82 22 41 16 est attribué à « A » ; « B » (ligne 87) ignoré pour ce
+  numéro. », numéro mis en forme par `formatNumber`), une ligne résumant les
+  lignes sans nom et une pour les lignes sans numéro s'il y en a, et une ligne
+  si le texte contient des caractères de remplacement `\uFFFD` (« Le fichier ne
+  semble pas en UTF-8 : certains accents sont perdus. Ré-exporter depuis Keyyo
+  Phone sans le convertir. »).
+
+`normalizeImport` force `version` à `CONTACTS_VERSION` et `source` à
+`CONTACTS_SOURCE` ; `filename`, `importedAt`, `importedBy` sont des chaînes
+(trim, `importedBy` en minuscules), `''` sinon ; `contacts` est nettoyé —
+objets avec `name` non vide, `numbers` passés par `toE164` et dédoublonnés
+(vide → contact ignoré), `category` chaîne — et `stats` est recopié s'il est
+présent (nombres uniquement), sinon `null`.
+
 ---
 
 ## 4. `api/` — fonctions serverless
@@ -441,6 +513,49 @@ entre-temps, lignes et couverture sont fusionnées (`mergeRows`,
 plus récent) au lieu d'être écrasées. Vérifié en production avant ce garde :
 septembre, relevé en entier, redevenait « incomplet ».
 
+### `api/_contacts.js` — annuaire complémentaire (Blob)
+```js
+export const CONTACTS_PATH: string                    // 'keyyo/config/contacts.json'
+export function contactsEnabled(): boolean            // = archiveEnabled() de api/_archive.js
+export async function loadContacts(opts?): Promise<ContactsImport|null>   // null sans store Blob ; emptyImport() si absent ; cache mémoire 60 s ;
+                                                      // `opts.force` contourne le cache ; une lecture qui échoue rend la dernière
+                                                      // version connue, sinon emptyImport()
+export async function saveContacts(imp, by): Promise<ContactsImport>     // normalizeImport, importedAt = maintenant ISO, importedBy = by ;
+                                                      // écrit via writeBlobJson ; met à jour le cache ; jette sans store
+export function directoryMapFromContacts(contacts): { map: Record<string,string>, detail: { contacts, contactsNamed, contactsSkipped, numbers, speedNumbers, rejected, collisions } }
+                                                      // index numéro → nom depuis les contacts de l'API Keyyo (déplacé tel quel
+                                                      // depuis api/directory.js : displayLabel/pretty + boucle `add`)
+export function mergeDirectory(apiMap, imp): { map, origin: Record<string,'import'>, sources: { directory_contacts: number, import: number }, collisions: Array<{ number, kept, dropped }> }
+                                                      // fusion : l'annuaire Keyyo (API) prime, l'import complète
+export function coverageOf(rows, merged): { peers: number, byDirectory: number, byImport: number, unnamed: number }
+                                                      // couverture de l'archive : quels correspondants ont un nom, et d'où
+```
+Sur le modèle de `api/_access.js` : un seul document JSON dans le store Blob,
+`keyyo/config/contacts.json` (forme `ContactsImport` de `shared/contacts.js`),
+écrit par `POST /api/directory` (administrateurs) et relu par
+`GET /api/directory` et `/api/health` avec un cache mémoire de 60 s.
+
+**Deux sources, une priorité.** `mergeDirectory` part de `apiMap` (l'annuaire
+Keyyo, `Record<string,string>`, éventuellement vide) et parcourt les contacts de
+l'import, numéro par numéro : une clé déjà présente est conservée telle quelle
+— collision si le nom diffère (`kept` = nom de l'annuaire Keyyo, `dropped` =
+nom de l'import) —, une clé nouvelle est posée avec `origin[n] = 'import'`.
+`sources.directory_contacts` compte les clés venant de l'API,
+`sources.import` celles ajoutées par l'import. L'annuaire du compte Keyyo
+prime donc toujours sur le carnet d'un softphone.
+
+`coverageOf` lit les lignes de l'archive (format `shared/schema.js`, colonne
+`F.peer`) : un correspondant est une clé `toE164(row[F.peer])` distincte, hors
+`''` et `'anonymous'` ; il est nommé par l'import si `origin[key] === 'import'`,
+par l'annuaire si `map[key]` existe sans `origin`, sans nom sinon. C'est le
+chiffre rendu après un import (« Sur l'archive : P correspondants distincts,
+A nommés par l'annuaire Keyyo, B par l'import, C sans nom. ») et par le
+contrôle `contacts_import` de `/api/health`, qui rapporte l'état de l'import
+(sans store Blob : `warn`, « Import impossible sans store Blob. » ; sans export
+importé : `ok` ; sinon `ok` avec « N contacts, M numéros, importé *date* par
+*adresse* (fichier X). » et la couverture de l'archive) **sans jamais faire
+basculer le verdict global en erreur**.
+
 ### `api/_collect.js`
 ```js
 export async function collect(opts): Promise<CollectResult>
@@ -475,7 +590,8 @@ troncature ; tant qu'il ne l'est pas, il figure dans `store.missingMonths`.
 | `GET /api/auth` | public | `?action=login` → 302 Microsoft · retour `?code&state` → cookie de session puis 302 · `?action=me` → `{ authenticated, configured, user }` ou 401 · `?action=logout` → 302 |
 | `GET /api/calls` | direction | `{ schemaVersion, fields, rows, lines, meta, coverage, store, diag, updatedAt, empty, warning }` |
 | `GET /api/team` | direction | `{ lines, unresolved[], suggestion, sources, updatedAt }` |
-| `GET /api/directory` | connecté | `{ map: {"+33…": "Nom"}, count, sources, updatedAt }` |
+| `GET /api/directory` | connecté | `{ map: {"+33…": "Nom"}, count, sources: { directory_contacts, import }, origin: { "+33…": 'import' }, imported: { count, numbers, importedAt, importedBy, filename } \| null, updatedAt, warning?, degraded?, debug? }` — l'annuaire Keyyo (`/directory_contacts`) fusionné avec l'annuaire complémentaire (`api/_contacts.js`), le premier primant ; `origin` ne liste que les clés venant de l'import ; `warning` seulement si `count === 0` ; `degraded: true` quand Keyyo est injoignable et qu'un import non vide nomme seul les correspondants (`no-store` ; sans import, `500` comme avant) ; cache `private, max-age=300`, `no-store` si `count === 0`, `?force=1` ou `?debug=1` (`debug` : `detail` par source, `sample`, `importCollisions`) |
+| `POST /api/directory` | admin | `{ ok, imported, stats, warnings, collisions, coverage }` — corps `{ csv, filename }` (contenu du fichier, ≤ 2 Mo) : analyse par `parseContactsExport`, enregistrement dans `keyyo/config/contacts.json`, couverture de l'archive (`null` sans archive) ; ou `{ clear: true }` → `{ ok: true, imported: null }`. `403` hors administrateur (la politique de `shared/roles.js` ouvre `/api/directory` à toute personne connectée : c'est la route qui vérifie `isAdmin`), `503` sans store Blob, `400` si le fichier n'est pas un export de contacts ou n'a aucun contact exploitable, `no-store`. Pas de route dédiée : les 12 fonctions `api/*.js` sont prises, l'import partage la fonction de `GET /api/directory` (GET, HEAD, POST ; toute autre méthode reçoit `405` avec `Allow`) |
 | `GET /api/health` | direction | `{ status: 'ok'\|'empty'\|'error', calls, period, lines, checks[], elapsedMs }` |
 | `GET /api/sync` | direction ou cron | `{ ok, at, store, period, warnings }` — cible du cron |
 | `GET /api/oauth` | direction, si `KEYYO_OAUTH_SETUP=1` | page HTML : refresh token Keyyo avec `cti_admin` |
@@ -623,6 +739,8 @@ export function getLines(): Line[]                // lignes Keyyo + identités
 export function lineByCsi(csi): Line|null
 export function nameOf(number): string|null       // annuaire
 export function labelOf(number): string           // nom, sinon numéro formaté
+export function nameSource(number): 'directory'|'import'|'line'|null
+                                                  // d'où vient le nom : annuaire Keyyo, import Keyyo Phone, ligne du parc ; null sans nom
 export function nameOfEmail(email): string        // nom d'une adresse : équipe des lignes, sinon partie locale mise en forme
 export function firstNameOfEmail(email): string   // prénom (premier mot du nom)
 export function stats(rows): Stats
@@ -650,6 +768,17 @@ export async function loadJournal(month, opts?): Promise<void>   // { force? } �
 `Stats` : `{ total, in, out, missed, answered, answerRate, avgDuration,
 medianDuration, totalDuration, uniquePeers }`
 
+**Annuaire.** `load` demande `getDirectory({ force })` (le bouton *Actualiser*
+contourne le cache de 5 min) et indexe la réponse : `_names` (numéro E.164 →
+nom) et `_nameOrigin` (`'directory'` pour toute clé de `map` absente de
+`payload.origin`, `'import'` sinon) ; `indexOwnLines` ajoute ensuite les lignes
+du parc, marquées `'line'`, sans jamais recouvrir un nom d'annuaire. Une
+réponse `degraded: true` (Keyyo injoignable, import seul) est **fusionnée**
+dans l'index existant — clés nouvelles seulement — au lieu de le remplacer.
+`status().diag.directory` porte `count`, `sources` et `imported`. La vue
+Correspondants s'appuie sur `nameSource` pour marquer « Keyyo Phone » les noms
+issus de l'import.
+
 ### `app/ui.js` — briques de rendu (renvoient des chaînes HTML)
 ```js
 export function card(opts): string        // { title?, sub?, lead?, action?, body, dark?, flush?, cls? } — title/sub texte, lead/action/body HTML déjà sûr
@@ -676,7 +805,9 @@ export function toolbar(children): string
 ```js
 export async function getCalls(opts?): Promise<any>
 export async function getTeam(): Promise<any>
-export async function getDirectory(): Promise<any>
+export async function getDirectory(opts?): Promise<any>      // { force?, debug? } — `force` contourne le cache de 5 min
+export async function postDirectoryImport(payload /* { csv, filename } */): Promise<any>   // POST /directory, timeoutMs 60000 — importe un export de contacts Keyyo Phone (administrateurs)
+export async function clearDirectoryImport(): Promise<any>                                 // POST /directory { clear: true } — supprime l'annuaire complémentaire
 export async function getHealth(): Promise<any>
 export async function getMe(): Promise<any>        // /api/auth?action=me, jamais mis en cache
 export async function getProfile(opts?): Promise<any>        // /api/me
@@ -757,11 +888,30 @@ calcule rien : repeint l'instantané de `app/cti.js`.
 ```js
 export function boot(): void                       // ne s'amorce que si #admin-root est présent
 ```
-Administrateurs seulement. Édite en mémoire une copie de la configuration
-d'accès (membres, rôles, lignes, fenêtre d'appel ; routage par ligne) et
-l'envoie entière à `/api/access` à l'enregistrement. Les personnes se
-prennent dans l'annuaire Keyyo (adresses rattachées aux lignes) ou par leur
-adresse.
+Administrateurs seulement. Quatre blocs : **membres** (qui a quel rôle, sur
+quelle ligne, fenêtre d'appel), **routage** par ligne, la **barre
+d'enregistrement**, et l'**annuaire complémentaire**. Les trois premiers
+éditent en mémoire une copie de la configuration d'accès et l'envoient entière
+à `/api/access` à l'enregistrement ; les personnes se prennent dans l'annuaire
+Keyyo (adresses rattachées aux lignes) ou par leur adresse.
+
+La carte **Annuaire complémentaire** (`contactsCard`, rendue après le routage)
+est indépendante du cycle « modifications / Enregistrer » : un import est
+immédiat et a sa propre confirmation. Elle lit son état au chargement par
+`getDirectory({ force: true })` (champ `imported` ; tolérant : un échec affiche
+« état de l'import inconnu » sans bloquer la page), montre l'import en place
+(contacts, numéros, date, auteur, fichier) avec un bouton « Supprimer
+l'import » (`confirm()` natif, puis `clearDirectoryImport`), et reçoit
+l'export CSV de Keyyo Phone (*Contacts → menu → Exporter*, 2 Mo au plus,
+refusé au-delà côté client). Le fichier est lu par `FileReader` et analysé
+**dans le navigateur** par `parseContactsExport` — la même fonction que le
+serveur : un format inconnu donne une `notice` d'erreur, sinon un aperçu
+(compteurs de `stats`, `warnings`, les 8 premiers contacts avec leurs numéros
+mis en forme par `formatNumber`) et un bouton « Importer N contacts ». Le clic
+envoie `postDirectoryImport({ csv, filename })` ; le résultat affiche la
+couverture de l'archive (« Sur l'archive : … » ou « Couverture non calculée :
+archive absente. ») et rappelle que les noms apparaissent dans la supervision
+au prochain rafraîchissement. Tout ce qui vient du fichier passe par `html`.
 
 ### `app/agent.js` — la page agent (`agent.html`)
 ```js
@@ -863,7 +1013,8 @@ qui :
    depuis une page échouerait. C'est `/api/health` qui les vérifie, en
    conditions réelles ;
 2. exécute les fonctions pures : numéros, dates, schéma d'appel, normalisation
-   des CDR, identités, mise en forme française, échappement HTML, et les
+   des CDR, identités, import de contacts Keyyo Phone (`shared/contacts.js`,
+   sur des données fictives), mise en forme française, échappement HTML, et les
    agrégations de `store.js` — dont `callbackAnalysis`, la règle métier
    centrale ;
 3. affiche un rapport, et expose `window.__selftest` (`{total, passed, failed,

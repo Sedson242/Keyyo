@@ -16,7 +16,8 @@
 //       docs/ARCHITECTURE.md declare. C'est ce controle qui attrape une erreur
 //       de syntaxe, un import casse ou un export disparu ;
 //    2. le NOYAU PUR (`shared/`) : numeros, dates, schema, normalisation CDR,
-//       identites — la ou une erreur fausse des chiffres credibles ;
+//       identites, import de contacts Keyyo Phone — la ou une erreur fausse
+//       des chiffres credibles ou le nom d'un correspondant ;
 //    3. les FONCTIONS PURES DU FRONT : mise en forme francaise, echappement
 //       HTML, agregations du store (dont l'analyse des rappels), et un passage
 //       de fumee sur les graphiques et les briques d'interface.
@@ -160,12 +161,13 @@ const CONTRACT = [
   ['../shared/roles.js', ['ROLE_ADMIN', 'ROLE_DIRECTION', 'ROLE_AGENT', 'ROLES', 'POLICY', 'parseEmailList', 'roleFromClaims', 'roleAndSourceFromClaims', 'allowedRoles', 'canAccess', 'isDirection', 'isAdmin', 'roleLabel']],
   ['../shared/access.js', ['ACCESS_VERSION', 'emptyAccess', 'normalizeAccess', 'memberOf', 'configRoleOf', 'linesOf', 'routingFor', 'shouldPopup', 'resolveEffectiveRole', 'upsertMember', 'removeMember', 'adminCount', 'lineOwners']],
   ['../shared/journal.js', ['EVENT_TYPES', 'JOURNAL_VERSION', 'DIR_IN', 'DIR_OUT', 'HANDOFF_WINDOW_SEC', 'eventId', 'normalizeEvent', 'isValidEvent', 'mergeEvents', 'monthOf', 'summarize']],
+  ['../shared/contacts.js', ['CONTACTS_VERSION', 'CONTACTS_SOURCE', 'parseCsv', 'numberFromSip', 'parseContactsExport', 'contactsToMap', 'normalizeImport', 'emptyImport']],
 
   ['../app/format.js', ['fmtInt', 'fmtPct', 'fmtDuration', 'fmtDurationShort', 'fmtHms', 'fmtDate', 'fmtDateLong', 'fmtDayShort', 'fmtTime', 'fmtMonth', 'fmtClock', 'fmtRelative', 'WEEKDAYS', 'pluralize']],
   ['../app/dom.js', ['esc', 'h', 'html', 'raw', 'mount', 'mountKeyed', 'watchBrokenImages', 'qs', 'qsa', 'on', 'icon']],
   ['../app/charts.js', ['barChart', 'areaChart', 'donutChart', 'heatmap', 'sparkline', 'attachChartTips']],
   ['../app/ui.js', ['card', 'sectionHead', 'kpi', 'statbar', 'table', 'tag', 'avatar', 'avatarStack', 'meter', 'split', 'rankRow', 'empty', 'notice', 'skeleton', 'toolbar']],
-  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'getAccess', 'postAccess', 'postSync', 'photoUrl', 'getHandoff', 'ApiError']],
+  ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'getAccess', 'postAccess', 'postSync', 'photoUrl', 'getHandoff', 'ApiError', 'postDirectoryImport', 'clearDirectoryImport']],
   ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'isAdmin', 'roleLabel', 'loginUrl', 'forget']],
   // admin.js ne s'amorce que si #admin-root est present : importable ici.
   ['../app/admin.js', ['boot']],
@@ -174,7 +176,7 @@ const CONTRACT = [
   ['../app/callbar.js', ['init', 'setColleagues', 'setLabelOf']],
   // agent.js ne s'amorce que si #agent-root est present : importable ici.
   ['../app/agent.js', ['boot']],
-  ['../app/store.js', ['state', 'setFilter', 'subscribe', 'getRows', 'filtered', 'getLines', 'lineByCsi', 'nameOf', 'labelOf', 'nameOfEmail', 'firstNameOfEmail', 'stats', 'byDay', 'byMonth', 'byHour', 'byWeekday', 'heatMatrix', 'byLine', 'byPeer', 'callbackAnalysis', 'CALLBACK_WINDOW_SEC', 'trend', 'load', 'status', 'journal', 'loadJournal']],
+  ['../app/store.js', ['state', 'setFilter', 'subscribe', 'getRows', 'filtered', 'getLines', 'lineByCsi', 'nameOf', 'labelOf', 'nameOfEmail', 'firstNameOfEmail', 'stats', 'byDay', 'byMonth', 'byHour', 'byWeekday', 'heatMatrix', 'byLine', 'byPeer', 'callbackAnalysis', 'CALLBACK_WINDOW_SEC', 'trend', 'load', 'status', 'journal', 'loadJournal', 'nameSource']],
   ['../app/router.js', ['ROUTES', 'start', 'go', 'current']],
   ['../app/alerts.js', ['init', 'check', 'toast', 'renderCenter', 'unreadCount', 'markAllRead']],
 
@@ -230,6 +232,7 @@ const identity = NS['../shared/identity.js'];
 const roles = NS['../shared/roles.js'];
 const accessMod = NS['../shared/access.js'];
 const journalMod = NS['../shared/journal.js'];
+const contactsMod = NS['../shared/contacts.js'];
 const sessionMod = NS['../app/session.js'];
 const ctiMod = NS['../app/cti.js'];
 const format = NS['../app/format.js'];
@@ -1327,6 +1330,214 @@ if (need(journalMod, 'shared/journal.js', 'shared/journal.js')) suite('shared/jo
     const e = normalizeEvent({ type: 'observed', csi: '1', callref: 'c9', extra: ' device=abc; foo=' + 'x'.repeat(400) }, ctx);
     eq(e.extra.length, 300);
     eq(normalizeEvent({ type: 'observed', csi: '1', callref: 'c9' }, ctx).extra, undefined);
+  });
+});
+
+// -----------------------------------------------------------------------------
+//  6 bis-3. shared/contacts.js — l'import de contacts Keyyo Phone
+// -----------------------------------------------------------------------------
+
+if (need(contactsMod, 'Import de contacts (shared/contacts.js)', 'shared/contacts.js')) suite('Import de contacts (shared/contacts.js)', () => {
+  const {
+    CONTACTS_VERSION, CONTACTS_SOURCE, parseCsv, numberFromSip, parseContactsExport, contactsToMap,
+    normalizeImport, emptyImport,
+  } = contactsMod;
+
+  // Entete reel de l'export Keyyo Phone (Bria / CounterPath), 62 colonnes. Les
+  // DONNEES, elles, sont fictives : numeros 06 11 22 33 xx, noms inventes.
+  const HEADER = 'business_number,business_number2,business_number3,business_number4,business_number5,business_number6,'
+    + 'categories,collab_url,default_address,default_address_comm,default_address_type,display-name,'
+    + 'email_address,email_address2,email_address3,email_address4,email_address5,email_address6,'
+    + 'fax_number,fax_number2,fax_number3,fax_number4,fax_number5,fax_number6,given_name,guid,'
+    + 'home_number,home_number2,home_number3,home_number4,home_number5,home_number6,is_favorite,'
+    + 'mobile_number,mobile_number2,mobile_number3,mobile_number4,mobile_number5,mobile_number6,'
+    + 'other_address,other_address2,other_address3,other_address4,other_address5,other_address6,pres_subscription,'
+    + 'sip_address,sip_address2,sip_address3,sip_address4,sip_address5,sip_address6,surname,web_page,web_page2,web_page3,'
+    + 'xmpp_address,xmpp_address2,xmpp_address3,xmpp_address4,xmpp_address5,xmpp_address6';
+  const COLS = HEADER.split(',');
+
+  /** Une ligne de l'export a partir des seules colonnes renseignees ; les autres restent vides, comme dans le vrai fichier. */
+  const line = (cells) => COLS.map((c) => (cells[c] == null ? '' : '"' + String(cells[c]).replace(/"/g, '""') + '"')).join(',');
+
+  const FIXTURE = [
+    HEADER,
+    // ligne 2 : contact SIP international ; default_address et sip_address portent le meme numero
+    line({ categories: 'Amis', default_address: 'sip:33611223344@21.b2bua.sip.internal', default_address_comm: 'im', default_address_type: 'sip', 'display-name': 'Société Exemple', is_favorite: 'FALSE', pres_subscription: 'TRUE', sip_address: 'sip:33611223344@21.b2bua.sip.internal' }),
+    // ligne 3 : business_number national
+    line({ business_number: '0611223355', categories: 'Amis', 'display-name': 'Jean Exemple - ACME', is_favorite: 'FALSE' }),
+    // ligne 4 : given_name + surname, sans display-name
+    line({ categories: 'Travail', given_name: 'Paul', surname: 'Test', sip_address: 'sip:0611223366@keyyo.net' }),
+    // ligne 5 : deux adresses SIP
+    line({ 'display-name': 'Marie Deux - Sofa', sip_address: 'sip:33611223377@21.b2bua.sip.internal', sip_address2: 'sip:0611223378@keyyo.net' }),
+    // ligne 6 : numero court
+    line({ business_number: '3698', categories: 'Amis', 'display-name': 'Urssaf TI' }),
+    // ligne 7 : sans nom
+    line({ sip_address: 'sip:33611223399@21.b2bua.sip.internal' }),
+    // ligne 8 : nom purement numerique
+    line({ 'display-name': '33611223300', sip_address: 'sip:33611223300@21.b2bua.sip.internal' }),
+    // ligne 9 : premier nom sur le numero ...11
+    line({ 'display-name': 'Dupont Systems - Alex Test', sip_address: 'sip:33611223311@keyyo.net' }),
+    // ligne 10 : xmpp_address et email_address seules, ignorees : contact sans numero
+    line({ 'display-name': 'Chat Seul', xmpp_address: 'chat@example.org', email_address: 'chat@example.org' }),
+    // ligne 11 : meme numero ...11 sous un autre nom : collision, le premier gagne
+    line({ 'display-name': 'Dupont-Alex Test', sip_address: 'sip:0611223311@keyyo.net' }),
+    // ligne 12 : numero masque rejete ; ordre de priorite : business_number2, mobile, puis SIP
+    line({ business_number: 'anonymous', business_number2: '0611223321', 'display-name': 'Masque Test', mobile_number: '06 11 22 33 22', sip_address: 'sip:0611223323@keyyo.net' }),
+  ].join('\n');
+
+  test('la fixture reproduit l’entete reel : 62 colonnes', () => {
+    eq(COLS.length, 62);
+    eq(FIXTURE.split('\n').length, 12);
+  });
+
+  test('parseCsv : guillemets, virgule et guillemet echappe dans un champ, CRLF, BOM, ligne vide', () => {
+    eqDeep(parseCsv('﻿a,b\r\n"x, y","il a dit ""oui"""\r\n\r\nz,\r\n'), [['a', 'b'], ['x, y', 'il a dit "oui"'], ['z', '']]);
+    eqDeep(parseCsv('a,b\n"l1\nl2",2'), [['a', 'b'], ['l1\nl2', '2']], 'retour a la ligne dans un champ');
+    eqDeep(parseCsv('a,b\r1,2\r'), [['a', 'b'], ['1', '2']], 'CR seul');
+    eqDeep(parseCsv('a,b\n1,2'), [['a', 'b'], ['1', '2']], 'sans retour final');
+    eqDeep(parseCsv(' a , b \n'), [[' a ', ' b ']], 'pas de trim des cellules');
+    eqDeep(parseCsv(''), []);
+    eqDeep(parseCsv(null), []);
+  });
+
+  test('parseCsv : le separateur est detecte sur la premiere ligne', () => {
+    eqDeep(parseCsv('a;b;c\n1;2;3'), [['a', 'b', 'c'], ['1', '2', '3']], 'point-virgule');
+    eqDeep(parseCsv('a;b\n"1,5";2'), [['a', 'b'], ['1,5', '2']], 'la virgule d’un champ ne change rien');
+    eqDeep(parseCsv('a\tb\n1\t2'), [['a', 'b'], ['1', '2']], 'tabulation');
+    eqDeep(parseCsv('"a;b",c\n1,2'), [['a;b', 'c'], ['1', '2']], 'un separateur entre guillemets ne compte pas');
+  });
+
+  test('numberFromSip : le numero d’une adresse SIP, sans mise en forme', () => {
+    eq(numberFromSip('sip:33611223344@21.b2bua.sip.internal'), '33611223344');
+    eq(numberFromSip('SIP:0611223344@keyyo.net'), '0611223344', 'prefixe insensible a la casse');
+    eq(numberFromSip('sip:0611223344@keyyo.net;user=phone'), '0611223344');
+    eq(numberFromSip('sip:0611223344;user=phone@keyyo.net'), '0611223344', 'parametres avant le @');
+    eq(numberFromSip('sips:+33611223344@keyyo.net'), '+33611223344');
+    eq(numberFromSip('<sip:0611223344@keyyo.net>'), '0611223344', 'chevrons toleres');
+    eq(numberFromSip('tel:+33611223344'), '+33611223344');
+    eq(numberFromSip('0611223344'), '0611223344', 'sans @ : inchange');
+    eq(numberFromSip(' 0611223344 '), '0611223344', 'trim');
+    eq(numberFromSip(''), '');
+    eq(numberFromSip(null), '');
+  });
+
+  test('parseContactsExport : les contacts, dans l’ordre du fichier, avec leurs numeros en E.164', () => {
+    const { contacts } = parseContactsExport(FIXTURE);
+    eqDeep(contacts.map((c) => c.name), ['Société Exemple', 'Jean Exemple - ACME', 'Paul Test', 'Marie Deux - Sofa', 'Urssaf TI', 'Dupont Systems - Alex Test', 'Dupont-Alex Test', 'Masque Test']);
+    eqDeep(contacts[0].numbers, ['+33611223344'], 'default_address et sip_address identiques : un seul numero');
+    eqDeep(contacts[1].numbers, ['+33611223355'], 'business_number national');
+    eqDeep(contacts[2].numbers, ['+33611223366'], 'sip national');
+    eq(contacts[2].name, 'Paul Test', 'given_name + surname');
+    eqDeep(contacts[3].numbers, ['+33611223377', '+33611223378'], 'deux adresses SIP');
+    eqDeep(contacts[4].numbers, ['3698'], 'numero court conserve tel quel');
+    eqDeep(contacts[6].numbers, ['+33611223311'], 'le second nom garde son numero dans SES contacts');
+    eqDeep(contacts[7].numbers, ['+33611223321', '+33611223322', '+33611223323'], 'priorite : business, mobile, puis adresses');
+    eq(contacts[0].category, 'Amis');
+    eq(contacts[2].category, 'Travail');
+    eq(contacts[3].category, '', 'sans categorie : chaine vide');
+  });
+
+  test('parseContactsExport : chaque compteur', () => {
+    const { stats } = parseContactsExport(FIXTURE);
+    eq(stats.rows, 11);
+    eq(stats.contacts, 8);
+    eq(stats.numbers, 10, 'cles distinctes : le numero en collision ne compte qu’une fois');
+    eq(stats.unnamed, 2, 'ligne sans nom + nom purement numerique');
+    eq(stats.withoutNumber, 1, 'xmpp_address seule : aucun numero');
+    eq(stats.rejectedNumbers, 1, 'anonymous');
+    eq(stats.shortNumbers, 1);
+    eq(stats.collisions, 1);
+  });
+
+  test('parseContactsExport : les avertissements, en francais, avec le numero mis en forme et la ligne', () => {
+    const { warnings } = parseContactsExport(FIXTURE);
+    eq(warnings.length, 3);
+    has(warnings[0], 'Le numéro 06 11 22 33 11 est attribué à « Dupont Systems - Alex Test »');
+    has(warnings[0], '« Dupont-Alex Test » (ligne 11) ignoré pour ce numéro.');
+    eq(warnings[1], '2 lignes sans nom ignorées.');
+    eq(warnings[2], '1 ligne nommée sans numéro exploitable ignorée.');
+    const bad = parseContactsExport('display-name,mobile_number\n"Ren� Test","0611223344"');
+    has(bad.warnings[0], 'ne semble pas en UTF-8');
+    eq(parseContactsExport(FIXTURE.replace(/\n/g, '\r\n')).stats.contacts, 8, 'CRLF : meme lecture');
+  });
+
+  test('parseContactsExport : entetes tolerees (alias, casse, point-virgule), libelles intacts', () => {
+    const r = parseContactsExport('Display_Name;Mobile_Number\n"Anne Test";"06 11 22 33 44"');
+    eq(r.stats.contacts, 1);
+    eqDeep(r.contacts[0], { name: 'Anne Test', numbers: ['+33611223344'], category: '' });
+    const spaced = parseContactsExport('display-name,mobile_number\n"  Anne   Test  ","0611223344"');
+    eq(spaced.contacts[0].name, 'Anne Test', 'espaces reduits');
+    const lower = parseContactsExport('display-name,mobile_number\n"anne test","0611223344"');
+    eq(lower.contacts[0].name, 'anne test', 'pas de recapitalisation : le libelle est celui de l’utilisateur');
+  });
+
+  test('parseContactsExport : sans display-name ni colonne de numero, le format est refuse', () => {
+    throws(() => parseContactsExport('nom,prenom\n"a","b"'));
+    throws(() => parseContactsExport(''));
+    let msg = '';
+    try { parseContactsExport('nom,prenom\n"a","b"'); } catch (err) { msg = err.message; }
+    has(msg, 'Format non reconnu');
+    // display-name seul : accepte, mais aucun contact n'a de numero.
+    const r = parseContactsExport('display-name\n"Seule"');
+    eq(r.stats.contacts, 0);
+    eq(r.stats.withoutNumber, 1);
+  });
+
+  test('contactsToMap : premier pose gagne, collision listee, doublon a l’identique silencieux', () => {
+    const { map, collisions } = contactsToMap([
+      { name: 'A', numbers: ['+33611223344', '101'], category: '' },
+      { name: 'B', numbers: ['+33611223344'], category: '' },
+      { name: 'A', numbers: ['+33611223344'], category: '' },
+      { name: 'C', numbers: ['+33611223355'], category: '' },
+    ]);
+    eqDeep(map, { '+33611223344': 'A', '101': 'A', '+33611223355': 'C' });
+    eqDeep(collisions, [{ number: '+33611223344', kept: 'A', dropped: 'B' }]);
+    eqDeep(contactsToMap([]), { map: {}, collisions: [] });
+    eqDeep(contactsToMap(null), { map: {}, collisions: [] }, 'entree inexploitable : index vide');
+  });
+
+  test('normalizeImport : un objet valide depuis n’importe quoi, jamais d’exception', () => {
+    eqDeep(normalizeImport(null), emptyImport());
+    eqDeep(normalizeImport('texte'), emptyImport());
+    eqDeep(normalizeImport([1, 2]), emptyImport());
+    const c = normalizeImport({
+      version: 99, source: 'autre', filename: ' contacts.csv ', importedAt: 5, importedBy: ' Boss@Bios.fr ',
+      contacts: [
+        { name: ' Jean  Exemple ', numbers: ['06 11 22 33 44', '+33611223344', 'abc', 'anonymous'], category: 'Amis' },
+        { name: 'Sans numero', numbers: ['abc'] },
+        { name: '', numbers: ['0611223355'] },
+        'bidon', null,
+        { name: 'Mono', numbers: '0611223366', category: 7 },
+      ],
+      stats: { rows: '3', contacts: 2, numbers: -1, bogus: 1 },
+    });
+    eq(c.version, CONTACTS_VERSION, 'version forcee');
+    eq(c.source, CONTACTS_SOURCE, 'source forcee');
+    eq(c.filename, 'contacts.csv');
+    eq(c.importedAt, '', 'pas une chaine : vide');
+    eq(c.importedBy, 'boss@bios.fr', 'adresse en minuscules');
+    eq(c.contacts.length, 2, 'sans numero, sans nom, pas un objet : ecartes');
+    eqDeep(c.contacts[0], { name: 'Jean Exemple', numbers: ['+33611223344'], category: 'Amis' }, 'numeros normalises et dedoublonnes');
+    eqDeep(c.contacts[1], { name: 'Mono', numbers: ['+33611223366'], category: '' }, 'un numero seul est accepte ; categorie non chaine : vide');
+    eqDeep(c.stats, { rows: 3, contacts: 2, numbers: 0, unnamed: 0, withoutNumber: 0, rejectedNumbers: 0, shortNumbers: 0, collisions: 0 }, 'compteurs : nombres uniquement');
+    eq(normalizeImport({ contacts: [] }).stats, null, 'sans stats : null');
+    eq(normalizeImport({ stats: 'x' }).stats, null);
+  });
+
+  test('emptyImport a la forme stockee, et rend un objet neuf a chaque appel', () => {
+    eqDeep(emptyImport(), { version: 1, source: 'keyyo-phone-csv', filename: '', importedAt: '', importedBy: '', contacts: [], stats: null });
+    eq(CONTACTS_VERSION, 1);
+    eq(CONTACTS_SOURCE, 'keyyo-phone-csv');
+    ok(emptyImport() !== emptyImport(), 'objet neuf');
+    ok(emptyImport().contacts !== emptyImport().contacts, 'tableau neuf');
+  });
+
+  test('l’aller-retour analyse -> stockage -> index est stable', () => {
+    const parsed = parseContactsExport(FIXTURE);
+    const stored = normalizeImport({ ...emptyImport(), filename: 'export.csv', contacts: parsed.contacts, stats: parsed.stats });
+    eqDeep(stored.contacts, parsed.contacts, 'des numeros deja en E.164 ne bougent pas');
+    eqDeep(stored.stats, parsed.stats);
+    eq(Object.keys(contactsToMap(stored.contacts).map).length, parsed.stats.numbers);
   });
 });
 

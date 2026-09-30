@@ -103,6 +103,14 @@ let _lineIndex = new Map();
 /** @type {Map<string, string>} annuaire : cle E.164 -> nom affichable */
 let _names = new Map();
 
+/**
+ * Provenance de chaque nom de `_names` : `directory` (annuaire Keyyo du
+ * compte), `import` (export de contacts Keyyo Phone importe depuis la page
+ * Administration) ou `line` (ligne du parc, posee par `indexOwnLines`).
+ * @type {Map<string, 'directory'|'import'|'line'>}
+ */
+let _nameOrigin = new Map();
+
 /** @type {{n: number, min: string, max: string, days: number, months: string[], csis: string[]}} */
 let _meta = emptyMeta();
 
@@ -371,6 +379,23 @@ export function nameOf(number) {
   if (!key || key === 'anonymous') return null;
   const hit = _names.get(key);
   return hit ? hit : null;
+}
+
+/**
+ * D'ou vient le nom connu pour un numero : `'directory'` (annuaire Keyyo du
+ * compte), `'import'` (export de contacts Keyyo Phone importe depuis la page
+ * Administration), `'line'` (ligne du parc), ou `null` quand `nameOf` ne
+ * connait pas ce numero. Meme cle E.164 que `nameOf` : les deux fonctions
+ * repondent toujours de concert.
+ * @param {unknown} number
+ * @returns {'directory'|'import'|'line'|null}
+ */
+export function nameSource(number) {
+  const key = toE164(number);
+  if (!key || key === 'anonymous') return null;
+  if (!_names.get(key)) return null;
+  const origin = _nameOrigin.get(key);
+  return origin === 'import' || origin === 'line' ? origin : 'directory';
 }
 
 /**
@@ -1098,7 +1123,9 @@ export async function load(opts) {
     const [callsRes, teamRes, dirRes] = await Promise.allSettled([
       getCalls({ force: !!options.force, full: !!options.full }),
       getTeam(),
-      getDirectory(),
+      // L'annuaire suit le bouton Actualiser : un import fait depuis la page
+      // Administration doit apparaitre sans attendre la fin du cache de 5 min.
+      getDirectory({ force: !!options.force }),
     ]);
 
     /** @type {string[]} */
@@ -1150,7 +1177,7 @@ export async function load(opts) {
       calls: callsPayload.diag || null,
       coverage: _coverage,
       team: teamPayload ? { sources: teamPayload.sources || null, unresolved: teamPayload.unresolved || [], suggestion: teamPayload.suggestion || '' } : null,
-      directory: dirPayload ? { count: Number(dirPayload.count) || _names.size, sources: dirPayload.sources || null } : null,
+      directory: dirPayload ? { count: Number(dirPayload.count) || _names.size, sources: dirPayload.sources || null, imported: dirPayload.imported || null } : null,
       partial: warnings.slice(),
     };
 
@@ -1401,21 +1428,35 @@ function applyLines(callsPayload, teamPayload) {
 }
 
 /**
- * Indexe l'annuaire renvoye par `/api/directory` (`{ "+33…": "Nom" }`).
+ * Indexe l'annuaire renvoye par `/api/directory` (`{ "+33…": "Nom" }`) et
+ * retient la provenance de chaque nom d'apres `payload.origin` : `import` pour
+ * un contact venu de l'export Keyyo Phone ; toute cle de `map` absente de
+ * `origin` vient de l'annuaire Keyyo (`directory`).
+ *
+ * `degraded` : l'annuaire Keyyo n'a pas repondu et la carte ne porte que
+ * l'import. On COMPLETE alors l'index precedent (cles nouvelles seulement) au
+ * lieu de le remplacer : les noms deja connus ne doivent pas disparaitre de
+ * l'ecran le temps d'une panne.
  * @param {any} payload
  */
 function applyDirectory(payload) {
   const map = payload.map && typeof payload.map === 'object' ? payload.map : null;
   if (!map) return;
-  const names = new Map();
+  const origin = payload.origin && typeof payload.origin === 'object' ? payload.origin : {};
+  const merge = payload.degraded === true;
+  const names = merge ? _names : new Map();
+  const origins = merge ? _nameOrigin : new Map();
   for (const key of Object.keys(map)) {
     const value = map[key];
     if (value == null || value === '') continue;
     const e164 = toE164(key);
     if (!e164 || e164 === 'anonymous') continue;
-    if (!names.has(e164)) names.set(e164, String(value));
+    if (names.has(e164)) continue;
+    names.set(e164, String(value));
+    origins.set(e164, origin[key] === 'import' ? 'import' : 'directory');
   }
   _names = names;
+  _nameOrigin = origins;
 }
 
 /**
@@ -1428,7 +1469,9 @@ function indexOwnLines() {
     const label = line.label;
     if (!label || label === '—') continue;
     for (const key of [line.e164, toE164(line.formattedCsi), toE164(line.presentedNumber), line.shortNumber ? digitsOf(line.shortNumber) : '']) {
-      if (key && key !== 'anonymous' && !_names.has(key)) _names.set(key, label);
+      if (!key || key === 'anonymous' || _names.has(key)) continue;
+      _names.set(key, label);
+      _nameOrigin.set(key, 'line');
     }
   }
 }

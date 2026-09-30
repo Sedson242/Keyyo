@@ -31,6 +31,13 @@ const DEFAULT_TIMEOUT_MS = 30000;
 const SYNC_TIMEOUT_MS = 60000;
 
 /**
+ * Timeout de l'import d'un annuaire (POST /api/directory) : le serveur analyse
+ * le fichier, l'ecrit dans le store Blob puis calcule la couverture sur toute
+ * l'archive des appels.
+ */
+const DIRECTORY_IMPORT_TIMEOUT_MS = 60000;
+
+/**
  * Timeout de /api/health?deep=1 : les deux sondes ajoutent quatre releves
  * Keyyo (3 a 5 s chacun) et la route s'accorde jusqu'a 48 s pour les mener.
  * Avec le delai par defaut (30 s), la page abandonnait avant la reponse.
@@ -350,7 +357,8 @@ export async function getTeam(opts) {
  * Annuaire `numero E.164 -> nom`, pour nommer les correspondants.
  * @param {{force?: boolean, debug?: boolean, timeoutMs?: number}} [opts]
  *        `debug` demande le detail des sources (page Diagnostic).
- * @returns {Promise<any>} `{ map, count, sources, updatedAt }`
+ * @returns {Promise<any>} `{ map, count, sources, origin, imported, updatedAt }`
+ *          (`degraded: true` quand seul l'annuaire complementaire a repondu)
  */
 export async function getDirectory(opts) {
   const o = opts || {};
@@ -363,6 +371,34 @@ export async function getDirectory(opts) {
     noCache: !!o.force,
     timeoutMs: o.timeoutMs,
   });
+}
+
+/**
+ * Importe un export de contacts Keyyo Phone (administrateurs). ECRITURE : le
+ * serveur analyse le CSV, le conserve dans le store Blob et calcule la
+ * couverture de l'archive ; le delai est donc etendu, comme pour /api/sync.
+ * @param {{csv: string, filename?: string}} payload contenu du fichier et son nom.
+ * @returns {Promise<any>} `{ ok, imported, stats, warnings, collisions, coverage }`
+ */
+export async function postDirectoryImport(payload) {
+  const p = payload || {};
+  /** @type {Record<string, string>} */
+  const body = { csv: String(p.csv == null ? '' : p.csv) };
+  if (p.filename) body.filename = String(p.filename);
+  return request('/directory', {
+    method: 'POST',
+    body,
+    timeoutMs: DIRECTORY_IMPORT_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Supprime l'annuaire complementaire (administrateurs). Les correspondants
+ * qu'il nommait retombent sur l'annuaire Keyyo, ou sur leur numero.
+ * @returns {Promise<any>} `{ ok, imported: null }`
+ */
+export async function clearDirectoryImport() {
+  return request('/directory', { method: 'POST', body: { clear: true } });
 }
 
 /**
