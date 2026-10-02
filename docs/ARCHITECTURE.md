@@ -1,4 +1,4 @@
-# Architecture — Supervision des appels Keyyo
+# Architecture — 1Call (supervision des appels Keyyo)
 
 Ce document est le **contrat** du projet : il fixe les signatures exportées par
 chaque module. Tout le code s'y conforme ; en cas de divergence entre ce

@@ -1,8 +1,8 @@
 {
-  "name": "keyyo-supervision",
+  "name": "1call",
   "version": "3.0.0",
   "private": true,
-  "description": "Supervision des appels Keyyo : volumes, appels manques a rappeler, activite par collaborateur.",
+  "description": "1Call : supervision des appels Keyyo, volumes, appels manques a rappeler, activite par collaborateur.",
   "type": "module",
   "scripts": {
     "dev": "vercel dev",

@@ -407,7 +407,7 @@ function page(title, inner) {
   return '<!doctype html><html lang="fr"><head><meta charset="utf-8">'
     + '<meta name="viewport" content="width=device-width, initial-scale=1">'
     + '<meta name="robots" content="noindex, nofollow">'
-    + '<title>' + esc(title) + ' — Keyyo</title>'
+    + '<title>' + esc(title) + ' — 1Call</title>'
     + '<style>'
     + 'body{margin:0;padding:40px 20px;background:#faf8f5;color:#2a2018;'
     + 'font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}'
