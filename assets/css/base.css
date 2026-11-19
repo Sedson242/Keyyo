@@ -1,37 +1,46 @@
 /* =============================================================================
-   base.css — Remise a zero, coquille applicative, barre laterale, en-tete.
+   base.css — Remise a zero, toile, coquille applicative (menu, barre du haut,
+   menu du compte), ecran de connexion, pied de page.
 
-   La coquille reproduit la maquette : degrade chaud sur toute la page, barre
-   laterale translucide posee dessus (pas de bloc opaque), grand titre a
-   gauche, pilule utilisateur a droite.
+   Meme coquille que 1Licence : menu lateral en verre de 240 px (64 px reduit),
+   page active en pilule d'encre qui glisse d'un lien a l'autre, barre du haut
+   collante de 56 px avec fil d'Ariane et fraicheur des donnees, contenu borne
+   a 1360 px. Animations : uniquement transform et opacity.
    ============================================================================= */
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html { scrollbar-gutter: stable; -webkit-text-size-adjust: 100%; }
+html, body { margin: 0; min-height: 100%; }
 
 body {
-  margin: 0;
   min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
   font: var(--t-body);
-  color: var(--ink-soft);
-  background: var(--bg-shell);
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
-/* Le degrade chaud de la maquette : une floraison peche en haut a gauche, un
-   voile creme diagonal, sur un fond creme tres clair. En `fixed` pour que le
-   defilement ne fasse pas glisser la couleur sous les cartes. */
+/* Fond : halos et quadrillage sur un calque fixe, peint une fois, jamais
+   repeint au defilement. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
+  pointer-events: none;
   background:
-    radial-gradient(1100px 620px at -6% -12%, var(--bg-peach-deep) 0%, rgba(233, 171, 134, 0) 62%),
-    radial-gradient(900px 700px at 22% 0%, var(--bg-peach) 0%, rgba(244, 214, 193, 0) 58%),
-    linear-gradient(152deg, var(--bg-cream) 0%, var(--bg-shell) 46%, var(--bg-shell) 100%);
+    radial-gradient(900px 600px at 90% 0%, var(--glow-1), transparent 60%),
+    radial-gradient(1000px 800px at -6% 4%, var(--glow-2), transparent 60%),
+    radial-gradient(800px 600px at 0% 100%, var(--glow-3), transparent 60%),
+    radial-gradient(700px 500px at 60% 100%, var(--glow-4), transparent 60%),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    var(--paper);
+  background-size: auto, auto, auto, auto, 56px 56px, 56px 56px, auto;
+  transform: translateZ(0);
 }
 
 /* `hidden` doit gagner sur tout `display` d'auteur : un bouton (inline-flex)
@@ -40,208 +49,371 @@ body::before {
 [hidden] { display: none !important; }
 
 h1, h2, h3, h4, p, figure { margin: 0; }
+h1, h2, h3, h4 { color: var(--ink); }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-a { color: inherit; text-decoration: none; }
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
 img, svg { display: block; max-width: 100%; }
 table { border-collapse: collapse; width: 100%; }
 input, select, textarea { font: inherit; color: inherit; }
+b, strong { font-weight: 600; }
+
+/* Icones du jeu commun (<use href="#i-…">) : trait, jamais de remplissage. */
+svg { flex: none; }
 
 /* Anneau de focus visible partout, mais seulement au clavier. */
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  border-radius: var(--r-xs);
-}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+::selection { background: var(--focus-ring); color: var(--ink); }
+
+/* Barres de defilement fines, discretes sur le verre. */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-.mono { font-family: var(--font-mono); font-size: 0.94em; font-variant-numeric: tabular-nums; }
+/* Chiffres : dates, effectifs, durees, numeros. */
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .tnum { font-variant-numeric: tabular-nums; }
 
+kbd {
+  display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 5px;
+  border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--field);
+  font: 500 11px/1 var(--mono); color: var(--ink-2);
+}
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font: var(--t-overline); letter-spacing: 0.14em; text-transform: uppercase; color: var(--overline);
+}
+.eyebrow svg { width: 14px; height: 14px; }
+
 /* =============================================================================
-   Trame generale
+   Logo BIOS, nom de l'application, tuile
+   ============================================================================= */
+
+.logo { display: inline-flex; align-items: center; }
+.logo img { display: block; height: 34px; width: auto; }
+.logo.lg img { height: 52px; }
+.logo .logo-dark { display: none; }
+:root[data-theme='dark'] .logo .logo-light { display: none; }
+:root[data-theme='dark'] .logo .logo-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .logo .logo-light { display: none; }
+  :root:not([data-theme='light']) .logo .logo-dark { display: block; }
+}
+
+/* « 1Call » : le 1 en orange, comme « 1Licence ». */
+.app-name { font-weight: 700; letter-spacing: -0.02em; }
+.app-name .one { color: var(--accent); }
+
+/* Tuile d'application : degrade orange, icone blanche au trait. */
+.app-tile {
+  width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 9px; color: #fff;
+  background: var(--tile-grad);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 10px -4px rgba(232, 112, 42, 0.45);
+}
+.app-tile svg { width: 17px; height: 17px; stroke-width: 1.9; }
+
+/* =============================================================================
+   Trame generale : menu lateral + colonne principale
    ============================================================================= */
 
 .app {
   display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-columns: var(--side-w) minmax(0, 1fr);
   min-height: 100vh;
-  max-width: var(--page-max);
-  margin: 0 auto;
+  transition: grid-template-columns 0.28s var(--ease);
 }
 
 /* -----------------------------------------------------------------------------
-   Barre laterale
+   Menu lateral
    -------------------------------------------------------------------------- */
 
-.side {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-5);
-  padding: 22px 14px 18px;
+.sidebar {
   position: sticky;
   top: 0;
   height: 100vh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: var(--surface-glass);
-  backdrop-filter: blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-  border-right: 1px solid rgba(255, 255, 255, 0.5);
   z-index: var(--z-nav);
-}
-
-.brand {
+  overscroll-behavior: contain;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 2px 8px 0;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--glass-2);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border-right: 1px solid var(--glass-edge);
 }
+:root[data-glass='off'] .sidebar { -webkit-backdrop-filter: none; backdrop-filter: none; }
 
-.brand-mark {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-md);
-  background: var(--grad-logo);
-  color: #fff;
-  box-shadow: var(--sh-sm);
+.switcher { padding: 12px; border-bottom: 1px solid var(--line); }
+.brand {
+  display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 8px;
+  color: inherit; transition: background-color var(--dur-fast);
 }
-.brand-mark svg { width: 17px; height: 17px; }
+a.brand:hover { background: var(--glass); text-decoration: none; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.35; }
+.brand-text b { font-size: 14px; color: var(--ink); }
+.brand-text small { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.brand-name {
-  font: var(--t-h3);
-  font-weight: 700;
-  color: var(--ink);
-  letter-spacing: var(--track-tight);
+.nav {
+  position: relative;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 12px;
 }
-.brand-sub {
-  display: block;
-  font: var(--t-micro);
-  color: var(--ink-muted);
-  letter-spacing: var(--track-label);
-  text-transform: uppercase;
-}
-
-.nav-group + .nav-group { margin-top: var(--gap-5); }
-
+.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-group ul { display: grid; gap: 2px; }
 .nav-title {
-  padding: 0 12px 8px;
-  font: var(--t-micro);
-  color: var(--ink-faint);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  padding: 0 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap;
 }
 
 .nav-item {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 9px 12px;
-  border-radius: var(--r-md);
-  font: var(--t-body-md);
-  color: var(--ink-soft);
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
-}
-.nav-item svg { flex: 0 0 auto; width: 17px; height: 17px; opacity: 0.72; }
-.nav-item:hover { background: var(--surface-glass-strong); color: var(--ink); }
-
-/* Element actif : la pilule blanche de la maquette. */
-.nav-item.is-active {
-  background: var(--surface);
-  color: var(--ink);
-  font-weight: 600;
-  box-shadow: var(--sh-sm);
-}
-.nav-item.is-active svg { opacity: 1; color: var(--in); }
-
-/* Compteur a droite d'un element de menu (ex. appels a rappeler). */
-.nav-badge {
-  margin-left: auto;
-  min-width: 20px;
-  padding: 1px 6px;
-  border-radius: var(--r-pill);
-  background: var(--missed);
-  color: #fff;
-  font: var(--t-micro);
-  font-weight: 700;
-  text-align: center;
-}
-.nav-badge[hidden] { display: none !important; }
-
-.side-foot {
-  margin-top: auto;
-  display: grid;
   gap: 10px;
-  padding: 12px 12px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.55);
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  transition: color 0.18s var(--ease), background-color 0.18s var(--ease);
 }
+.nav-item:hover { background: var(--glass); color: var(--ink); text-decoration: none; }
+.nav-item svg { width: 16px; height: 16px; color: var(--muted); stroke-width: 1.8; transition: color 0.18s var(--ease); }
+.nav-item .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-item.is-active, .nav-item.is-active:hover { color: var(--on-pill); font-weight: 600; background: none; }
+.nav-item.is-active svg { color: var(--pill-icon); stroke-width: 1.9; }
+
+/* Page active : pilule d'encre pleine qui glisse d'un lien a l'autre
+   (transform seulement, posee par app/shell.js). Sans script, le lien actif
+   porte lui-meme la pilule. */
+.nav-indicator {
+  position: absolute; left: 12px; right: 12px; top: 0; height: 36px; z-index: 0; pointer-events: none;
+  border-radius: var(--radius-sm); background: var(--pill); box-shadow: var(--shadow-pill);
+  opacity: 0;
+  transition: transform 0.38s var(--ease), height 0.38s var(--ease), opacity 0.2s;
+  will-change: transform;
+}
+.nav-indicator.instant { transition: none; }
+.nav:not(.has-indicator) .nav-item.is-active { background: var(--pill); box-shadow: var(--shadow-pill); }
+
+/* Compteur a droite d'un lien (correspondants a rappeler). */
+.nav-badge {
+  min-width: 20px; height: 18px; padding: 0 6px; border-radius: 8px;
+  background: var(--accent); color: #fff; font: 600 11px/18px var(--mono); text-align: center;
+}
+
+.side-foot { padding: 12px; border-top: 1px solid var(--line); }
+.collapse-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px;
+  border-radius: var(--radius-sm); color: var(--muted); font-size: 13px;
+  transition: background-color var(--dur-fast), color var(--dur-fast);
+}
+.collapse-btn:hover { background: var(--glass); color: var(--ink); }
+.collapse-btn span { white-space: nowrap; }
+.collapse-btn svg { width: 16px; height: 16px; }
+
+/* Menu reduit : 64 px, icones seules (le nom de chaque page reste en
+   info-bulle). */
+:root[data-nav='mini'] .brand-text,
+:root[data-nav='mini'] .nav-item .label,
+:root[data-nav='mini'] .collapse-btn span { display: none; }
+:root[data-nav='mini'] .brand { justify-content: center; padding: 6px 0; }
+:root[data-nav='mini'] .nav-title { height: 1px; padding: 0; margin: 0 10px 6px; overflow: hidden; color: transparent; background: var(--line); }
+:root[data-nav='mini'] .nav-item { justify-content: center; padding: 0; }
+:root[data-nav='mini'] .nav-badge { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+:root[data-nav='mini'] .collapse-btn { justify-content: center; padding: 0; }
+:root[data-nav='mini'] .collapse-btn svg { transform: scaleX(-1); }
 
 /* -----------------------------------------------------------------------------
-   Zone principale
+   Colonne principale et barre du haut
    -------------------------------------------------------------------------- */
 
-.main {
-  min-width: 0;
-  /* La page ne defile jamais horizontalement : ce qui deborderait encore est
-     rogne ici (clip ne cree pas de conteneur de defilement, au contraire de
-     hidden). Les tableaux et les grilles s'adaptent en amont. */
-  overflow-x: clip;
-  padding: 26px clamp(16px, 2.4vw, 34px) 46px;
-}
-.page > * { min-width: 0; }
+.main { min-width: 0; display: flex; flex-direction: column; }
 
+/* Le flou de la barre est porte par un calque : ses menus (compte, alertes)
+   floutent a leur tour la page. */
 .topbar {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--gap-4);
-  flex-wrap: wrap;
-  margin-bottom: var(--gap-6);
-}
-
-.topbar-title { min-width: 0; flex: 1 1 320px; }
-
-.page-title {
-  font: var(--t-display);
-  color: var(--ink);
-  letter-spacing: var(--track-tight);
-}
-
-.page-sub {
-  margin-top: 5px;
-  font: var(--t-sm);
-  color: var(--ink-muted);
-}
-
-.topbar-actions {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  isolation: isolate;
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 16px;
+  height: var(--topbar-h);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--line);
+}
+.topbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--glass-bar);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+}
+:root[data-glass='off'] .topbar::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.topbar .menu-btn { display: none; }
+
+.crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.crumbs a { color: inherit; }
+.crumbs svg { width: 12px; height: 12px; stroke-width: 2; }
+.crumbs b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-weight: 500; }
+
+/* Fraicheur des donnees : pastille et heure de la derniere collecte. */
+.updated { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.updated > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.updated time { font-family: var(--mono); }
+
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+
+.icon-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  transition: background-color 0.18s var(--ease), color 0.18s;
+}
+.icon-btn:hover { background: var(--sand); color: var(--ink); text-decoration: none; }
+.icon-btn svg { width: 17px; height: 17px; }
+.icon-btn[disabled] { opacity: 0.55; cursor: progress; }
+.icon-btn[aria-busy='true'] svg { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.menu-wrap { position: relative; }
+
+/* Avatar de la personne connectee : rond d'encre, initiales ; ouvre le menu du
+   compte. La photo de profil couvre les initiales quand elle se charge. */
+.me-btn {
+  position: relative;
+  overflow: hidden;
+  width: 34px;
+  height: 34px;
+  margin-left: 4px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--pill);
+  color: var(--on-pill);
+  font-size: 12px;
+  font-weight: 600;
+  transition: box-shadow 0.18s;
+}
+.me-btn img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.35s var(--ease); }
+.me-btn.has-photo img { opacity: 1; }
+.me-btn.has-photo .initials { visibility: hidden; }
+.me-btn:hover, .me-btn[aria-expanded='true'] { box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* -----------------------------------------------------------------------------
+   Fenetres flottantes : alertes, compte
+   -------------------------------------------------------------------------- */
+
+.pop {
+  position: absolute;
+  right: -8px;
+  top: calc(100% + 10px);
+  z-index: var(--z-pop);
+  width: 400px;
+  max-width: calc(100vw - 24px);
+  background: var(--glass-float);
+  -webkit-backdrop-filter: var(--blur-float);
+  backdrop-filter: var(--blur-float);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+  transform-origin: top right;
+  animation: pop-in 0.22s var(--ease);
+}
+@keyframes pop-in { from { opacity: 0; transform: translateY(-6px) scale(0.97); } }
+
+.notif-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+.notif-head h2 { font-size: 15px; font-weight: 600; }
+.link-btn { color: var(--accent-text); font-size: 13px; font-weight: 500; }
+.link-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.notif-list { max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
+.notif-list .rank-list { gap: 2px; }
+.notif-list .rank-row { padding: 10px 12px; }
+.notif-list .empty { padding: 30px 20px; }
+
+/* Pastille de la cloche : petite et posee sur le coin du bouton. */
+.dot-badge {
+  position: absolute; top: -2px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--accent); color: #fff; font: 600 9.5px/13px var(--mono);
+  text-align: center; pointer-events: none; border: 1.5px solid var(--surface);
+  animation: pop 0.4s var(--spring);
+}
+@keyframes pop { from { transform: scale(0.4); opacity: 0; } }
+.bell-btn.unread svg { transform-origin: 50% 12%; animation: ring 2.8s ease-in-out infinite; }
+@keyframes ring {
+  0%, 52%, 100% { transform: rotate(0); }
+  4% { transform: rotate(16deg); } 10% { transform: rotate(-14deg); } 16% { transform: rotate(11deg); }
+  22% { transform: rotate(-8deg); } 28% { transform: rotate(5deg); } 34% { transform: rotate(-3deg); } 40% { transform: rotate(1deg); }
 }
 
-/* Pilule utilisateur / compte, en haut a droite de la maquette. */
-.account {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 12px 7px 8px;
-  border-radius: var(--r-md);
-  background: var(--surface);
-  box-shadow: var(--sh-sm);
+/* Menu du compte : identite, reglages d'affichage en lignes compactes,
+   alertes, liens et deconnexion. */
+.pop.account-pop { right: 0; width: 320px; }
+.acct-head { display: grid; gap: 2px; padding: 14px 16px; border-bottom: 1px solid var(--line); line-height: 1.35; }
+.acct-head b { font-size: 14px; font-weight: 600; }
+.acct-head small { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.acct-role { margin-top: 4px; justify-self: start; padding: 0 8px; line-height: 20px; border-radius: 8px; background: var(--sand); color: var(--ink-2); font-size: 12px; }
+.acct-rows { display: grid; gap: 2px; padding: 6px; }
+.acct-rows + .acct-rows { border-top: 1px solid var(--line); }
+.acct-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; padding: 0 4px 0 10px; font-size: 13px; }
+.acct-row .segmented { flex-wrap: nowrap; padding: 2px; border-radius: var(--radius-sm); }
+.acct-row .segmented button { height: 22px; padding: 0 8px; font-size: 12px; border-radius: var(--radius-sm); }
+.acct-row .segmented button.is-active { background: var(--field); }
+.acct-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px;
+  border-radius: var(--radius-sm); color: var(--ink); font-size: 13px; text-align: left;
 }
-.account-name { font: var(--t-body-md); color: var(--ink); }
-.account-sub { display: block; font: var(--t-micro); color: var(--ink-muted); }
-.account svg { width: 15px; height: 15px; color: var(--ink-muted); }
+.acct-item:hover { background: var(--sand); text-decoration: none; }
+.acct-item svg { width: 15px; height: 15px; color: var(--muted); }
+.acct-rows .switch { min-height: 34px; padding: 0 10px; border-radius: var(--radius-sm); }
+.acct-rows .switch:hover { background: var(--sand); }
+.acct-foot { padding: 10px 16px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+/* -----------------------------------------------------------------------------
+   Contenu
+   -------------------------------------------------------------------------- */
+
+.view { width: 100%; max-width: var(--view-max); margin: 0 auto; padding: 32px 32px 64px; }
+.view:focus { outline: none; }
+.view > * + * { margin-top: 18px; }
+.view > .page-head + * { margin-top: 24px; }
+#global-notice:empty { display: none; }
+#global-notice > .notice { margin: 0; }
+
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 20px; flex-wrap: wrap; }
+.page-heading { min-width: 0; max-width: 760px; }
+.page-heading .eyebrow { margin-bottom: 8px; }
+.page-title { font-size: 24px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; color: var(--navy); }
+.page-sub { margin-top: 4px; color: var(--muted); font-size: 14px; }
+.page-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 /* Pages : une seule visible a la fois. */
 .page { display: none; }
@@ -249,18 +421,12 @@ input, select, textarea { font: inherit; color: inherit; }
 /* -----------------------------------------------------------------------------
    Rythme vertical unique des vues
 
-   Mesure avant correctif : l'espace entre deux blocs dependait des marges
-   propres a chaque composant — 0 px entre les indicateurs et les cartes
-   Collaborateurs, 16 px ailleurs, 36 px sous la barre d'outils du Diagnostic,
-   48 px avant un titre sur la vue Lignes. Desormais le flux d'une vue est une
-   colonne a espacement constant, et les composants n'ont plus de marge
-   exterieure :
-     - 20 px entre deux blocs ;
-     - 32 px au-dessus d'un titre de section, 12 px au-dessous (le titre est
-       plus proche de ce qu'il annonce que de ce qui precede).
+   Le flux d'une vue est une colonne a espacement constant, et les composants
+   n'ont plus de marge exterieure :
+     - 18 px entre deux blocs ;
+     - un titre de section se colle a ce qu'il annonce.
    Les enveloppes <div> sans classe (titre + carte regroupes par le code) ne
-   jouent aucun role visuel : `display: contents` les fait disparaitre du
-   flux, pour que leurs enfants suivent la meme regle.
+   jouent aucun role visuel : `display: contents` les fait disparaitre du flux.
    -------------------------------------------------------------------------- */
 .page.is-active,
 .page > .stack,
@@ -277,122 +443,205 @@ input, select, textarea { font: inherit; color: inherit; }
 :is(.page, .page > .stack, .page > .diag, .dash-wide) > .section-head,
 :is(.page, .page > .stack, .page > .diag) > div:not([class]) > .section-head {
   margin-top: var(--gap-3);
-  margin-bottom: calc(var(--gap-3) - var(--gap-5));
+  margin-bottom: calc(var(--gap-2) - var(--gap-5));
 }
 
-/* Un titre en tete de vue colle au bandeau, sans marge superflue. */
+/* Un titre en tete de vue colle a ce qui precede, sans marge superflue. */
 .page > .section-head:first-child,
 .page > div:not([class]):first-child > .section-head:first-child,
 .page > :is(.stack, .diag):first-child > .section-head:first-child,
 .page > :is(.stack, .diag):first-child > div:not([class]):first-child > .section-head:first-child { margin-top: 0; }
 
-/* -----------------------------------------------------------------------------
+/* Arrivee sur un ecran : les blocs montent l'un apres l'autre (une fois, a
+   l'ouverture de l'ecran, jamais a l'actualisation). */
+.page.enter > * { animation: rise 0.5s var(--ease) both; }
+.page.enter > :nth-child(2) { animation-delay: 0.04s; }
+.page.enter > :nth-child(3) { animation-delay: 0.08s; }
+.page.enter > :nth-child(4) { animation-delay: 0.12s; }
+.page.enter > :nth-child(5) { animation-delay: 0.16s; }
+.page.enter > :nth-child(n + 6) { animation-delay: 0.2s; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes fade-in { from { opacity: 0; } }
+
+/* Pied de page */
+.site-foot {
+  width: 100%; max-width: var(--view-max); margin: auto auto 0; padding: 18px 32px 26px;
+  display: flex; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap;
+  border-top: 1px solid var(--line); font-size: 12px; color: var(--muted);
+}
+.site-foot b { color: var(--ink-2); font-weight: 600; }
+
+/* =============================================================================
    Ecran de connexion
 
-   Pose au-dessus de tout (meme plan que la modale), sur le degrade de la
-   page. Tant qu'il est affiche, la coquille derriere est rendue invisible et
-   inerte : `visibility: hidden` la retire aussi de l'ordre de tabulation, ce
-   qu'une simple superposition ne ferait pas.
-   -------------------------------------------------------------------------- */
+   Pose au-dessus de tout, sur la toile, avec deux halos qui derivent
+   lentement. Tant qu'il est affiche, la coquille derriere est invisible et
+   inerte : `visibility: hidden` la retire aussi de l'ordre de tabulation.
+   ============================================================================= */
+
 .gate {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: 24px 16px 72px;
+  overflow: auto;
+  isolation: isolate;
 }
-/* `display: grid` ci-dessus l'emporte sur la regle [hidden] du navigateur. */
 .gate[hidden] { display: none; }
-
-.gate-card {
-  display: grid;
-  gap: 12px;
-  width: min(440px, 100%);
-  padding: 30px 30px 26px;
-  background: var(--surface);
-  border-radius: var(--r-2xl);
-  box-shadow: var(--sh-lg);
+.gate::before, .gate::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 46vmax;
+  height: 46vmax;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(10px);
+  opacity: 0.9;
+  will-change: transform;
 }
-.gate-card .brand { padding: 0; margin-bottom: 8px; }
-.gate-title { font: var(--t-h1); color: var(--ink); letter-spacing: var(--track-tight); }
-.gate-text { font: var(--t-body); color: var(--ink-soft); }
-.gate-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
-.gate-actions:empty { display: none; }
-.gate-foot { font: var(--t-sm); color: var(--ink-muted); }
-.gate-foot:empty { display: none; }
+.gate::before { top: -18vmax; right: -12vmax; background: radial-gradient(closest-side, var(--glow-1), transparent); animation: drift 22s ease-in-out infinite alternate; }
+.gate::after { bottom: -20vmax; left: -14vmax; background: radial-gradient(closest-side, var(--glow-2), transparent); animation: drift 26s ease-in-out infinite alternate-reverse; }
+@keyframes drift { to { transform: translate3d(-6vmax, 5vmax, 0) scale(1.08); } }
 
-/* La coquille — `.app` sur la supervision, `.agent` sur la page agent — porte
-   toujours l'identifiant `app`. */
+.login-card {
+  width: min(460px, 100%);
+  padding: 40px 36px;
+  border-radius: var(--radius);
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+  background: var(--glass-float);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-hi), var(--shadow-float);
+  animation: modal-in 0.6s var(--ease);
+}
+.login-name { margin-top: 4px; font-size: 32px; line-height: 1.1; color: var(--navy); }
+.login-tag { margin-top: -10px; color: var(--muted); font-weight: 500; }
+.gate-title { margin-top: 6px; font-size: 18px; font-weight: 700; letter-spacing: -0.02em; color: var(--navy); }
+.gate-text { margin-top: -8px; color: var(--muted); max-width: 40ch; }
+.gate-actions { display: grid; gap: 10px; width: 100%; }
+.gate-actions:empty { display: none; }
+.gate-actions .btn { width: 100%; }
+.gate-foot { font-size: 12.5px; color: var(--muted); max-width: 40ch; }
+.gate-foot:empty { display: none; }
+.login-foot { display: flex; gap: 8px; align-items: center; justify-content: center; font-size: 12.5px; color: var(--muted); }
+.login-foot svg { width: 15px; height: 15px; color: var(--ok); }
+.gate .site-foot { position: absolute; left: 0; right: 0; bottom: 0; max-width: none; border-top: 0; justify-content: center; }
+
+/* Logo Microsoft : quatre carres aux couleurs officielles, qui s'assemblent a
+   l'arrivee puis s'allument a tour de role pendant le passage chez Microsoft. */
+.ms-logo { --ms: 20px; display: inline-grid; grid-template-columns: repeat(2, 1fr); gap: calc(var(--ms) * 0.08); width: var(--ms); height: var(--ms); flex: none; }
+.ms-logo i { display: block; background: #f25022; }
+.ms-logo i:nth-child(2) { background: #7fba00; }
+.ms-logo i:nth-child(3) { background: #00a4ef; }
+.ms-logo i:nth-child(4) { background: #ffb900; }
+.login-btn .ms-logo { padding: 1px; box-sizing: content-box; background: #fff; border-radius: 3px; }
+.ms-logo.enter i { animation: ms-in 0.5s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+.ms-logo.enter i:nth-child(1) { animation-delay: 0.25s; }
+.ms-logo.enter i:nth-child(2) { animation-delay: 0.4s; }
+.ms-logo.enter i:nth-child(4) { animation-delay: 0.55s; }
+.ms-logo.enter i:nth-child(3) { animation-delay: 0.7s; }
+.ms-logo.busy i { animation: ms-turn 1.2s ease-in-out infinite; }
+.ms-logo.busy i:nth-child(2) { animation-delay: 0.3s; }
+.ms-logo.busy i:nth-child(4) { animation-delay: 0.6s; }
+.ms-logo.busy i:nth-child(3) { animation-delay: 0.9s; }
+@keyframes ms-in { from { opacity: 0; transform: scale(0.2) rotate(-45deg); } }
+@keyframes ms-turn { 0%, 60%, 100% { opacity: 1; transform: scale(1); } 30% { opacity: 0.35; transform: scale(0.7); } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } }
+
+/* La coquille — `.app` sur la supervision, `.ag` sur la page agent, `.adm` sur
+   l'administration — porte toujours l'identifiant `app`. */
 body.is-gated #app { visibility: hidden; }
 
-/* -----------------------------------------------------------------------------
-   Bouton de menu mobile — masque au-dela du point de rupture
-   -------------------------------------------------------------------------- */
-
-.nav-toggle {
-  display: none;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--r-md);
-  background: var(--surface);
-  box-shadow: var(--sh-sm);
-  color: var(--ink);
-  place-items: center;
-}
-.nav-toggle svg { width: 19px; height: 19px; }
-
+/* Voile du menu en mobile */
 .scrim {
   position: fixed;
   inset: 0;
   z-index: calc(var(--z-nav) - 1);
-  background: rgba(42, 32, 24, 0.34);
+  background: var(--scrim);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--dur) var(--ease);
+  transition: opacity 0.3s var(--ease);
 }
 .scrim.is-open { opacity: 1; pointer-events: auto; }
+
+/* Changement de theme : le nouveau theme s'ouvre en cercle depuis le point
+   clique (navigateurs recents). */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: theme-reveal 0.6s var(--ease); }
+@keyframes theme-reveal { from { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%)); } to { clip-path: circle(var(--vt-r, 150vmax) at var(--vt-x, 50%) var(--vt-y, 50%)); } }
 
 /* =============================================================================
    Adaptatif
    ============================================================================= */
 
-@media (max-width: 1100px) {
-  :root { --sidebar-w: 200px; --pad-card: 18px; }
+@media (max-width: 1180px) {
+  .hide-md { display: none !important; }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
+  :root, :root[data-nav='mini'] { --side-w: 0px; }
   .app { grid-template-columns: minmax(0, 1fr); }
+  :root[data-nav='mini'] .brand-text,
+  :root[data-nav='mini'] .nav-item .label { display: flex; }
+  :root[data-nav='mini'] .nav-title { height: auto; margin: 0; padding: 0 10px 6px; color: var(--muted); background: none; }
+  :root[data-nav='mini'] .nav-item, :root[data-nav='mini'] .brand { justify-content: flex-start; padding: 0 10px; }
+  :root[data-nav='mini'] .nav-badge { position: static; }
+  .side-foot { display: none; }
 
-  .side {
+  .sidebar {
     position: fixed;
-    inset: 0 auto 0 0;
+    left: 0;
+    top: 0;
+    bottom: 0;
     width: 264px;
-    transform: translateX(-100%);
-    transition: transform var(--dur) var(--ease);
-    background: var(--surface-glass-strong);
-    box-shadow: var(--sh-lg);
+    height: 100%;
+    background: var(--glass-float);
+    -webkit-backdrop-filter: var(--blur-float);
+    backdrop-filter: var(--blur-float);
+    transform: translateX(-104%);
+    visibility: hidden;
+    transition: transform 0.32s var(--ease), visibility 0s linear 0.32s;
+    box-shadow: var(--shadow-float);
   }
-  .side.is-open { transform: none; }
+  /* Ferme, le menu sort aussi de l'ordre de tabulation (visibility). */
+  .sidebar.is-open { transform: none; visibility: visible; transition: transform 0.32s var(--ease); }
 
-  .nav-toggle { display: grid; }
-  .main { padding: 18px 16px 40px; }
-  .topbar { align-items: center; }
+  .topbar .menu-btn { display: grid; }
+  .topbar { padding: 0 16px; gap: 10px; }
+  .view { padding: 24px 20px 56px; }
+  .site-foot { padding: 16px 20px 22px; }
 }
 
-@media (max-width: 560px) {
-  .account-text { display: none; }
-  .account { padding: 6px; }
+@media (max-width: 640px) {
+  .hide-sm { display: none !important; }
+  .topbar { padding: 0 10px; gap: 4px; }
+  .view { padding: 20px 16px 48px; }
+  .page-title { font-size: 22px; }
+  .pop, .pop.account-pop { position: fixed; left: 12px; right: 12px; top: 60px; width: auto; }
 }
 
-/* Impression : on retire la coquille et on garde le contenu. */
+/* Impression : on retire la coquille et on garde le contenu, sur papier blanc. */
 @media print {
+  :root, :root[data-theme] {
+    color-scheme: light;
+    --paper: #fff; --surface: #fff; --glass: #fff; --glass-2: #fff; --glass-float: #fff; --field: #fff; --blur: none; --glass-hi: transparent;
+    --sand: #eef0ec; --sand-2: #f5f6f3; --line: #e2e5e2; --line-strong: #cdd2ce;
+    --ink: #14201d; --ink-2: #3a4744; --muted: #5e6b67; --navy: #193357;
+  }
   body::before { display: none; }
-  .side, .topbar-actions, .nav-toggle { display: none !important; }
+  .sidebar, .topbar, .periodbar, #callbar, .toasts, .scrim, .site-foot { display: none !important; }
   .app { display: block; }
-  .main { padding: 0; }
+  .view { max-width: none; padding: 0; }
 }
 
+/* Animations reduites : preference du systeme ou de l'outil (data-motion). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -400,4 +649,9 @@ body.is-gated #app { visibility: hidden; }
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  .page.enter > *, .ms-logo i, .bell-btn.unread svg { animation: none !important; }
+  ::view-transition-new(root) { animation: none !important; }
 }
+:root[data-motion='reduce'] *,
+:root[data-motion='reduce'] *::before,
+:root[data-motion='reduce'] *::after { animation: none !important; transition: none !important; }

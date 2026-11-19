@@ -1,92 +1,114 @@
 /* =============================================================================
    admin.css — Page Administration (admin.html).
+
+   La trame (menu lateral, barre du haut, menu du compte, connexion) est celle
+   de la supervision, dans base.css ; les briques (cartes, tableaux, champs,
+   etiquettes) viennent de components.css. Ici, seulement la disposition
+   propre a l'administration. Aucune couleur en dur : tout vient de tokens.css.
    ============================================================================= */
 
-.adm {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 22px clamp(14px, 3vw, 32px) 110px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--gap-5);
-  overflow-x: clip;
-}
-.adm > * { min-width: 0; }
-/* Meme rythme que les vues de supervision : 20 px entre deux cartes (elles se
-   touchaient, 0 px mesure). */
-#admin-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap-5); align-content: start; }
-.adm-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.adm-top .brand { padding: 0; }
-.adm-top .account { margin-left: auto; }
-.adm-title { font: var(--t-h1); color: var(--ink); letter-spacing: var(--track-tight); }
-.adm-sub { font: var(--t-sm); color: var(--ink-muted); margin-top: 3px; }
+/* Cartes empilees, au rythme des vues de supervision. */
+.adm-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap-5); align-content: start; }
+.adm-main > * { min-width: 0; }
+.adm-main > .notice { margin: 0; }
+/* Arrivee : les cartes montent l'une apres l'autre, une seule fois (classe
+   posee par app/admin.js au premier affichage, jamais aux repeints suivants,
+   qui ont lieu a chaque case cochee). */
+.adm-main.enter > * { animation: rise 0.5s var(--ease) both; }
+.adm-main.enter > :nth-child(2) { animation-delay: 0.04s; }
+.adm-main.enter > :nth-child(3) { animation-delay: 0.08s; }
+.adm-main.enter > :nth-child(n + 4) { animation-delay: 0.12s; }
+
+/* -----------------------------------------------------------------------------
+   Barre d'enregistrement, dans la barre du haut : etat, Annuler, Enregistrer.
+   Le bouton orange de l'ecran est en haut a droite, toujours visible.
+   ----------------------------------------------------------------------------- */
+
+.adm-bar { display: flex; align-items: center; gap: 8px; min-width: 0; margin-right: 6px; }
+.adm-bar:empty { display: none; }
+.adm-stamp { min-width: 0; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.adm-bar .tag { white-space: nowrap; }
+
+/* -----------------------------------------------------------------------------
+   Membres
+   ----------------------------------------------------------------------------- */
 
 .adm-person { min-width: 0; overflow-wrap: anywhere; }
+.adm-person-mail { font: var(--t-micro); color: var(--muted); }
 .adm-number { min-width: 150px; }
-.adm-number input { width: 100%; min-width: 0; }
-.adm-hint { margin: 0; padding: 12px var(--pad-card) 4px; font: var(--t-sm); color: var(--ink-muted); }
+.adm-number input { width: 100%; min-width: 0; font-family: var(--mono); }
+.adm-number input::placeholder { font-family: var(--font); }
+.adm-hint { margin: var(--gap-4) 0 0; font: var(--t-sm); color: var(--muted); max-width: 920px; }
 .adm-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.adm-check { display: inline-flex; align-items: center; gap: 6px; font: var(--t-sm); color: var(--ink-soft); white-space: nowrap; }
-.adm-check input { accent-color: var(--in); width: 15px; height: 15px; }
+.adm-check { display: inline-flex; align-items: center; gap: 7px; font: var(--t-sm); color: var(--ink-2); white-space: nowrap; cursor: pointer; }
+.adm-check input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; cursor: pointer; }
 
-.adm-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 16px 6px; }
+/* Ajout d'une personne : choix dans l'annuaire, ou adresse et nom a la main. */
+.adm-add {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: var(--gap-4); padding-top: var(--gap-4); border-top: 1px solid var(--line);
+}
 .adm-add .field { flex: 1 1 200px; }
 
-.adm-route { padding: 12px 0; border-top: 1px solid var(--line); display: grid; gap: 8px; }
-.adm-route:first-child { border-top: 0; padding-top: 0; }
-.adm-route-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* -----------------------------------------------------------------------------
+   Routage des appels entrants : un bloc par ligne Keyyo.
+   ----------------------------------------------------------------------------- */
 
-.adm-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: var(--z-sticky);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 12px clamp(14px, 3vw, 32px);
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-top: 1px solid var(--line);
-}
+.adm-route { padding: 14px 0; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.adm-route:first-child { border-top: 0; padding-top: 0; }
+.adm-route:last-child { padding-bottom: 0; }
+.adm-route-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.adm-route-head .strong { color: var(--ink); }
+.adm-route-number { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
 /* -----------------------------------------------------------------------------
    Annuaire complementaire : import d'un export de contacts Keyyo Phone.
    La carte vit hors du cycle « modifications / Enregistrer » : son etat, son
-   apercu et son resultat s'empilent dans la carte, la barre du bas n'y est
-   pour rien. Les briques `btn`, `field`, `table`, `notice` et `tag` viennent
-   de components.css ; ici, seulement leur disposition.
+   apercu et son resultat s'empilent dans la carte, la barre du haut n'y est
+   pour rien.
    ----------------------------------------------------------------------------- */
 
-.adm-import-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font: var(--t-sm); color: var(--ink-soft); }
+.adm-import-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font: var(--t-sm); color: var(--ink-2); }
 .adm-import-state .btn { margin-left: auto; }
-.adm-import-how { margin: 12px 0 0; font: var(--t-sm); color: var(--ink-muted); }
+.adm-import-how { margin: 12px 0 0; font: var(--t-sm); color: var(--muted); }
 
 .adm-import-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .adm-import-pick .field { flex: 1 1 260px; max-width: 520px; }
-.adm-import-pick input[type="file"] { font: var(--t-sm); color: var(--ink-soft); cursor: pointer; }
+.adm-import-pick input[type="file"] { font: var(--t-sm); color: var(--ink-2); cursor: pointer; }
+.adm-import-pick input[type="file"]::file-selector-button {
+  margin-right: 10px; height: 26px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--field); color: var(--ink); font: 500 12.5px/1 var(--font); cursor: pointer;
+}
 .adm-import-pick input[type="file"]:disabled { cursor: progress; opacity: 0.6; }
 
 .adm-import-preview, .adm-import-result { display: grid; gap: 12px; margin-top: 14px; }
 .adm-import-preview .notice, .adm-import-result .notice { margin-bottom: 0; }
-.adm-import-filename { font: var(--t-sm); color: var(--ink-soft); overflow-wrap: anywhere; }
+.adm-import-filename { font: var(--t-sm); color: var(--ink-2); overflow-wrap: anywhere; }
 .adm-import-filename .strong { font-weight: 600; color: var(--ink); }
 
 /* Grille de petites valeurs : un compteur par case. Ceux qui signalent des
    lignes perdues (sans nom, sans numero, rejets, collisions) passent en rouge
-   des qu'ils sont positifs. */
+   des qu'ils sont positifs, avec leur libelle : jamais la couleur seule. */
 .adm-import-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(118px, 100%), 1fr)); gap: 8px; }
-.adm-import-stat { min-width: 0; padding: 9px 12px; border-radius: var(--r-md); background: var(--surface-sunken); }
-.adm-import-stat-label { font: var(--t-micro); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adm-import-stat { min-width: 0; padding: 9px 12px; border-radius: var(--radius-sm); background: var(--sand-2); border: 1px solid var(--line); }
+.adm-import-stat-label { font: var(--t-micro); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .adm-import-stat-value { font: var(--t-num-md); color: var(--ink); letter-spacing: var(--track-tight); font-variant-numeric: tabular-nums; }
-.adm-import-stat--warn { background: var(--missed-soft); }
-.adm-import-stat--warn .adm-import-stat-value { color: var(--missed); }
+.adm-import-stat--warn { background: var(--ko-soft); border-color: var(--ko-line); }
+.adm-import-stat--warn .adm-import-stat-value { color: var(--ko); }
 
-.adm-import-preview .table-wrap { border: 1px solid var(--line); border-radius: var(--r-lg); }
+.adm-import-preview .table-wrap { border: 1px solid var(--line); border-radius: var(--radius); }
 .adm-import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .adm-import-warnings { margin: 6px 0 0; padding-left: 18px; list-style: disc; display: grid; gap: 3px; }
 .adm-import-result p + p { margin-top: 6px; }
+
+/* -----------------------------------------------------------------------------
+   Adaptatif : en petit ecran, la barre du haut garde Annuler et Enregistrer.
+   ----------------------------------------------------------------------------- */
+
+@media (max-width: 1180px) {
+  .adm-stamp { display: none; }
+}
+@media (max-width: 640px) {
+  .adm-bar { gap: 4px; margin-right: 2px; }
+  .adm-bar .tag { display: none; }
+}

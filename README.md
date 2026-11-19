@@ -111,8 +111,15 @@ fait sonner tout son site. L'application fait ce que la configuration permet :
 
 **Aucune étape de compilation.** Le front est servi tel quel : modules ES natifs,
 CSS écrit à la main, graphiques en SVG généré. Pas de bundler, pas de framework,
-aucune police ni bibliothèque distante. Le back tient dans des fonctions
-serverless Vercel (Node ≥ 18, ESM), avec `@vercel/blob` pour seule dépendance.
+aucune police ni bibliothèque distante (les polices sont hébergées dans
+`assets/fonts/`). Le back tient dans des fonctions serverless Vercel
+(Node ≥ 18, ESM), avec `@vercel/blob` pour seule dépendance.
+
+**Rendu.** 1Call reprend le thème de 1Licence (guide BIOS « Glass Corporate ») :
+cartes en verre sur toile claire, menu latéral à pilule d'encre, barre du haut
+avec fil d'Ariane et menu du compte, thème sombre. Le menu du compte (avatar en
+haut à droite) règle le thème, la densité, la transparence et les animations ;
+ces réglages restent dans le navigateur.
 
 Le dossier `shared/` ne contient que des fonctions pures, importées **à
 l'identique** par le back et par le front : c'est ce qui garantit qu'une clé
@@ -125,13 +132,17 @@ bug à corriger.
 ```
 index.html          supervision (direction) : écran de connexion, menu, barre de période, barre d'appel
 agent.html          page agent : ma ligne, mes collègues, mon activité, barre d'appel
+admin.html          administration : membres, rôles, lignes, routage, annuaire complémentaire
 selftest.html       page de vérification (voir plus bas)
-app/                front — main, agent, session, cti, callbar, journal, router, store, api, dom, ui, charts, format, alerts, pages/
+app/                front — main, agent, admin, shell, session, cti, callbar, journal, router, store, api, dom, ui, charts, format, alerts, pages/
 api/                fonctions serverless — auth, me, cti-token, events, calls, team, directory, health, sync, oauth
                     (+ _auth, _journal, _config, _keyyo, _archive, _collect, _contacts)
 shared/             noyau pur partagé — phone, time, schema, cdr, identity, roles, journal, contacts
 vendor/             bibliothèques tierces versionnées (Keyyo CTI, SockJS) — voir vendor/README.md
-assets/css/         tokens, base, components, pages, callbar
+assets/css/         tokens, base, components, pages, callbar, agent, admin
+assets/fonts/       Schibsted Grotesk et IBM Plex Mono (woff2, hébergées ici)
+assets/brand/       logo BIOS (clair et sombre), icône d'application
+assets/theme.js     réglages d'affichage appliqués avant le premier rendu
 tests/run.js        harnais exécuté par selftest.html
 docs/               ARCHITECTURE.md (contrat), MAPPING-IDENTITES.md
 ```
@@ -308,4 +319,6 @@ Interface et commentaires en français, identifiants de code en anglais. Les
 commentaires du code source sont écrits sans accents pour rester lisibles quel
 que soit l'encodage de l'éditeur ; les accents sont conservés dans les chaînes
 affichées et dans la documentation. Aucune valeur visuelle en dur : tout passe
-par une variable de `assets/css/tokens.css`.
+par une variable de `assets/css/tokens.css`. Comme dans 1Licence : un seul
+bouton orange par écran, en haut à droite ; chiffres en IBM Plex Mono ; états
+écrits en texte, jamais par la couleur seule.

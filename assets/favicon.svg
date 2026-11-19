@@ -1,13 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="1Call">
   <title>1Call — supervision des appels</title>
+  <!-- Meme tuile que le menu (--tile-grad de tokens.css, rendu 1Licence) :
+       degrade orange BIOS a 155 degres, coins de 9 px sur 32. -->
   <defs>
-    <linearGradient id="k-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f5b06d"/>
-      <stop offset="1" stop-color="#e0713f"/>
+    <linearGradient id="k-bg" x1="0.29" y1="0.05" x2="0.71" y2="0.95">
+      <stop offset="0" stop-color="#f3a06f"/>
+      <stop offset="1" stop-color="#e8702a"/>
     </linearGradient>
   </defs>
 
-  <rect width="32" height="32" rx="8" fill="url(#k-bg)"/>
+  <rect width="32" height="32" rx="9" fill="url(#k-bg)"/>
 
   <!-- Combine d'un combine telephonique et d'un signal. Traits epais et peu
        nombreux : a 16 px, tout detail plus fin devient une bouillie de pixels. -->

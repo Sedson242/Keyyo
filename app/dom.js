@@ -436,6 +436,7 @@ const ICON_NAMES = [
   'in', 'out', 'phone', 'clock',
   'bell', 'search', 'download', 'refresh', 'chevron', 'menu', 'close', 'more',
   'alert', 'info', 'check', 'mail', 'empty',
+  'chevron-right', 'sidebar', 'logout', 'shield', 'settings',
 ];
 const ICON_SET = new Set(ICON_NAMES);
 

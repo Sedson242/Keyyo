@@ -11,8 +11,18 @@ document et le code, c'est un bug à corriger.
 **Aucune étape de compilation.** Le front est servi tel quel : modules ES natifs
 chargés par le navigateur (`<script type="module">`), CSS écrit à la main,
 graphiques en SVG généré. Aucun *bundler*, aucun *framework*, aucune police ni
-bibliothèque distante. Le back est en fonctions serverless Vercel (Node ≥ 18,
-ESM), avec pour seule dépendance `@vercel/blob`.
+bibliothèque distante : les deux polices (Schibsted Grotesk, IBM Plex Mono)
+sont hébergées dans `assets/fonts/`, la CSP n'autorise que le site lui-même.
+Le back est en fonctions serverless Vercel (Node ≥ 18, ESM), avec pour seule
+dépendance `@vercel/blob`.
+
+**Le rendu de 1Licence.** Les trois pages (`index.html`, `agent.html`,
+`admin.html`) suivent le guide BIOS « Glass Corporate » déjà en place dans
+1Licence : toile claire avec halos et quadrillage, cartes en verre dépoli,
+menu latéral avec la page active en pilule d'encre, barre du haut collante
+(fil d'Ariane, fraîcheur des données, menu du compte), thème sombre, réglages
+d'affichage gardés dans le navigateur. La coquille commune est dans
+`app/shell.js` et `assets/css/base.css` ; les valeurs dans `tokens.css`.
 
 **Un noyau pur, partagé.** Le dossier `shared/` ne contient que des fonctions
 pures : ni `fetch`, ni `process`, ni DOM. Il est importé **à l'identique** par le
@@ -839,6 +849,30 @@ export function forget(): void
 avec `user` : `{ email, name, role, roleLabel, expiresAt }`. Le navigateur ne
 détient aucun jeton ; le rôle n'est ici qu'un confort d'affichage.
 
+### `app/shell.js` — la coquille commune aux trois pages
+```js
+export function prefs(): { theme, density, glass, motion, nav }   // lus dans localStorage ('1call-prefs')
+export function setPref(key, value, origin?): void  // origin : le clic, d'où s'ouvre le nouveau thème
+export function reducedMotion(): boolean            // système ou réglage « Animations réduites »
+export function moveIndicator(instant?): void       // pilule d'encre sous la page active
+export function setAccountPhoto(email): void        // photo Microsoft 365 dans l'avatar du compte
+export function loginButton(href): string           // « Se connecter avec Microsoft », un LIEN
+export function initShell(opts?): void              // { drawer? } — tiroir mobile des pages sans routeur
+```
+Ne connaît ni les appels ni les filtres. Réglages d'affichage : thème (auto,
+clair, sombre), densité, transparence (verre ou opaque), animations, menu
+réduit. Ils sont appliqués **avant le premier rendu** par `assets/theme.js`,
+script classique chargé dans le `<head>` des trois pages (la CSP interdit le
+script en ligne, et un module s'exécuterait après la première peinture), puis
+posés en attributs `data-theme`, `data-density`, `data-glass`, `data-motion`,
+`data-nav` sur `<html>`. Le changement de thème s'ouvre en cercle depuis le
+point cliqué (View Transitions) quand le navigateur le permet. La pilule suit
+l'évènement `keyyo:route` émis par le routeur. Tout est câblé sur le balisage
+statique des pages : un élément absent est ignoré.
+
+Les trois pages partagent le même jeu d'icônes (`<symbol id="i-…">`, copié à
+l'identique en tête de chaque HTML ; noms déclarés dans `app/dom.js`).
+
 ### `app/cti.js` — pilotage de la ligne
 ```js
 export function subscribe(fn): () => void
@@ -888,9 +922,11 @@ calcule rien : repeint l'instantané de `app/cti.js`.
 ```js
 export function boot(): void                       // ne s'amorce que si #admin-root est présent
 ```
-Administrateurs seulement. Quatre blocs : **membres** (qui a quel rôle, sur
+Administrateurs seulement. Même coquille que la supervision (menu latéral,
+barre du haut, menu du compte). Quatre blocs : **membres** (qui a quel rôle, sur
 quelle ligne, fenêtre d'appel), **routage** par ligne, la **barre
-d'enregistrement**, et l'**annuaire complémentaire**. Les trois premiers
+d'enregistrement** (dans la barre du haut : état, Annuler, Enregistrer, le seul
+bouton orange de l'écran), et l'**annuaire complémentaire**. Les trois premiers
 éditent en mémoire une copie de la configuration d'accès et l'envoient entière
 à `/api/access` à l'enregistrement ; les personnes se prennent dans l'annuaire
 Keyyo (adresses rattachées aux lignes) ou par leur adresse.
@@ -1041,3 +1077,11 @@ production sans déclencher de collecte ni consommer de quota.
 - Pas de valeur visuelle en dur : tout passe par une variable de `tokens.css`.
 - Aucune boucle de rendu ne recrée le DOM entier plus d'une fois par
   changement d'état.
+- **Rendu 1Licence** : un seul bouton orange par écran, en haut à droite (les
+  autres actions sont neutres ; « Répondre » est vert, « Raccrocher » rouge) ;
+  chiffres (dates, durées, numéros, effectifs) en IBM Plex Mono ; états écrits
+  en texte sur une teinte, jamais par la couleur seule. Sens des appels :
+  entrant en bleu, sortant en orange, manqué en rouge, décroché en vert ;
+  avertissement en ambre.
+- Animations : `transform` et `opacity` seulement ; l'arrivée d'un écran se
+  joue une fois, jamais aux repeints d'une collecte de fond ou d'une saisie.

@@ -3,165 +3,276 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<meta name="description" content="Administration : membres, rôles, lignes, routage des appels et annuaire complémentaire (import des contacts Keyyo Phone).">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Administration de 1Call : membres, rôles, lignes, routage des appels et annuaire complémentaire (import des contacts Keyyo Phone).">
 <meta name="robots" content="noindex, nofollow">
-<title>Administration — 1Call</title>
+<meta name="theme-color" content="#EEF0EC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C1312" media="(prefers-color-scheme: dark)">
+<title>Administration · 1Call</title>
 
+<link rel="preload" href="assets/fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/css/tokens.css">
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/components.css">
 <link rel="stylesheet" href="assets/css/admin.css">
 
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/brand/icone.png">
+<script src="assets/theme.js"></script>
 <link rel="modulepreload" href="app/admin.js">
 </head>
 <body class="is-gated">
 
 <!-- Bibliotheque d'icones : copie de celle de index.html, meme jeu. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-  <defs>
-    <g id="i-base" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
-  </defs>
-  <symbol id="i-monitoring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-monitoring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M3 12h4l2.5-7 4 14L16 12h5"/>
   </symbol>
-  <symbol id="i-calls" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-calls" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>
   </symbol>
-  <symbol id="i-missed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-missed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M22 3l-6 6m0-6l6 6"/>
     <path d="M14.5 15.5l-1.6 1.6a13 13 0 0 1-6-6L8.5 9.5 6.8 5.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A17.6 17.6 0 0 0 17.6 21.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
   </symbol>
-  <symbol id="i-peers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-peers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/>
     <circle cx="9" cy="7" r="3.4"/>
     <path d="M22 20v-1.5a4 4 0 0 0-3-3.87M16.5 3.6a4 4 0 0 1 0 6.8"/>
   </symbol>
-  <symbol id="i-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M15 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/>
     <circle cx="8.5" cy="7" r="3.4"/>
     <path d="M16.5 11.5l2 2 4-4"/>
   </symbol>
-  <symbol id="i-lines" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-lines" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
     <path d="M15 3h6v6"/>
   </symbol>
-  <symbol id="i-diagnostics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-diagnostics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 2.5a9.5 9.5 0 1 0 9.5 9.5"/>
     <path d="M12 12l5-5"/>
     <circle cx="12" cy="12" r="1.6"/>
   </symbol>
-  <symbol id="i-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M21 3l-7 7m0-5.5V10h5.5"/>
     <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
   </symbol>
-  <symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M14 10l7-7m-5.5 0H21v5.5"/>
     <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
   </symbol>
-  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M15.5 16.5l-1.6 1.6a13 13 0 0 1-8-8L7.5 8.5 5.8 4.4a1 1 0 0 0-1.1-.6l-2.6.5a1 1 0 0 0-.8 1.1A18.6 18.6 0 0 0 18.6 22.7a1 1 0 0 0 1.1-.8l.5-2.6a1 1 0 0 0-.6-1.1z"/>
   </symbol>
-  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.5 2"/>
   </symbol>
-  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5"/>
     <path d="M13.7 20a2 2 0 0 1-3.4 0"/>
   </symbol>
-  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>
   </symbol>
-  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5"/><path d="M4 20h16"/>
   </symbol>
-  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M21 4v4.5h-4.5"/>
   </symbol>
-  <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M6 9.5l6 6 6-6"/>
   </symbol>
-  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.5 6l6 6-6 6"/>
+  </symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M3.5 6h17M3.5 12h17M3.5 18h17"/>
   </symbol>
-  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M6 6l12 12M18 6L6 18"/>
   </symbol>
-  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>
   </symbol>
-  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 3.5l9.5 16.5H2.5z"/><path d="M12 9.5v4.5M12 17h.01"/>
   </symbol>
-  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6h.01"/>
   </symbol>
-  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M4.5 12.5l5 5 10-11"/>
   </symbol>
-  <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M3 7l9 6 9-6"/>
   </symbol>
-  <symbol id="i-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M8.5 15h7"/>
+  </symbol>
+  <symbol id="i-sidebar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M9 3.5v17M15.5 9l-3 3 3 3"/>
+  </symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 20H5.5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2H9"/><path d="M16 16.5l4.5-4.5L16 7.5M20.5 12H9"/>
+  </symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 21s7.5-3.5 7.5-9.5V5.5L12 3 4.5 5.5v6C4.5 17.5 12 21 12 21z"/><path d="M9 12l2.2 2.2L15.5 10"/>
+  </symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>
   </symbol>
 </svg>
 
+<!-- Ecran de connexion, meme coquille que index.html (rempli par app/admin.js). -->
 <div class="gate" id="gate">
-  <div class="gate-card" role="dialog" aria-labelledby="gate-title" aria-describedby="gate-text">
-    <div class="brand">
-      <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
-      <div>
-        <span class="brand-name">1Call</span>
-        <span class="brand-sub">Administration</span>
-      </div>
-    </div>
+  <section class="login-card" role="dialog" aria-labelledby="gate-title" aria-describedby="gate-text">
+    <span class="logo lg">
+      <img class="logo-light" src="assets/brand/bios-logo.png" alt="BIOS Expertise" width="508" height="209">
+      <img class="logo-dark" src="assets/brand/bios-logo-sombre.png" alt="BIOS Expertise" width="499" height="208">
+    </span>
+    <p class="login-name"><span class="app-name"><span class="one">1</span>Call</span></p>
+    <p class="login-tag">Administration</p>
     <h1 class="gate-title" id="gate-title">Connexion</h1>
     <p class="gate-text" id="gate-text">Vérification de la session…</p>
     <div class="gate-actions" id="gate-actions"></div>
     <p class="gate-foot" id="gate-foot"></p>
+    <p class="login-foot"><svg aria-hidden="true"><use href="#i-shield"/></svg>Connexion sécurisée par Microsoft Entra</p>
+  </section>
+  <footer class="site-foot">
+    <span>© <span data-year>2026</span> <b>BIOS Expertise</b>. Tous droits réservés.</span>
+  </footer>
+</div>
+
+<!-- =========================================================================
+     Meme trame que la supervision : menu lateral en verre, barre du haut,
+     contenu borne. Le seul bouton orange de l'ecran (« Enregistrer ») est en
+     haut a droite, dans la barre du haut : il reste visible au defilement.
+     ========================================================================= -->
+<div class="app" id="app" aria-hidden="true">
+  <div id="admin-root" hidden></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="switcher">
+      <a class="brand" href="/" title="1Call">
+        <span class="app-tile" aria-hidden="true"><svg><use href="#i-phone"/></svg></span>
+        <span class="brand-text">
+          <b class="app-name"><span class="one">1</span>Call</b>
+          <small>BIOS Expertise</small>
+        </span>
+      </a>
+    </div>
+
+    <nav class="nav" aria-label="Navigation principale">
+      <span class="nav-indicator" aria-hidden="true"></span>
+
+      <div class="nav-group">
+        <p class="nav-title" id="navgrp-espaces">Espaces</p>
+        <ul aria-labelledby="navgrp-espaces">
+          <li>
+            <a class="nav-item" href="/">
+              <svg aria-hidden="true"><use href="#i-monitoring"/></svg><span class="label">Supervision</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-item" href="/agent.html">
+              <svg aria-hidden="true"><use href="#i-phone"/></svg><span class="label">Ma ligne</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <p class="nav-title" id="navgrp-systeme">Système</p>
+        <ul aria-labelledby="navgrp-systeme">
+          <li>
+            <a class="nav-item is-active" href="/admin.html" aria-current="page">
+              <svg aria-hidden="true"><use href="#i-settings"/></svg><span class="label">Administration</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
+    <div class="side-foot">
+      <button class="collapse-btn" id="nav-collapse" type="button">
+        <svg aria-hidden="true"><use href="#i-sidebar"/></svg><span>Réduire le menu</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="scrim" id="nav-scrim" hidden></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="nav-toggle" type="button" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="sidebar">
+        <svg aria-hidden="true"><use href="#i-menu"/></svg>
+      </button>
+
+      <nav class="crumbs" aria-label="Fil d'Ariane">
+        <a class="hide-sm" href="/">1Call</a>
+        <span class="hide-sm" aria-hidden="true"><svg><use href="#i-chevron-right"/></svg></span>
+        <b aria-current="page">Administration</b>
+      </nav>
+
+      <div class="top-actions">
+        <!-- Etat de la configuration, Annuler, Enregistrer : ecrits par app/admin.js -->
+        <div class="adm-bar" id="admin-bar"></div>
+
+        <div class="menu-wrap" id="account">
+          <button class="me-btn" id="btn-account" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="account-pop" aria-label="Compte et affichage">
+            <span class="initials" id="account-initials" aria-hidden="true">–</span>
+          </button>
+          <div class="pop account-pop" id="account-pop" role="dialog" aria-label="Compte et affichage" hidden>
+            <div class="acct-head">
+              <b id="account-name">Connexion…</b>
+              <small id="account-email"></small>
+              <small class="acct-role" id="account-role" hidden></small>
+            </div>
+            <div class="acct-rows" data-prefs></div>
+            <div class="acct-rows">
+              <a class="acct-item" href="/">
+                <svg aria-hidden="true"><use href="#i-monitoring"/></svg>Supervision
+              </a>
+              <a class="acct-item" href="/agent.html" title="Ma ligne : décrocher, appeler, transférer">
+                <svg aria-hidden="true"><use href="#i-phone"/></svg>Ma ligne
+              </a>
+              <a class="acct-item" id="btn-logout" href="/api/auth?action=logout">
+                <svg aria-hidden="true"><use href="#i-logout"/></svg>Se déconnecter
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="view" id="view" tabindex="-1">
+      <div class="page-head">
+        <div class="page-heading">
+          <p class="eyebrow"><svg aria-hidden="true"><use href="#i-settings"/></svg><span>Système</span></p>
+          <h1 class="page-title">Accès et routage</h1>
+          <p class="page-sub">Qui a quel rôle, sur quelle ligne, qui est présenté aux appels entrants, et l’annuaire complémentaire (contacts Keyyo Phone).</p>
+        </div>
+      </div>
+
+      <div class="adm-main" id="admin-main" aria-label="Configuration"></div>
+    </main>
+
+    <footer class="site-foot">
+      <span>© <span data-year>2026</span> <b>BIOS Expertise</b>. Tous droits réservés.</span>
+      <span>1Call · administration</span>
+    </footer>
   </div>
 </div>
 
-<div class="adm" id="app" aria-hidden="true">
-  <div id="admin-root" hidden></div>
-
-  <header class="adm-top">
-    <div class="brand">
-      <div class="brand-mark" aria-hidden="true"><svg><use href="#i-phone"/></svg></div>
-      <div>
-        <span class="brand-name">1Call</span>
-        <span class="brand-sub">Administration</span>
-      </div>
-    </div>
-    <div>
-      <h1 class="adm-title">Accès et routage</h1>
-      <p class="adm-sub">Qui a quel rôle, sur quelle ligne, qui est présenté aux appels entrants, et l’annuaire complémentaire (contacts Keyyo Phone).</p>
-    </div>
-    <div class="account" id="account">
-      <span class="avatar avatar--sm" id="account-initials" aria-hidden="true">–</span>
-      <span class="account-text">
-        <span class="account-name" id="account-name">Connexion…</span>
-        <span class="account-sub" id="account-sub"></span>
-      </span>
-      <a class="btn btn--ghost btn--sm" href="/">Supervision</a>
-      <a class="btn btn--ghost btn--sm" href="/agent.html">Ma ligne</a>
-      <a class="btn btn--ghost btn--sm" id="btn-logout" href="/api/auth?action=logout" title="Se déconnecter">Déconnexion</a>
-    </div>
-  </header>
-
-  <main id="admin-main" aria-label="Configuration"></main>
-</div>
-
-<div class="adm-bar" id="admin-bar"></div>
-
+<!-- Messages ephemeres -->
 <div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
 
 <noscript>
   <div class="notice notice--error" style="margin:20px">
     <svg><use href="#i-alert"/></svg>
-    <div><span class="notice-title">JavaScript est requis.</span></div>
+    <div><span class="notice-title">JavaScript est requis.</span> Cette page règle les accès à 1Call dans le navigateur.</div>
   </div>
 </noscript>
 

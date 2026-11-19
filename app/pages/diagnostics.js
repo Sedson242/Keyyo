@@ -335,7 +335,7 @@ function actionsBar(st) {
   return toolbar([
     html`<button class="btn btn--sm" type="button" data-act="check"${raw(busyAttr)}>${raw(icon('refresh'))}${checkLabel}</button>`,
     html`<button class="btn btn--sm" type="button" data-act="deep"${raw(busyAttr)}>${raw(icon('diagnostics'))}Contrôle approfondi</button>`,
-    html`<button class="btn btn--sm btn--primary" type="button" data-act="full"${raw(_syncing ? ' disabled' : '')}>${raw(icon('download'))}${fullLabel}</button>`,
+    html`<button class="btn btn--sm" type="button" data-act="full"${raw(_syncing ? ' disabled' : '')}>${raw(icon('download'))}${fullLabel}</button>`,
     '<span class="toolbar-spacer"></span>',
     html`<span class="faint">${freshness(st)}</span>`,
   ]);
@@ -517,14 +517,14 @@ function collectErrors(st) {
   for (let i = 0; i < warnings.length; i++) {
     rows.push([
       html`<span class="mono">collecte</span>`,
-      raw(tag('Avertissement', 'in')),
+      raw(tag('Avertissement', 'warn')),
       html`<span>${warnings[i]}</span>`,
     ]);
   }
   for (let i = 0; i < partial.length; i++) {
     rows.push([
       html`<span class="mono">sources</span>`,
-      raw(tag('Partiel', 'in')),
+      raw(tag('Partiel', 'warn')),
       html`<span>${partial[i]}</span>`,
     ]);
   }
@@ -631,16 +631,16 @@ function apiStatusTag() {
   if (!_health) return '';
   const s = String(_health.status || '');
   if (s === 'ok') return tag('API en ordre', 'ok');
-  if (s === 'empty') return tag('Aucune donnée', 'in');
-  if (s === 'warn') return tag('Avertissement', 'in');
+  if (s === 'empty') return tag('Aucune donnée', 'warn');
+  if (s === 'warn') return tag('Avertissement', 'warn');
   if (s === 'error') return tag('Erreur', 'missed');
   return tag(s || 'état inconnu', 'neutral');
 }
 
-/** @param {string} level @returns {'ok'|'in'|'missed'|'neutral'} */
+/** @param {string} level @returns {'ok'|'warn'|'missed'|'neutral'} */
 function levelTone(level) {
   if (level === 'ok') return 'ok';
-  if (level === 'warn') return 'in';
+  if (level === 'warn') return 'warn';
   if (level === 'error') return 'missed';
   return 'neutral';
 }
@@ -906,7 +906,7 @@ function coverageSection(st) {
 
     let state;
     if (isMissing) state = tag('manquant', 'missed');
-    else if (!count) state = tag('vide', 'in');
+    else if (!count) state = tag('vide', 'warn');
     else state = tag('collecté', 'ok');
 
     rows.push([

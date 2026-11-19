@@ -35,6 +35,7 @@ import { toE164, formatNumber, numberKind } from '../shared/phone.js';
 import { initialsOf } from '../shared/identity.js';
 import { monthOf } from '../shared/journal.js';
 import { toast } from './alerts.js';
+import { initShell, loginButton } from './shell.js';
 
 /** Rafraichissement de « mon activite », en millisecondes. */
 const REFRESH_MS = 60000;
@@ -158,10 +159,10 @@ function showGate(s) {
   } else if (s.state === 'error') {
     t = 'Serveur injoignable';
     body = s.message || 'Impossible de vérifier la session.';
-    buttons = html`<button class="btn btn--primary" type="button" data-gate-retry>Réessayer</button>`;
+    buttons = html`<button class="btn btn--primary btn--lg" type="button" data-gate-retry>Réessayer</button>`;
   } else if (s.state === 'anonymous') {
     body = 'Connectez-vous avec votre compte Microsoft de l\'organisation pour ouvrir votre ligne.';
-    buttons = html`<a class="btn btn--primary" href="${session.loginUrl()}">Se connecter avec Microsoft</a>`;
+    buttons = loginButton(session.loginUrl());
     note = 'La connexion se fait sur la page de Microsoft ; l\'application ne voit jamais votre mot de passe.';
   }
   title.textContent = t;
@@ -442,7 +443,7 @@ function paintSide() {
     parts.push(html`<div class="ag-line-sub">Plugins CTI : ${snap.plugins.map((p) => raw(html`<span class="${p.enabled ? '' : 'ag-line-off'}">${p.name}${p.enabled ? ' ✓' : ' ✗'}</span> `))}</div>`);
     if (ws && !ws.enabled) {
       parts.push(html`<div class="ag-line-msg">Le plugin « websocket » est éteint : Keyyo refuse alors toute action (appeler, décrocher). Il faut l’activer sur cette ligne.</div>`);
-      parts.push(html`<div class="ag-line-actions"><button class="btn btn--accent btn--sm" type="button" data-act="enable-plugin" data-name="websocket"${_busy === 'plugin' ? ' disabled' : ''}>Activer « websocket »</button></div>`);
+      parts.push(html`<div class="ag-line-actions"><button class="btn btn--sm" type="button" data-act="enable-plugin" data-name="websocket"${_busy === 'plugin' ? ' disabled' : ''}>Activer « websocket »</button></div>`);
     }
   } else if (snap.pluginsError) {
     parts.push(html`<div class="ag-line-sub">Plugins CTI illisibles : ${snap.pluginsError}</div>`);
@@ -611,7 +612,7 @@ function callDetail(c) {
       actions.push(html`<button class="btn btn--reject btn--lg" type="button" data-act="hangup" data-ref="${c.callref}"${busy ? ' disabled' : ''}>${raw(icon('close'))}Raccrocher</button>`);
     }
   } else if (c.peer && c.peer !== 'anonymous') {
-    actions.push(html`<button class="btn btn--accent btn--lg" type="button" data-act="dial" data-number="${c.peer}"${!snap.connected || _busy === 'dial' ? ' disabled' : ''}>${raw(icon('out'))}${c.dir === 'in' && !c.answered ? 'Rappeler' : 'Appeler'}</button>`);
+    actions.push(html`<button class="btn btn--lg" type="button" data-act="dial" data-number="${c.peer}"${!snap.connected || _busy === 'dial' ? ' disabled' : ''}>${raw(icon('out'))}${c.dir === 'in' && !c.answered ? 'Rappeler' : 'Appeler'}</button>`);
   }
   if (c.dir === 'in' && c.answered && !c.mine && !c.claimed && (c.state === 'CONNECT' || !c.live)) {
     actions.push(html`<button class="btn btn--ghost btn--lg" type="button" data-act="claim" data-ref="${c.callref}" title="Je l’ai décroché sur mon téléphone">${raw(icon('check'))}C’est moi qui ai répondu</button>`);
@@ -649,7 +650,7 @@ function colleagueDetail(c) {
       </div>
     </div>
     <div class="ag-actions">
-      <button class="btn btn--accent btn--lg" type="button" data-act="dial" data-number="${c.number}" data-name="${c.name}"${!snap.connected || _busy === 'dial' ? ' disabled' : ''}>${raw(icon('out'))}Appeler</button>
+      <button class="btn btn--lg" type="button" data-act="dial" data-number="${c.number}" data-name="${c.name}"${!snap.connected || _busy === 'dial' ? ' disabled' : ''}>${raw(icon('out'))}Appeler</button>
       ${live ? raw(html`<button class="btn btn--lg" type="button" data-act="transfer-to" data-ref="${live.callref}" data-number="${c.number}" data-name="${c.name}" data-email="${c.email || ''}">${raw(icon('peers'))}Lui passer l’appel en cours</button>`) : ''}
     </div>
     ${lineByNumber(c.number)
@@ -923,7 +924,7 @@ function paintPopup() {
     <div class="call-card-actions">${raw(actions.join(''))}</div>
     <div class="call-card-facts">
       ${facts.map(([l, v]) => raw(html`<div class="call-card-fact"><span>${l}</span><span>${v}</span></div>`))}
-      ${c.state === 'CONNECT' && c.dir === 'in' && !c.mine && !c.claimed ? raw(html`<button class="btn btn--ghost btn--sm" type="button" data-act="claim" data-ref="${c.callref}" style="margin-top:6px;color:#fff">${raw(icon('check'))}C’est moi qui ai répondu</button>`) : ''}
+      ${c.state === 'CONNECT' && c.dir === 'in' && !c.mine && !c.claimed ? raw(html`<button class="btn btn--ghost btn--sm call-card-claim" type="button" data-act="claim" data-ref="${c.callref}">${raw(icon('check'))}C’est moi qui ai répondu</button>`) : ''}
     </div>
   </div>`, key);
 }
@@ -1197,6 +1198,7 @@ async function loadActivity() {
 
 async function startApp() {
   hideGate();
+  initShell();
   watchBrokenImages();
   _month = monthOf(Math.floor(Date.now() / 1000));
   wire();

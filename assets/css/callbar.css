@@ -1,93 +1,79 @@
 /* =============================================================================
    callbar.css — Barre d'appel (bas de page) de la supervision.
 
-   Chargee par index.html. La page agent a sa propre trame (agent.css). Ne
-   definit aucune couleur en dur : tout vient de tokens.css. La barre est
-   fixe ; la page qui la porte pose `body.has-callbar` pour degager la place
-   en bas de son contenu.
+   Chargee par index.html. La page agent a sa propre trame (agent.css). Aucune
+   couleur en dur : tout vient de tokens.css. La barre est fixe, en verre
+   flottant, et commence au bord du menu lateral (`--side-w`, 0 en mobile) ;
+   la page qui la porte pose `body.has-callbar` pour degager la place en bas.
    ============================================================================= */
-
-/* -----------------------------------------------------------------------------
-   Barre d'appel
-   -------------------------------------------------------------------------- */
 
 .callbar {
   position: fixed;
-  left: 0;
+  left: var(--side-w);
   right: 0;
   bottom: 0;
   z-index: var(--z-sticky);
   display: flex;
   flex-direction: column;
   max-height: min(62vh, 560px);
-  padding: 10px 14px 12px;
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  padding: 10px 24px 12px;
+  background: var(--glass-float);
+  -webkit-backdrop-filter: var(--blur-float);
+  backdrop-filter: var(--blur-float);
   border-top: 1px solid var(--line);
-  box-shadow: 0 -12px 30px -18px rgba(120, 70, 40, 0.25);
+  box-shadow: 0 -16px 36px -22px rgba(20, 32, 29, 0.35);
+  transition: left 0.28s var(--ease);
 }
-/* Sur grand ecran la barre laterale reste visible : la barre d'appel ne doit
-   pas la recouvrir. Le voile de la barre laterale est a `left: 0` en mobile.
-   La marge de centrage de la page est bornee a zero AVANT d'ajouter la
-   largeur de la barre laterale : entre 901 px et --page-max, l'ancienne
-   formule devenait negative et la barre d'appel repartait de zero, couvrant
-   les liens du bas du menu (verifie a 996 px). */
-@media (min-width: 901px) {
-  .callbar {
-    left: calc(max(0px, (100vw - var(--page-max)) / 2) + var(--sidebar-w));
-    right: max(0px, calc((100vw - var(--page-max)) / 2));
-  }
-}
-body.has-callbar .main { padding-bottom: 210px; }
+body.has-callbar .main { padding-bottom: 150px; }
+body.has-callbar:has(.callbar.is-collapsed) .main { padding-bottom: 60px; }
 
-.callbar-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 30px;
-}
-.callbar-line { font: var(--t-sm); color: var(--ink-soft); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Les messages ephemeres passent au-dessus de la barre. */
+body.has-callbar .toasts { bottom: 150px; }
+body.has-callbar:has(.callbar.is-collapsed) .toasts { bottom: 66px; }
+
+.callbar-head { display: flex; align-items: center; gap: 12px; min-height: 30px; }
+.callbar-line { font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .callbar-count {
-  padding: 2px 8px;
-  border-radius: var(--r-pill);
-  background: var(--in-soft);
-  color: var(--in-strong);
-  font: var(--t-micro);
-  font-weight: 700;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: 600 12px / 22px var(--mono);
 }
 .callbar-count[hidden] { display: none; }
 
 .callbar-body { display: grid; gap: 8px; margin-top: 8px; min-height: 0; overflow-y: auto; }
 .callbar-body[hidden] { display: none; }
-.callbar.is-collapsed { padding-bottom: 8px; }
-body.has-callbar .callbar.is-collapsed ~ * { padding-bottom: 0; }
+.callbar.is-collapsed { padding-bottom: 10px; }
 
 .callbar-lines { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .callbar-lines[hidden] { display: none; }
-.callbar-lines-label { font: var(--t-sm); color: var(--ink-soft); }
+.callbar-lines-label { font-size: 13px; color: var(--ink-2); }
 
 .callbar-calls { display: grid; gap: 6px; }
 .callbar-calls:empty { display: none; }
 
+/* Carte d'un appel en cours : verre, liseré du sens a gauche. */
 .call {
+  --tone: var(--line-strong);
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
   padding: 8px 12px;
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  box-shadow: var(--sh-sm);
-  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-1), inset 3px 0 0 var(--tone);
 }
-.call--in { border-left-color: var(--in); }
-.call--out { border-left-color: var(--out); }
-.call--missed { border-left-color: var(--missed); }
+.call--in { --tone: var(--in); }
+.call--out { --tone: var(--out); }
+.call--missed { --tone: var(--missed-fill); }
+.call.is-live { --tone: var(--answered-fill); }
 .call.is-ringing { animation: call-ring 1.6s var(--ease) infinite; }
-.call.is-live { border-left-color: var(--answered-fill); }
 @keyframes call-ring {
-  0%, 100% { box-shadow: var(--sh-sm); }
-  50% { box-shadow: 0 0 0 4px var(--in-soft); }
+  0%, 100% { box-shadow: var(--shadow-1), inset 3px 0 0 var(--tone), 0 0 0 0 transparent; }
+  50% { box-shadow: var(--shadow-1), inset 3px 0 0 var(--tone), 0 0 0 4px var(--in-soft); }
 }
 @media (prefers-reduced-motion: reduce) { .call.is-ringing { animation: none; } }
 
@@ -95,63 +81,70 @@ body.has-callbar .callbar.is-collapsed ~ * { padding-bottom: 0; }
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--r-pill);
-  background: var(--surface-tint);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  background: var(--in-soft);
   color: var(--in-strong);
 }
-.call--out .call-icon { background: var(--out-soft); color: var(--out); }
+.call--out .call-icon { background: var(--out-soft); color: var(--out-strong); }
 .call--missed .call-icon { background: var(--missed-soft); color: var(--missed); }
 .call.is-live .call-icon { background: var(--answered-soft); color: var(--answered); }
 .call-icon svg { width: 15px; height: 15px; }
 
 .call-body { min-width: 0; flex: 1 1 auto; }
-.call-peer { font: var(--t-body-md); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.call-meta { font: var(--t-micro); color: var(--ink-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.call-peer { font-size: 14px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-peer .faint { font: 400 12.5px / 1 var(--mono); }
+.call-meta { margin-top: 1px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .call-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 
 .callbar-dial { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .callbar-dial .field { flex: 1 1 240px; }
+.callbar-dial .field input { font-family: var(--mono); font-size: 13.5px; }
 
+/* Choix d'un collegue ou d'un manager. */
 .callbar-picker {
-  background: var(--surface);
-  border-radius: var(--r-lg);
-  box-shadow: var(--sh-md);
   padding: 8px;
   max-height: 300px;
   overflow-y: auto;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-1);
 }
 .callbar-picker[hidden] { display: none; }
 .pick-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 4px 8px; }
 .pick-title { font: var(--t-h3); color: var(--ink); margin-right: auto; }
-.pick-group { padding: 8px 8px 4px; font: var(--t-label); text-transform: uppercase; letter-spacing: var(--track-label); color: var(--ink-muted); }
-.pick-empty { padding: 12px 8px; font: var(--t-sm); color: var(--ink-muted); }
+.pick-group { padding: 10px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.pick-empty { padding: 12px 8px; font-size: 13px; color: var(--muted); }
 .pick-row {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
   padding: 7px 8px;
-  border-radius: var(--r-md);
+  border-radius: var(--radius-sm);
   text-align: left;
+  transition: background-color var(--dur-fast);
 }
-.pick-row:hover { background: var(--surface-sunken); }
+.pick-row:hover { background: var(--sand); }
 .pick-body { min-width: 0; flex: 1 1 auto; display: grid; gap: 1px; }
-.pick-name { font: var(--t-body-md); color: var(--ink); display: flex; align-items: center; gap: 6px; }
-.pick-sub { font: var(--t-micro); color: var(--ink-muted); }
-.pick-action { font: var(--t-sm); font-weight: 600; color: var(--in-strong); }
+.pick-name { font-size: 14px; font-weight: 500; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+.pick-sub { font-size: 12.5px; color: var(--muted); }
+.pick-action { font-size: 13px; font-weight: 600; color: var(--accent-text); }
 
-.callbar-note { font: var(--t-micro); color: var(--ink-muted); min-height: 12px; }
+.callbar-note { font-size: 12px; color: var(--muted); min-height: 12px; }
 .callbar-note:empty { display: none; }
 .callbar-note.is-ok { color: var(--answered); }
-.callbar-note.is-warn { color: var(--in-strong); }
-.callbar-note.is-error { color: var(--missed); }
+.callbar-note.is-warn { color: var(--warn); }
+.callbar-note.is-error { color: var(--ko); }
 
+@media (max-width: 1024px) {
+  .callbar { padding: 8px 16px 10px; }
+}
 @media (max-width: 720px) {
   .callbar { padding: 8px 10px 10px; }
   .call { flex-wrap: wrap; }
   .call-actions { width: 100%; justify-content: flex-start; }
   .callbar-line { display: none; }
 }
-

@@ -38,6 +38,7 @@ import { normalizeAccess, upsertMember, removeMember, adminCount } from '../shar
 import { formatNumber } from '../shared/phone.js';
 import { parseContactsExport } from '../shared/contacts.js';
 import { toast } from './alerts.js';
+import { initShell, loginButton, setAccountPhoto } from './shell.js';
 
 /** @type {{config: any, lines: any[], people: any[], me: any, warnings: string[]}|null} */
 let _data = null;
@@ -106,15 +107,16 @@ function showGate(s) {
   } else if (s.state === 'error') {
     t = 'Serveur injoignable';
     body = s.message || 'Impossible de vérifier la session.';
-    buttons = html`<button class="btn btn--primary" type="button" data-gate-retry>Réessayer</button>`;
+    buttons = html`<button class="btn btn--primary btn--lg" type="button" data-gate-retry>Réessayer</button>`;
   } else if (s.state === 'forbidden') {
     t = 'Réservé aux administrateurs';
     body = 'Votre compte (' + (s.user ? s.user.email : '') + ') est reconnu comme « ' + (s.user ? s.user.roleLabel : '') + ' ». '
       + 'Un administrateur peut vous donner ce rôle depuis cette page ; pour le tout premier, poser AUTH_ADMIN_EMAILS dans Vercel.';
-    buttons = html`<a class="btn btn--ghost" href="/agent.html">Ma ligne</a><a class="btn btn--ghost" href="${session.LOGOUT_URL}">Changer de compte</a>`;
+    buttons = html`<a class="btn btn--lg" href="/agent.html">Ma ligne</a><a class="btn btn--ghost btn--lg" href="${session.LOGOUT_URL}">Changer de compte</a>`;
   } else if (s.state === 'anonymous') {
     body = 'Connectez-vous avec votre compte Microsoft de l\'organisation.';
-    buttons = html`<a class="btn btn--primary" href="${session.loginUrl()}">Se connecter avec Microsoft</a>`;
+    buttons = loginButton(session.loginUrl());
+    note = 'La connexion se fait sur la page de Microsoft ; l\'application ne voit jamais votre mot de passe.';
   }
   title.textContent = t;
   text.textContent = body;
@@ -138,14 +140,25 @@ function hideGate() {
 //  Rendu
 // -----------------------------------------------------------------------------
 
+/** Menu du compte (avatar en haut a droite) : nom, adresse, role, photo. */
 function paintHeader() {
   const u = session.current().user;
+  if (!u) return;
   const name = qs('#account-name');
-  const sub = qs('#account-sub');
+  const email = qs('#account-email');
+  const role = qs('#account-role');
   const ini = qs('#account-initials');
-  if (name && u) { name.textContent = u.name; name.setAttribute('title', u.email); }
-  if (sub && u) sub.textContent = u.roleLabel;
-  if (ini && u) ini.textContent = initialsOf(u.name);
+  const btn = qs('#btn-account');
+  if (name) { name.textContent = u.name; name.setAttribute('title', u.email); }
+  if (email) email.textContent = u.email;
+  if (role) {
+    const label = u.roleLabel || session.roleLabel();
+    role.textContent = label;
+    role.hidden = !label;
+  }
+  if (ini) ini.textContent = initialsOf(u.name);
+  if (btn) btn.setAttribute('aria-label', 'Compte de ' + u.name + ' et affichage');
+  setAccountPhoto(u.email);
 }
 
 function paint() {
@@ -189,7 +202,7 @@ function membersCard() {
   const rows = members.map((m, idx) => html`<tr data-member="${m.email}">
     <td data-label="Personne" class="break">
       <div class="row">${raw(avatar(m.name || m.email, { size: 'sm', photo: photoUrl(m.email, 48) }))}
-        <div class="adm-person"><div class="strong">${m.name || '—'}</div><div class="faint" style="font: var(--t-micro)">${m.email}</div></div></div>
+        <div class="adm-person"><div class="strong">${m.name || '—'}</div><div class="adm-person-mail">${m.email}</div></div></div>
     </td>
     <td data-label="Rôle">
       <div class="select-pill"><select data-role="${m.email}" aria-label="Rôle de ${m.email}">
@@ -226,7 +239,7 @@ function membersCard() {
       <span class="faint">ou</span>
       <label class="field" for="adm-email">${raw(icon('mail'))}<input id="adm-email" type="email" autocomplete="off" placeholder="adresse@entreprise.fr"></label>
       <label class="field" for="adm-name">${raw(icon('people'))}<input id="adm-name" type="text" autocomplete="off" placeholder="Prénom Nom"></label>
-      <button class="btn btn--primary btn--sm" type="button" id="adm-add">Ajouter</button>
+      <button class="btn btn--sm" type="button" id="adm-add">Ajouter</button>
     </div>`),
   });
 }
@@ -244,7 +257,7 @@ function routingCard() {
       ? onLine.map((m) => raw(html`<label class="adm-check"><input type="checkbox" data-route="${l.csi}" data-email="${m.email}"${routing.agents.indexOf(m.email) >= 0 ? ' checked' : ''}> ${m.name || m.email}${m.popup ? '' : raw(html` <span class="faint">(fenêtre coupée)</span>`)}</label>`))
       : [raw(html`<span class="faint">aucun membre configuré sur cette ligne</span>`)];
     return html`<div class="adm-route">
-      <div class="adm-route-head"><span class="strong">${l.label}</span> <span class="faint">${l.number} · ${fmtInt(l.members)} ${pluralize(l.members, 'contact rattaché', 'contacts rattachés')} dans l’annuaire</span>
+      <div class="adm-route-head"><span class="strong">${l.label}</span> <span class="faint"><span class="adm-route-number">${l.number}</span> · ${fmtInt(l.members)} ${pluralize(l.members, 'contact rattaché', 'contacts rattachés')} dans l’annuaire</span>
         ${routing.agents.length ? raw(tag(fmtInt(routing.agents.length) + ' ' + pluralize(routing.agents.length, 'personne présentée', 'personnes présentées'), 'ok')) : raw(tag('tout le monde', 'neutral'))}</div>
       <div class="adm-checks">${checks}</div>
     </div>`;
@@ -389,7 +402,7 @@ function importPreview() {
     ${raw(warningList(p.warnings, 'À vérifier avant d’importer.'))}
     ${raw(preview)}
     <div class="adm-import-actions">
-      <button class="btn btn--primary btn--sm" type="button" id="adm-contacts-import"${!n || _csv.sending || _clearing ? ' disabled' : ''}>${_csv.sending ? 'Import…' : 'Importer ' + fmtInt(n) + ' ' + pluralize(n, 'contact', 'contacts')}</button>
+      <button class="btn btn--sm" type="button" id="adm-contacts-import"${!n || _csv.sending || _clearing ? ' disabled' : ''}>${_csv.sending ? 'Import…' : 'Importer ' + fmtInt(n) + ' ' + pluralize(n, 'contact', 'contacts')}</button>
       ${n ? '' : raw(html`<span class="faint">Aucun contact exploitable dans ce fichier : rien à importer.</span>`)}
     </div>
   </div>`;
@@ -434,11 +447,11 @@ function paintBar() {
   if (!bar) return;
   const c = _data ? _data.config : null;
   const stamp = c && c.updatedAt ? 'Dernière modification ' + fmtRelative(c.updatedAt) + (c.updatedBy ? ' par ' + c.updatedBy : '') : 'Jamais enregistrée';
-  mount(bar, html`<span class="faint">${stamp}</span>
-    <span class="toolbar-spacer"></span>
-    ${_dirty ? raw(tag('modifications non enregistrées', 'missed')) : ''}
-    <button class="btn btn--ghost btn--sm" type="button" data-admin-reload${_saving ? ' disabled' : ''}>Annuler</button>
-    <button class="btn btn--primary" type="button" id="adm-save"${!_dirty || _saving || !_data ? ' disabled' : ''}>${_saving ? 'Enregistrement…' : 'Enregistrer'}</button>`);
+  // Dans la barre du haut : l'etat, puis Annuler et Enregistrer, le seul
+  // bouton orange de l'ecran (en haut a droite, comme dans 1Licence).
+  mount(bar, html`${_dirty ? raw(tag('modifications non enregistrées', 'warn')) : raw(html`<span class="adm-stamp" title="${stamp}">${stamp}</span>`)}
+    <button class="btn btn--ghost btn--sm" type="button" data-admin-reload${_saving || !_dirty ? ' disabled' : ''}>Annuler</button>
+    <button class="btn btn--primary btn--sm" type="button" id="adm-save"${!_dirty || _saving || !_data ? ' disabled' : ''}>${raw(icon('check'))}${_saving ? 'Enregistrement…' : 'Enregistrer'}</button>`);
 }
 
 // -----------------------------------------------------------------------------
@@ -728,9 +741,27 @@ async function load() {
     _loadError = err && err.message ? String(err.message) : String(err);
   }
   paint();
+  if (_data) playEnter();
+}
+
+let _entered = false;
+
+/**
+ * Les cartes montent l'une apres l'autre au premier affichage seulement : la
+ * page est repeinte a chaque case cochee, l'animation ne doit pas la suivre.
+ */
+function playEnter() {
+  const host = qs('#admin-main');
+  if (!host || _entered) return;
+  _entered = true;
+  host.classList.add('enter');
+  window.setTimeout(function () { host.classList.remove('enter'); }, 900);
 }
 
 export function boot() {
+  // Coquille commune : preferences d'affichage, pilule du menu, menu du
+  // compte, et le tiroir du menu en mobile (pas de routeur sur cette page).
+  initShell({ drawer: true });
   wire();
   document.addEventListener('keyyo:unauthenticated', function () {
     session.forget();

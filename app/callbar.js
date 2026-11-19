@@ -204,7 +204,7 @@ function callCard(c) {
   const busy = _busy === c.callref;
   const buttons = [];
   if (ringing && c.dir === 'in') {
-    buttons.push(html`<button class="btn btn--accent btn--sm" type="button" data-call-answer="${c.callref}"${busy ? ' disabled' : ''}>${raw(icon('in'))}Répondre</button>`);
+    buttons.push(html`<button class="btn btn--answer btn--sm" type="button" data-call-answer="${c.callref}"${busy ? ' disabled' : ''}>${raw(icon('in'))}Répondre</button>`);
   }
   if (ringing || live) {
     buttons.push(html`<button class="btn btn--sm" type="button" data-call-transfer="${c.callref}"${busy ? ' disabled' : ''}>Transférer</button>`);

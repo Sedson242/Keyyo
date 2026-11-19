@@ -30,6 +30,7 @@ import * as alerts from './alerts.js';
 import * as session from './session.js';
 import * as cti from './cti.js';
 import * as callbar from './callbar.js';
+import { initShell, loginButton, setAccountPhoto } from './shell.js';
 import { getProfile } from './api.js';
 import {
   state, setFilter, subscribe, load, status,
@@ -257,14 +258,20 @@ function paintLive(st) {
     label = st.empty ? 'Aucun appel' : 'Collecte partielle';
     title = st.warning || 'La collecte est incomplète.';
   } else {
-    label = st.at ? fmtRelative(st.at) : 'À jour';
-    title = st.at ? 'Dernière collecte à ' + fmtClock(st.at) + '.' : 'Données à jour.';
+    label = 'À jour';
+    title = st.at ? 'Dernière collecte à ' + fmtClock(st.at) + ' (' + fmtRelative(st.at) + ').' : 'Données à jour.';
   }
 
   pill.classList.toggle('is-loading', cls === 'is-loading');
   pill.classList.toggle('is-warn', cls === 'is-warn');
   pill.classList.toggle('is-error', cls === 'is-error');
-  text.textContent = label;
+  // « À jour à 14:05 », l'heure en chiffres a chasse fixe, comme 1Licence.
+  if (!cls && st.at) {
+    const clock = fmtClock(st.at).slice(0, 5);
+    mount(text, html`À jour à <time datetime="${String(st.at)}">${clock}</time>`);
+  } else {
+    text.textContent = label;
+  }
   pill.setAttribute('title', title);
 }
 
@@ -466,11 +473,23 @@ function paintAccount(st) {
   if (name) name.textContent = user ? user.name : 'Non connecté';
   if (initials) initials.textContent = user ? initialsOf(user.name) : '–';
   if (name && user) name.setAttribute('title', user.email);
+  const email = qs('#account-email');
+  if (email) email.textContent = user ? user.email : '';
+  const role = qs('#account-role');
+  if (role) {
+    const label = user ? (user.roleLabel || session.roleLabel()) : '';
+    role.textContent = label;
+    role.hidden = !label;
+  }
+  const btn = qs('#btn-account');
+  if (btn && user) btn.setAttribute('aria-label', 'Compte de ' + user.name + ' et affichage');
+  if (user) setAccountPhoto(user.email);
   const adminLink = qs('#link-admin');
   if (adminLink) adminLink.hidden = !session.isAdmin();
 
   const parts = [];
-  if (user) parts.push(user.roleLabel || session.roleLabel());
+  // Sans etiquette de role dans la coquille, le role reste en tete du resume.
+  if (user && !role) parts.push(user.roleLabel || session.roleLabel());
 
   if (st.kind === 'loading') {
     parts.push('Chargement…');
@@ -528,18 +547,18 @@ function showGate(s) {
   } else if (s.state === 'error') {
     t = 'Serveur injoignable';
     body = s.message || 'Impossible de vérifier la session.';
-    buttons = html`<button class="btn btn--primary" type="button" data-gate-retry>Réessayer</button>`;
+    buttons = html`<button class="btn btn--primary btn--lg" type="button" data-gate-retry>Réessayer</button>`;
   } else if (s.state === 'agent') {
     const who = s.user && s.user.name ? s.user.name : 'vous';
     t = 'Bonjour, ' + who;
     body = 'Votre compte est reconnu comme « ' + (s.user && s.user.roleLabel ? s.user.roleLabel : 'Agent')
       + ' ». La supervision est réservée à la direction ; votre espace personnel arrive dans la prochaine version.';
-    buttons = html`<a class="btn btn--ghost" href="${session.LOGOUT_URL}">Changer de compte</a>`;
+    buttons = html`<a class="btn btn--lg" href="${session.LOGOUT_URL}">Changer de compte</a>`;
     note = s.user && s.user.email ? s.user.email : '';
   } else {
     t = 'Connexion';
     body = 'Connectez-vous avec votre compte Microsoft de l\'organisation pour accéder à la supervision des appels.';
-    buttons = html`<a class="btn btn--primary" href="${session.loginUrl()}">Se connecter avec Microsoft</a>`;
+    buttons = loginButton(session.loginUrl());
     note = 'La connexion se fait sur la page de Microsoft ; l\'application ne voit jamais votre mot de passe.';
   }
 
@@ -1005,6 +1024,9 @@ function startCallbar() {
  */
 function startApp() {
   alerts.init();
+  // La coquille commune (preferences, pilule du menu, menu du compte) avant le
+  // routeur : elle ecoute `keyyo:route`, que le premier `apply` emet.
+  initShell();
   wireShell();
 
   router.start(function (id) {

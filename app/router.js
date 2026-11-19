@@ -204,6 +204,24 @@ function setPeriodBarVisible(visible) {
   }
 }
 
+/** @type {WeakMap<Element, number>} */
+const _enterTimers = new WeakMap();
+
+/**
+ * Joue l'animation d'arrivee d'une vue. La classe est retiree apres coup :
+ * une collecte de fond qui remonte la vue ne doit pas la rejouer.
+ * @param {Element} page
+ */
+function playEnter(page) {
+  const prev = _enterTimers.get(page);
+  if (prev) clearTimeout(prev);
+  page.classList.add('enter');
+  _enterTimers.set(page, window.setTimeout(function () {
+    page.classList.remove('enter');
+    _enterTimers.delete(page);
+  }, 900));
+}
+
 // -----------------------------------------------------------------------------
 //  Application d'une route
 // -----------------------------------------------------------------------------
@@ -215,8 +233,10 @@ function setPeriodBarVisible(visible) {
  */
 function apply(id) {
   const route = routeById(id) || routeById(DEFAULT_ROUTE);
+  const changed = _current !== route.id;
   _current = route.id;
 
+  let group = '';
   const items = qsa('.nav-item[data-route]');
   for (let i = 0; i < items.length; i++) {
     const el = items[i];
@@ -225,25 +245,44 @@ function apply(id) {
     // `aria-current` n'a de sens que sur l'element courant : le retirer ailleurs
     // vaut mieux que de le poser a « false », qui reste annonce par certains
     // lecteurs d'ecran.
-    if (active) el.setAttribute('aria-current', 'page');
-    else el.removeAttribute('aria-current');
+    if (active) {
+      el.setAttribute('aria-current', 'page');
+      // La rubrique du menu (Activite, Annuaire, Systeme) coiffe le titre.
+      const grp = el.closest('.nav-group');
+      const label = grp ? qs('.nav-title', grp) : null;
+      group = label ? String(label.textContent || '').trim() : '';
+    } else {
+      el.removeAttribute('aria-current');
+    }
   }
 
   const pages = qsa('.page[data-page]');
   for (let i = 0; i < pages.length; i++) {
-    pages[i].classList.toggle('is-active', pages[i].getAttribute('data-page') === route.id);
+    const on = pages[i].getAttribute('data-page') === route.id;
+    pages[i].classList.toggle('is-active', on);
+    // Arrivee sur un ecran : les blocs montent l'un apres l'autre, une seule
+    // fois (pas a chaque collecte de fond). Voir `.page.enter` dans base.css.
+    if (on && changed) playEnter(pages[i]);
   }
 
   const title = qs('#page-title');
   if (title) title.textContent = route.title;
   const sub = qs('#page-sub');
   if (sub) sub.textContent = route.sub;
+  const crumb = qs('#crumb');
+  if (crumb) crumb.textContent = route.title;
+  const eyebrow = qs('#page-eyebrow span');
+  if (eyebrow && group) eyebrow.textContent = group;
+  try { document.title = route.title + ' · 1Call'; } catch (err) { /* titre inchange */ }
 
   setPeriodBarVisible(route.needsPeriod);
 
   // Choisir une vue depuis le tiroir mobile doit refermer le tiroir : sinon la
   // page choisie reste cachee derriere le voile.
   closeNav();
+
+  // La coquille (app/shell.js) fait glisser la pilule du menu sous la vue.
+  document.dispatchEvent(new CustomEvent('keyyo:route', { detail: { id: route.id } }));
 
   if (_onChange) {
     // Une page qui plante ne doit pas laisser le routeur a moitie applique.

@@ -1,181 +1,438 @@
 /* =============================================================================
    tokens.css — Jetons de design. SOURCE UNIQUE de toutes les valeurs visuelles.
 
-   Palette relevee sur la maquette de reference : fond degrade peche/creme,
-   cartes blanches a grand rayon, une carte sombre en accent, barres en
-   degrade orange -> corail.
+   1Call suit le guide BIOS « Glass Corporate » de 1Licence (v3.1) : toile gris
+   clair #EEF0EC avec halos fixes et quadrillage, cartes en verre depoli (rayon
+   10 px), controles au rayon 6 px, encre #14201D, titres bleu nuit #193357,
+   orange #E8702A (un seul bouton orange par ecran), Schibsted Grotesk pour le
+   texte, IBM Plex Mono pour les chiffres. Theme clair et sombre par jetons ; le
+   choix manuel (data-theme, voir assets/theme.js) l'emporte sur le systeme.
+
+   Les polices sont HEBERGEES ICI (assets/fonts, sous-ensemble latin, licence
+   SIL OFL) : aucun transfert vers un tiers a l'ouverture d'une page, et la CSP
+   reste `font-src 'self'`.
 
    Regle : aucune couleur, aucun rayon, aucune ombre en dur ailleurs dans le
    CSS. Tout passe par une variable definie ici.
 
-   Typographie : pile systeme uniquement, aucune police chargee depuis un CDN
-   tiers (pas de dependance externe, pas de FOUT, et pas de transfert de
-   donnees vers un tiers — utile pour une entreprise francaise soumise au RGPD).
+   Couleurs du metier, controlees daltonisme (paire bleu / orange de 1Licence) :
+     ENTRANT  bleu      SORTANT  orange
+     MANQUE   rouge     DECROCHE vert
+   Toujours doublees d'un texte (etiquette, legende) : jamais la couleur seule.
    ============================================================================= */
 
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('../fonts/schibsted-grotesk-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/ibm-plex-mono-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../fonts/ibm-plex-mono-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/ibm-plex-mono-600-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
-  /* ---------------------------------------------------------------------------
-     1. Fond de page : le degrade chaud de la maquette
-     --------------------------------------------------------------------------- */
-  --bg-peach-deep: #e9ab86;   /* floraison peche, en haut a gauche */
-  --bg-peach: #f4d6c1;
-  --bg-cream: #faeee4;
-  --bg-shell: #fdfaf7;        /* creme presque blanc, bas de page */
+  color-scheme: light;
 
   /* ---------------------------------------------------------------------------
-     2. Surfaces
+     1. Toile, verre, surfaces
      --------------------------------------------------------------------------- */
+  --paper: #eef0ec;
   --surface: #ffffff;
-  --surface-sunken: #fdf7f2;  /* pistes de barres, en-tetes de tableau */
-  --surface-tint: #fbeee5;    /* pastilles d'icone chaudes */
-  --surface-tint-2: #f7e6da;
-  --surface-dark: #1a1614;    /* la carte sombre en accent */
-  --surface-dark-2: #241e1a;
-  --surface-glass: rgba(255, 255, 255, 0.42);   /* barre laterale sur le degrade */
-  --surface-glass-strong: rgba(255, 255, 255, 0.72);
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-2: rgba(255, 255, 255, 0.45);
+  --glass-float: rgba(255, 255, 255, 0.82);
+  --glass-bar: rgba(255, 255, 255, 0.35);
+  --glass-hi: #ffffff;
+  --glass-edge: rgba(255, 255, 255, 0.85);
+  --field: rgba(255, 255, 255, 0.85);
+  --blur: blur(20px) saturate(150%);
+  --blur-float: blur(24px) saturate(170%);
+  --sand: rgba(20, 32, 29, 0.06);
+  --sand-2: rgba(20, 32, 29, 0.035);
+  --grid: rgba(20, 32, 29, 0.035);
 
   /* ---------------------------------------------------------------------------
-     3. Encre
+     2. Encre et bordures
      --------------------------------------------------------------------------- */
-  --ink: #2a2018;             /* titres, chiffres */
-  --ink-soft: #574a41;        /* texte courant */
-  --ink-muted: #9a8b80;       /* libelles, axes */
-  --ink-faint: #bdaea3;       /* separateurs textuels, etats vides */
-  --ink-on-dark: #ffffff;
-  --ink-on-dark-muted: #9d918a;
+  --ink: #14201d;
+  --ink-2: #3a4744;
+  --muted: #5e6b67;
+  --faint: #8a9592;
+  --navy: #193357;
+  --line: rgba(20, 32, 29, 0.08);
+  --line-strong: rgba(20, 32, 29, 0.12);
+
+  /* Page active du menu : pilule d'encre. */
+  --pill: #14201d;
+  --on-pill: #ffffff;
+  --pill-icon: #f59c36;
 
   /* ---------------------------------------------------------------------------
-     4. Couleurs semantiques du metier
-     Un outil de supervision d'appels a quatre etats a distinguer d'un coup
-     d'oeil. On conserve le marine et le vert de la charte Keyyo pour les
-     appels, dans une palette peche qui vient de la maquette.
+     3. Orange BIOS et etats
      --------------------------------------------------------------------------- */
-  --in: #e2764f;              /* ENTRANT — corail, l'accent de la maquette */
-  --in-strong: #c85f3c;
-  --in-soft: #fbe6db;
-  --out: #14146e;             /* SORTANT — marine de la charte Keyyo */
-  --out-strong: #0d0d4d;
-  --out-soft: #e4e4f2;
-  --missed: #cf3b35;          /* MANQUE — rouge d'alerte */
-  --missed-soft: #fce4e2;
-  --answered: #0e8a45;        /* DECROCHE — vert charte, assombri pour le contraste */
-  --answered-fill: #00c55a;   /* la teinte de charte, reservee aux remplissages */
-  --answered-soft: #e0f5e9;
+  --accent: #e8702a;
+  --accent-hover: #d4601d;
+  --accent-text: #b8520f;
+  --accent-soft: #fdf0e7;
+  --accent-grad: linear-gradient(180deg, #ef8445, #e2661f);
+  --accent-grad-hover: linear-gradient(180deg, #ec7a38, #d4601d);
+  --accent-glow: 0 4px 10px -3px rgba(232, 112, 42, 0.5);
+  --tile-grad: linear-gradient(155deg, #f3a06f, #e8702a);
+  --overline: #ad5b0e;
 
-  /* Degrades de barres, reproduits de la maquette (bas -> haut) */
-  --grad-bar: linear-gradient(180deg, #ea7285 0%, #ef9b6d 60%, #f2b184 100%);
-  --grad-bar-svg-top: #ea7285;
-  --grad-bar-svg-bottom: #f2b184;
-  --grad-accent: linear-gradient(135deg, #f0a96c 0%, #e2764f 100%);
-  --grad-logo: linear-gradient(135deg, #f5b06d 0%, #e0713f 100%);
+  /* Commandes d'appel : memes teintes pleines dans les deux themes (texte
+     blanc lisible, contraste superieur a 4,5:1). */
+  --call-answer: #1f7a55;
+  --call-answer-hover: #17603f;
+  --call-reject: #b42323;
+  --call-reject-hover: #951c1c;
+  --avatar-default: #5d6b80;
+  --focus: #e8702a;
+  --focus-ring: #fbe0cc;
+  --on-tone: #ffffff;
+
+  --ok: #1f7a55;
+  --ok-soft: #e6f3ec;
+  --warn: #93590a;
+  --warn-soft: #fbf1df;
+  --ko: #b42323;
+  --ko-soft: #fbeaea;
+  --ko-line: #efc9c9;
+  --info: #1f5fae;
+  --info-soft: #e7effa;
+  --bar: #193357;
 
   /* ---------------------------------------------------------------------------
-     5. Bordures
+     4. Couleurs du metier. `--x` remplit (barres, courbes, pastilles),
+        `--x-strong` s'ecrit (chiffres, etiquettes), `--x-soft` teinte un fond.
      --------------------------------------------------------------------------- */
-  --line: #f0e4da;            /* separateur sur blanc */
-  --line-strong: #e6d5c8;
-  --line-dark: rgba(255, 255, 255, 0.09);   /* separateur dans la carte sombre */
-  --focus: #e2764f;
+  --in: #2f6fd6;
+  --in-strong: #1f5fae;
+  --in-soft: #e7effa;
+  --out: #e8702a;
+  --out-strong: #b8520f;
+  --out-soft: #fdf0e7;
+  --missed: #b42323;
+  --missed-fill: #d24a4a;
+  --missed-soft: #fbeaea;
+  --answered: #1f7a55;
+  --answered-fill: #1f9d63;
+  --answered-soft: #e6f3ec;
+
+  /* Histogrammes : degrade vertical discret du bleu entrant. */
+  --grad-bar-svg-top: #5a95ec;
+  --grad-bar-svg-bottom: #2f6fd6;
+
+  /* Series de graphiques, dans cet ordre (controlees daltonisme et contraste). */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #a879d8;
+  --series-8: #8a918e;
 
   /* ---------------------------------------------------------------------------
-     6. Rayons — la maquette est tres arrondie
+     5. Fond de page : halos fixes
      --------------------------------------------------------------------------- */
-  --r-xs: 8px;
-  --r-sm: 10px;
-  --r-md: 14px;               /* pilules de navigation, boutons */
-  --r-lg: 18px;               /* cartes imbriquees */
-  --r-xl: 22px;               /* cartes principales */
-  --r-2xl: 28px;
-  --r-pill: 999px;
+  --glow-1: rgba(232, 112, 42, 0.24);
+  --glow-2: rgba(25, 51, 87, 0.13);
+  --glow-3: rgba(20, 160, 143, 0.12);
+  --glow-4: rgba(61, 140, 239, 0.1);
 
   /* ---------------------------------------------------------------------------
-     7. Ombres — tres douces, teintees chaud (jamais du noir pur)
+     6. Ombres, rayons, mouvement
      --------------------------------------------------------------------------- */
-  --sh-xs: 0 1px 2px rgba(90, 55, 30, 0.04);
-  --sh-sm: 0 1px 2px rgba(90, 55, 30, 0.04), 0 2px 6px -2px rgba(120, 70, 40, 0.06);
-  --sh-md: 0 1px 2px rgba(90, 55, 30, 0.04), 0 8px 24px -10px rgba(120, 70, 40, 0.12);
-  --sh-lg: 0 2px 4px rgba(90, 55, 30, 0.04), 0 18px 40px -16px rgba(120, 70, 40, 0.18);
-  --sh-pop: 0 24px 60px -18px rgba(80, 45, 25, 0.30);
-  --sh-dark: 0 18px 44px -18px rgba(26, 22, 20, 0.45);
+  --shadow-1: 0 0 0 1px rgba(20, 32, 29, 0.06), 0 1px 2px rgba(20, 32, 29, 0.04), 0 12px 32px -12px rgba(20, 32, 29, 0.16);
+  --shadow-2: 0 0 0 1px rgba(20, 32, 29, 0.08), 0 2px 4px rgba(20, 32, 29, 0.05), 0 18px 40px -14px rgba(20, 32, 29, 0.22);
+  --shadow-float: 0 0 0 1px rgba(20, 32, 29, 0.08), 0 20px 48px -12px rgba(20, 32, 29, 0.24);
+  --shadow-pill: 0 8px 18px rgba(20, 32, 29, 0.22);
+  --scrim: rgba(12, 19, 18, 0.4);
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-xs: 4px;
+  --radius-pill: 999px;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 0.16s;
+  --dur: 0.22s;
+  --dur-slow: 0.38s;
+
+  /* Toast, fenetre d'appel : verre d'encre, identique en clair et en sombre. */
+  --ink-glass: rgba(20, 32, 29, 0.92);
+  --on-ink: #ffffff;
+  --on-ink-muted: rgba(255, 255, 255, 0.66);
+  --on-ink-line: rgba(255, 255, 255, 0.1);
 
   /* ---------------------------------------------------------------------------
-     8. Typographie
+     7. Typographie
      --------------------------------------------------------------------------- */
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text',
-          'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-display: 'Inter', -apple-system, BlinkMacSystemFont,
-          'Segoe UI Variable Display', 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono',
-          'Roboto Mono', Menlo, Consolas, monospace;
+  --font: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
-  --t-display: 700 clamp(30px, 3.4vw, 44px) / 1.05 var(--font-display);
-  --t-h1: 700 22px / 1.2 var(--font-display);
-  --t-h2: 600 17px / 1.3 var(--font);
-  --t-h3: 600 14px / 1.35 var(--font);
-  --t-num-xl: 700 clamp(32px, 3vw, 44px) / 1 var(--font-display);
-  --t-num-lg: 700 21px / 1.1 var(--font-display);
-  --t-num-md: 600 16px / 1.2 var(--font);
-  --t-body: 400 13px / 1.5 var(--font);
-  --t-body-md: 500 13px / 1.45 var(--font);
-  --t-sm: 400 12px / 1.45 var(--font);
-  --t-label: 500 11px / 1.3 var(--font);
-  --t-micro: 500 10px / 1.2 var(--font);
+  --t-h1: 700 18px / 1.25 var(--font);
+  --t-h2: 600 15px / 1.35 var(--font);
+  --t-h3: 600 14px / 1.4 var(--font);
+  --t-num-xl: 500 44px / 1 var(--mono);
+  --t-num-lg: 500 26px / 1.15 var(--mono);
+  --t-num-md: 500 16px / 1.25 var(--mono);
+  --t-body: 400 14px / 1.5 var(--font);
+  --t-body-md: 500 14px / 1.45 var(--font);
+  --t-sm: 400 13px / 1.45 var(--font);
+  --t-label: 400 13px / 1.35 var(--font);
+  --t-micro: 400 12px / 1.4 var(--font);
+  --t-overline: 600 12px / 1.4 var(--mono);
 
-  --track-tight: -0.022em;   /* titres et grands chiffres */
-  --track-label: 0.02em;     /* petits libelles en majuscules */
+  --track-tight: -0.02em;
 
   /* ---------------------------------------------------------------------------
-     9. Trame et espacement
+     8. Trame
      --------------------------------------------------------------------------- */
-  --sidebar-w: 232px;
+  --side-w: 240px;
+  --topbar-h: 56px;
+  --view-max: 1360px;
+  --pad-card: 22px;
   --gap-2: 8px;
   --gap-3: 12px;
   --gap-4: 16px;
-  --gap-5: 20px;
+  --gap-5: 18px;
   --gap-6: 24px;
   --gap-8: 32px;
-  --pad-card: 22px;
-  --page-max: 1560px;
-
-  /* ---------------------------------------------------------------------------
-     10. Mouvement — discret ; respecte prefers-reduced-motion (voir base.css)
-     --------------------------------------------------------------------------- */
-  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
-  --dur-fast: 120ms;
-  --dur: 200ms;
-  --dur-slow: 380ms;
 
   --z-sticky: 20;
   --z-nav: 60;
-  --z-pop: 80;
+  --z-pop: 70;
   --z-modal: 100;
   --z-toast: 120;
+
+  /* ---------------------------------------------------------------------------
+     9. Alias : noms relus par le JavaScript (styles en ligne de charts.js, des
+        pages et de selftest.html). Ne pas renommer sans relire app/.
+     --------------------------------------------------------------------------- */
+  --surface-sunken: var(--sand-2);
+  --ink-muted: var(--muted);
+  --ink-faint: var(--faint);
+  --ink-soft: var(--ink-2);
+  --font-mono: var(--mono);
+  --bg: var(--paper);
+}
+
+/* Menu reduit (preference gardee) : icones seules. */
+:root[data-nav='mini'] { --side-w: 64px; }
+
+/* =============================================================================
+   Theme sombre : reglage du systeme, sauf choix contraire de l'utilisateur.
+   ============================================================================= */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --paper: #0c1312;
+    --surface: #18221f;
+    --glass: rgba(30, 42, 39, 0.58);
+    --glass-2: rgba(24, 34, 31, 0.5);
+    --glass-float: rgba(22, 32, 29, 0.88);
+    --glass-bar: rgba(12, 19, 18, 0.55);
+    --glass-hi: rgba(255, 255, 255, 0.06);
+    --glass-edge: rgba(255, 255, 255, 0.08);
+    --field: rgba(255, 255, 255, 0.05);
+    --sand: rgba(255, 255, 255, 0.07);
+    --sand-2: rgba(255, 255, 255, 0.04);
+    --line: rgba(255, 255, 255, 0.09);
+    --line-strong: rgba(255, 255, 255, 0.16);
+    --grid: rgba(255, 255, 255, 0.025);
+    --ink: #eef1ee;
+    --ink-2: #c7cfcc;
+    --muted: #96a39f;
+    --faint: #75827e;
+    --navy: #e3eaf4;
+    --pill: #eef1ee;
+    --on-pill: #14201d;
+    --pill-icon: #d4601d;
+    --accent-hover: #f08c40;
+    --accent-text: #f5a462;
+    --overline: #f0a565;
+    --focus: #f5a462;
+    --focus-ring: rgba(232, 112, 42, 0.32);
+    --on-tone: #0c1312;
+    --accent-soft: rgba(232, 112, 42, 0.16);
+    --ok: #63c99a;
+    --ok-soft: rgba(99, 201, 154, 0.13);
+    --warn: #f0c062;
+    --warn-soft: rgba(240, 192, 98, 0.13);
+    --ko: #ff8f84;
+    --ko-soft: rgba(255, 143, 132, 0.12);
+    --ko-line: rgba(255, 143, 132, 0.35);
+    --info: #94b8f2;
+    --info-soft: rgba(148, 184, 242, 0.13);
+    --bar: #6f9be6;
+    --in: #5b9cf0;
+    --in-strong: #94b8f2;
+    --in-soft: rgba(148, 184, 242, 0.13);
+    --out: #ef8445;
+    --out-strong: #f5a462;
+    --out-soft: rgba(232, 112, 42, 0.16);
+    --missed: #ff8f84;
+    --missed-fill: #f0736a;
+    --missed-soft: rgba(255, 143, 132, 0.12);
+    --answered: #63c99a;
+    --answered-fill: #3fb684;
+    --answered-soft: rgba(99, 201, 154, 0.13);
+    --grad-bar-svg-top: #7fb0f4;
+    --grad-bar-svg-bottom: #3f82e2;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #b48ce0;
+    --series-8: #7d8784;
+    --glow-1: rgba(232, 112, 42, 0.16);
+    --glow-2: rgba(61, 140, 239, 0.12);
+    --glow-3: rgba(20, 160, 143, 0.1);
+    --glow-4: rgba(61, 140, 239, 0.08);
+    --shadow-1: 0 0 0 1px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.2), 0 12px 32px -12px rgba(0, 0, 0, 0.55);
+    --shadow-2: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.25), 0 20px 44px -14px rgba(0, 0, 0, 0.65);
+    --shadow-float: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 24px 56px -12px rgba(0, 0, 0, 0.7);
+    --shadow-pill: 0 8px 18px rgba(0, 0, 0, 0.4);
+    --scrim: rgba(0, 0, 0, 0.5);
+    --ink-glass: rgba(8, 14, 13, 0.94);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #0c1312;
+  --surface: #18221f;
+  --glass: rgba(30, 42, 39, 0.58);
+  --glass-2: rgba(24, 34, 31, 0.5);
+  --glass-float: rgba(22, 32, 29, 0.88);
+  --glass-bar: rgba(12, 19, 18, 0.55);
+  --glass-hi: rgba(255, 255, 255, 0.06);
+  --glass-edge: rgba(255, 255, 255, 0.08);
+  --field: rgba(255, 255, 255, 0.05);
+  --sand: rgba(255, 255, 255, 0.07);
+  --sand-2: rgba(255, 255, 255, 0.04);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --grid: rgba(255, 255, 255, 0.025);
+  --ink: #eef1ee;
+  --ink-2: #c7cfcc;
+  --muted: #96a39f;
+  --faint: #75827e;
+  --navy: #e3eaf4;
+  --pill: #eef1ee;
+  --on-pill: #14201d;
+  --pill-icon: #d4601d;
+  --accent-hover: #f08c40;
+  --accent-text: #f5a462;
+  --overline: #f0a565;
+  --focus: #f5a462;
+  --focus-ring: rgba(232, 112, 42, 0.32);
+  --on-tone: #0c1312;
+  --accent-soft: rgba(232, 112, 42, 0.16);
+  --ok: #63c99a;
+  --ok-soft: rgba(99, 201, 154, 0.13);
+  --warn: #f0c062;
+  --warn-soft: rgba(240, 192, 98, 0.13);
+  --ko: #ff8f84;
+  --ko-soft: rgba(255, 143, 132, 0.12);
+  --ko-line: rgba(255, 143, 132, 0.35);
+  --info: #94b8f2;
+  --info-soft: rgba(148, 184, 242, 0.13);
+  --bar: #6f9be6;
+  --in: #5b9cf0;
+  --in-strong: #94b8f2;
+  --in-soft: rgba(148, 184, 242, 0.13);
+  --out: #ef8445;
+  --out-strong: #f5a462;
+  --out-soft: rgba(232, 112, 42, 0.16);
+  --missed: #ff8f84;
+  --missed-fill: #f0736a;
+  --missed-soft: rgba(255, 143, 132, 0.12);
+  --answered: #63c99a;
+  --answered-fill: #3fb684;
+  --answered-soft: rgba(99, 201, 154, 0.13);
+  --grad-bar-svg-top: #7fb0f4;
+  --grad-bar-svg-bottom: #3f82e2;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #b48ce0;
+  --series-8: #7d8784;
+  --glow-1: rgba(232, 112, 42, 0.16);
+  --glow-2: rgba(61, 140, 239, 0.12);
+  --glow-3: rgba(20, 160, 143, 0.1);
+  --glow-4: rgba(61, 140, 239, 0.08);
+  --shadow-1: 0 0 0 1px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.2), 0 12px 32px -12px rgba(0, 0, 0, 0.55);
+  --shadow-2: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.25), 0 20px 44px -14px rgba(0, 0, 0, 0.65);
+  --shadow-float: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 24px 56px -12px rgba(0, 0, 0, 0.7);
+  --shadow-pill: 0 8px 18px rgba(0, 0, 0, 0.4);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --ink-glass: rgba(8, 14, 13, 0.94);
 }
 
 /* =============================================================================
-   Palette des series de graphiques : ordre fixe, pour que la meme categorie
-   garde la meme couleur d'une vue a l'autre.
+   Transparence coupee (preference de l'outil ou du systeme) : surfaces
+   pleines, aucun flou.
    ============================================================================= */
-:root {
-  --series-1: #e2764f;
-  --series-2: #14146e;
-  --series-3: #e9a961;
-  --series-4: #4a8f8b;
-  --series-5: #b8607e;
-  --series-6: #7a6bb5;
-  --series-7: #cf3b35;
-  --series-8: #6f7f52;
+:root[data-glass='off'] {
+  --glass: var(--surface);
+  --glass-2: var(--surface);
+  --glass-float: var(--surface);
+  --glass-bar: var(--paper);
+  --field: var(--surface);
+  --blur: none;
+  --blur-float: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-glass='on']) {
+    --glass: var(--surface);
+    --glass-2: var(--surface);
+    --glass-float: var(--surface);
+    --glass-bar: var(--paper);
+    --field: var(--surface);
+    --blur: none;
+    --blur-float: none;
+  }
 }
 
-/* =============================================================================
-   Contraste renforce : on remplace les teintes les plus claires par des
-   valeurs qui passent le contraste AA, sans changer la structure.
-   ============================================================================= */
+/* Contraste renforce : traits et textes secondaires plus marques. */
 @media (prefers-contrast: more) {
-  :root {
-    --ink-muted: #6b5c51;
-    --ink-faint: #8a7a6e;
-    --line: #ddcabb;
-    --line-strong: #c9b3a2;
+  :root:not([data-theme='dark']) {
+    --muted: #46524e;
+    --faint: #5e6b67;
+    --line: rgba(20, 32, 29, 0.16);
+    --line-strong: rgba(20, 32, 29, 0.24);
   }
 }

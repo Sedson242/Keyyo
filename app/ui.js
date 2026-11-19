@@ -139,7 +139,7 @@ function decorIcon(name, cls) {
 /** Tons acceptes par les differentes briques. */
 const KPI_TONES = ['in', 'out', 'missed', 'ok'];
 const STAT_TONES = ['out', 'missed', 'ok'];          // le ton entrant est le defaut
-const TAG_TONES = ['in', 'out', 'missed', 'ok', 'neutral'];
+const TAG_TONES = ['in', 'out', 'missed', 'ok', 'warn', 'neutral'];
 const AVATAR_TONES = ['out', 'missed', 'dark'];
 const METER_TONES = ['out', 'missed', 'ok'];
 const SPLIT_TONES = ['out', 'missed', 'ok'];
@@ -393,7 +393,7 @@ export function table(opts) {
 /**
  * Etiquette d'etat avec sa pastille.
  * @param {string} label
- * @param {'in'|'out'|'missed'|'ok'|'neutral'} [tone]  Defaut : 'neutral'.
+ * @param {'in'|'out'|'missed'|'ok'|'warn'|'neutral'} [tone]  Defaut : 'neutral'.
  * @returns {string}
  */
 export function tag(label, tone) {

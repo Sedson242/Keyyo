@@ -48,7 +48,7 @@ const STATUS_MAP = {
   suspended: { label: 'Suspendue', tone: 'missed' },
   setup_pending: { label: "En cours d'installation", tone: 'neutral' },
   cancelled: { label: 'Résiliée', tone: 'missed' },
-  cancellation_pending: { label: 'Résiliation en cours', tone: 'in' },
+  cancellation_pending: { label: 'Résiliation en cours', tone: 'warn' },
 };
 
 /** Au-dela, l'histogramme des lignes devient illisible. */
@@ -683,7 +683,7 @@ function coverageSection(st) {
 
     let state_ = tag('Couvert', 'ok');
     if (isMissing) state_ = tag('Aucun appel archivé', 'missed');
-    else if (isThin) state_ = tag('Volume anormalement bas', 'in');
+    else if (isThin) state_ = tag('Volume anormalement bas', 'warn');
 
     const sub = ym + (partial ? ' · mois partiel' : '');
     const action = isMissing || isThin

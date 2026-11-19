@@ -169,6 +169,9 @@ const CONTRACT = [
   ['../app/ui.js', ['card', 'sectionHead', 'kpi', 'statbar', 'table', 'tag', 'avatar', 'avatarStack', 'meter', 'split', 'rankRow', 'empty', 'notice', 'skeleton', 'toolbar']],
   ['../app/api.js', ['getCalls', 'getTeam', 'getDirectory', 'getHealth', 'getMe', 'getProfile', 'postCtiToken', 'postEvents', 'getEvents', 'getAccess', 'postAccess', 'postSync', 'photoUrl', 'getHandoff', 'ApiError', 'postDirectoryImport', 'clearDirectoryImport']],
   ['../app/session.js', ['LOGIN_URL', 'LOGOUT_URL', 'resolve', 'current', 'isDirection', 'isAdmin', 'roleLabel', 'loginUrl', 'forget']],
+  // Coquille commune aux trois pages (preferences, menu, compte, connexion).
+  // Elle ne fait que poser des ecouteurs a l'import : importable ici.
+  ['../app/shell.js', ['prefs', 'setPref', 'reducedMotion', 'moveIndicator', 'setAccountPhoto', 'loginButton', 'initShell']],
   // admin.js ne s'amorce que si #admin-root est present : importable ici.
   ['../app/admin.js', ['boot']],
   ['../app/journal.js', ['subscribe', 'record', 'flush', 'status', 'month', 'init']],
@@ -241,6 +244,7 @@ const charts = NS['../app/charts.js'];
 const ui = NS['../app/ui.js'];
 const store = NS['../app/store.js'];
 const router = NS['../app/router.js'];
+const shell = NS['../app/shell.js'];
 
 /** Saute un groupe entier quand son module ne s'est pas charge. */
 function need(mod, name, label) {
@@ -2243,6 +2247,32 @@ if (need(ui, 'app/ui.js', 'app/ui.js')) suite('app/ui.js', () => {
 // -----------------------------------------------------------------------------
 //  12. app/router.js — la table des vues doit coller a index.html
 // -----------------------------------------------------------------------------
+
+// Coquille commune : les reglages d'affichage et le bouton de connexion. Le
+// reste (pilule du menu, menu du compte, tiroir) exige la coquille d'une page.
+if (need(shell, 'app/shell.js', 'app/shell.js')) suite('app/shell.js', () => {
+  const { prefs, loginButton } = shell;
+
+  test('les reglages d’affichage ont toujours une valeur connue', () => {
+    // Lit le stockage reel du navigateur : on verifie le domaine des valeurs,
+    // pas les choix de la personne qui lance l'autotest.
+    const p = prefs();
+    ok(['system', 'light', 'dark'].indexOf(p.theme) >= 0, 'theme : ' + p.theme);
+    ok(['comfortable', 'compact'].indexOf(p.density) >= 0, 'densite : ' + p.density);
+    ok(['on', 'off'].indexOf(p.glass) >= 0, 'transparence : ' + p.glass);
+    ok(['full', 'reduce'].indexOf(p.motion) >= 0, 'animations : ' + p.motion);
+    ok(['full', 'mini'].indexOf(p.nav) >= 0, 'menu : ' + p.nav);
+  });
+
+  test('le bouton de connexion est un lien, adresse echappee', () => {
+    const out = loginButton('/api/auth?action=login&next="/"');
+    has(out, '<a ', 'une navigation vers Microsoft, pas un bouton de script');
+    has(out, 'login-btn', 'classe animee par la coquille');
+    has(out, '&amp;next=', 'esperluette echappee');
+    lacks(out, '"/"', 'guillemets de l’adresse echappes');
+    has(out, 'Se connecter avec Microsoft');
+  });
+});
 
 if (need(router, 'app/router.js', 'app/router.js')) suite('app/router.js', () => {
   const { ROUTES } = router;
